@@ -1,0 +1,406 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2023-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "control_point",
+  "farm",
+  "ghouse",
+  "column_break_1",
+  "harvest_time",
+  "arrival_time",
+  "transit_time",
+  "section_solution",
+  "stems_received",
+  "stems_checked",
+  "stems_per_bucket",
+  "solution_level",
+  "solution_hygeine",
+  "solution_ph",
+  "chlorine_ppm",
+  "control_action",
+  "variety",
+  "quarantined_stems",
+  "prepared_by",
+  "unit_manager",
+  "section_quality",
+  "blackening",
+  "botrytis",
+  "rust",
+  "downy_mildew",
+  "powdery_mildew",
+  "black_spot",
+  "short_stem",
+  "pelican",
+  "live_thrips",
+  "live_aphids",
+  "broken_stem",
+  "less_buds",
+  "mixed_variety",
+  "drooping",
+  "thrips_damage",
+  "mite_damage",
+  "wrong_length",
+  "tight_cut_stage",
+  "advanced_cut_stage",
+  "bruises",
+  "chlorosis",
+  "scorching",
+  "poor_defoliation",
+  "fcm_larvae",
+  "fcm_egg",
+  "fcm_damages",
+  "helicoverpa_larvae",
+  "helicoverpa_egg",
+  "helicoverpa_damage",
+  "spodoptera_egg",
+  "spodoptera_damage",
+  "spodoptera_larvae",
+  "section_items",
+  "items",
+  "amended_from",
+  "section_qparams",
+  "quality_parameters"
+ ],
+ "fields": [
+  {
+   "fieldname": "control_point",
+   "fieldtype": "Link",
+   "label": "Control Point",
+   "options": "QC Control Point"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm"
+  },
+  {
+   "fieldname": "ghouse",
+   "fieldtype": "Data",
+   "label": "Greenhouse"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "harvest_time",
+   "fieldtype": "Data",
+   "label": "Harvest Time"
+  },
+  {
+   "fieldname": "arrival_time",
+   "fieldtype": "Data",
+   "label": "Arrival Time"
+  },
+  {
+   "fieldname": "transit_time",
+   "fieldtype": "Data",
+   "label": "Transit Time"
+  },
+  {
+   "fieldname": "section_solution",
+   "fieldtype": "Section Break",
+   "label": "Solution Details"
+  },
+  {
+   "fieldname": "stems_received",
+   "fieldtype": "Int",
+   "label": "Stems Received"
+  },
+  {
+   "fieldname": "stems_checked",
+   "fieldtype": "Int",
+   "label": "Stems Checked"
+  },
+  {
+   "fieldname": "stems_per_bucket",
+   "fieldtype": "Int",
+   "label": "Stems Per Bucket"
+  },
+  {
+   "fieldname": "solution_level",
+   "fieldtype": "Int",
+   "label": "Solution Level"
+  },
+  {
+   "fieldname": "solution_hygeine",
+   "fieldtype": "Data",
+   "label": "Solution Hygiene"
+  },
+  {
+   "fieldname": "solution_ph",
+   "fieldtype": "Data",
+   "label": "Solution PH"
+  },
+  {
+   "fieldname": "chlorine_ppm",
+   "fieldtype": "Int",
+   "label": "Chlorine PPM"
+  },
+  {
+   "fieldname": "control_action",
+   "fieldtype": "Data",
+   "label": "Control Action"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "label": "Variety",
+   "options": "Item"
+  },
+  {
+   "fieldname": "quarantined_stems",
+   "fieldtype": "Int",
+   "label": "Quarantined Stems"
+  },
+  {
+   "fieldname": "prepared_by",
+   "fieldtype": "Link",
+   "label": "Prepared By",
+   "options": "User"
+  },
+  {
+   "fieldname": "unit_manager",
+   "fieldtype": "Link",
+   "label": "Unit Manager",
+   "options": "User"
+  },
+  {
+   "fieldname": "section_quality",
+   "fieldtype": "Section Break",
+   "label": "Quality Issues"
+  },
+  {
+   "fieldname": "blackening",
+   "fieldtype": "Int",
+   "label": "Blackening"
+  },
+  {
+   "fieldname": "botrytis",
+   "fieldtype": "Int",
+   "label": "Botrytis"
+  },
+  {
+   "fieldname": "rust",
+   "fieldtype": "Int",
+   "label": "Rust"
+  },
+  {
+   "fieldname": "downy_mildew",
+   "fieldtype": "Int",
+   "label": "Downy Mildew"
+  },
+  {
+   "fieldname": "powdery_mildew",
+   "fieldtype": "Int",
+   "label": "Powdery Mildew"
+  },
+  {
+   "fieldname": "black_spot",
+   "fieldtype": "Int",
+   "label": "Black Spot"
+  },
+  {
+   "fieldname": "short_stem",
+   "fieldtype": "Int",
+   "label": "Short Stem"
+  },
+  {
+   "fieldname": "pelican",
+   "fieldtype": "Int",
+   "label": "Pelican"
+  },
+  {
+   "fieldname": "live_thrips",
+   "fieldtype": "Int",
+   "label": "Live Thrips"
+  },
+  {
+   "fieldname": "live_aphids",
+   "fieldtype": "Int",
+   "label": "Live Aphids"
+  },
+  {
+   "fieldname": "broken_stem",
+   "fieldtype": "Int",
+   "label": "Broken Stem"
+  },
+  {
+   "fieldname": "less_buds",
+   "fieldtype": "Int",
+   "label": "Less Buds"
+  },
+  {
+   "fieldname": "mixed_variety",
+   "fieldtype": "Int",
+   "label": "Mixed Variety"
+  },
+  {
+   "fieldname": "drooping",
+   "fieldtype": "Int",
+   "label": "Drooping"
+  },
+  {
+   "fieldname": "thrips_damage",
+   "fieldtype": "Int",
+   "label": "Thrips Damage"
+  },
+  {
+   "fieldname": "mite_damage",
+   "fieldtype": "Int",
+   "label": "Mite Damage"
+  },
+  {
+   "fieldname": "wrong_length",
+   "fieldtype": "Int",
+   "label": "Wrong Length"
+  },
+  {
+   "fieldname": "tight_cut_stage",
+   "fieldtype": "Int",
+   "label": "Tight Cut Stage"
+  },
+  {
+   "fieldname": "advanced_cut_stage",
+   "fieldtype": "Int",
+   "label": "Advanced Cut Stage"
+  },
+  {
+   "fieldname": "bruises",
+   "fieldtype": "Int",
+   "label": "Bruises"
+  },
+  {
+   "fieldname": "chlorosis",
+   "fieldtype": "Int",
+   "label": "Chlorosis"
+  },
+  {
+   "fieldname": "scorching",
+   "fieldtype": "Int",
+   "label": "Scorching"
+  },
+  {
+   "fieldname": "poor_defoliation",
+   "fieldtype": "Int",
+   "label": "Poor Defoliation"
+  },
+  {
+   "fieldname": "fcm_larvae",
+   "fieldtype": "Int",
+   "label": "FCM Larvae"
+  },
+  {
+   "fieldname": "fcm_egg",
+   "fieldtype": "Int",
+   "label": "FCM Egg"
+  },
+  {
+   "fieldname": "fcm_damages",
+   "fieldtype": "Int",
+   "label": "FCM Damages"
+  },
+  {
+   "fieldname": "helicoverpa_larvae",
+   "fieldtype": "Int",
+   "label": "Helicoverpa Larvae"
+  },
+  {
+   "fieldname": "helicoverpa_egg",
+   "fieldtype": "Int",
+   "label": "Helicoverpa Egg"
+  },
+  {
+   "fieldname": "helicoverpa_damage",
+   "fieldtype": "Int",
+   "label": "Helicoverpa Damage"
+  },
+  {
+   "fieldname": "spodoptera_egg",
+   "fieldtype": "Int",
+   "label": "Spodoptera Egg"
+  },
+  {
+   "fieldname": "spodoptera_damage",
+   "fieldtype": "Int",
+   "label": "Spodoptera Damage"
+  },
+  {
+   "fieldname": "spodoptera_larvae",
+   "fieldtype": "Int",
+   "label": "Spodoptera Larvae"
+  },
+  {
+   "fieldname": "section_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Intake Quality Parameter"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Quality Reporting",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_qparams",
+   "fieldtype": "Section Break",
+   "label": "Quality Parameters"
+  },
+  {
+   "fieldname": "quality_parameters",
+   "fieldtype": "Table",
+   "label": "Quality Parameters",
+   "options": "Quality Parameter"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2023-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Quality Reporting",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
