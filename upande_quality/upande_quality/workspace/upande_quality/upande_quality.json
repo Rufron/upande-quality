@@ -1,0 +1,211 @@
+{
+ "app": "upande_quality",
+ "charts": [],
+ "content": "[{\"id\":\"KwrOYtVRCH\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"QC\",\"col\":12}}]",
+ "creation": "2026-07-21 13:58:06",
+ "custom_blocks": [
+  {
+   "custom_block_name": "QC",
+   "label": "QC"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "check-circle",
+ "idx": 0,
+ "indicator_color": "blue",
+ "is_hidden": 0,
+ "label": "Upande Quality",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quality Records",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quality Reporting",
+   "link_count": 0,
+   "link_to": "Quality Reporting",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Corrective Action Report",
+   "link_count": 0,
+   "link_to": "Corrective Action Report",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Parameters & Config",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "QC Parameters",
+   "link_count": 0,
+   "link_to": "QC Parameters",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "QC Control Point",
+   "link_count": 0,
+   "link_to": "QC Control Point",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Packhouse Rejection Reason",
+   "link_count": 0,
+   "link_to": "Packhouse Rejection Reason",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Field Rejection Reason",
+   "link_count": 0,
+   "link_to": "Field Rejection Reason",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Specifications",
+   "link_count": 0,
+   "link_to": "Specifications",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Operations",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Box Label",
+   "link_count": 0,
+   "link_to": "Box Label",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Order Pick List",
+   "link_count": 0,
+   "link_to": "Order Pick List",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Solution Mix",
+   "link_count": 0,
+   "link_to": "Solution Mix",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "CFU Inspection Checksheet",
+   "link_count": 0,
+   "link_to": "CFU Inspection Checksheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Coldroom",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cold Store Temperature Log",
+   "link_count": 0,
+   "link_to": "Cold Store Temperature Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Coldroom Cleaning Record",
+   "link_count": 0,
+   "link_to": "Coldroom Cleaning Record",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Coldroom Inspection Log",
+   "link_count": 0,
+   "link_to": "Coldroom Inspection Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-23 13:54:24.817468",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Upande Quality",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 44.0,
+ "shortcuts": [],
+ "title": "Upande Quality",
+ "type": "Workspace"
+}

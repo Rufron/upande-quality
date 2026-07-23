@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2023-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "assigned_to",
+  "control_point",
+  "status",
+  "action_plan",
+  "target_completion_date",
+  "resolution"
+ ],
+ "fields": [
+  {"fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "CAR-.YYYY.-.DD.-.{####}", "default": "CAR-.YYYY.-.DD.-.{####}"},
+  {"fieldname": "assigned_to", "fieldtype": "Link", "label": "Assigned To", "options": "User"},
+  {"fieldname": "control_point", "fieldtype": "Link", "label": "Control Point", "options": "QC Control Point"},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "New\nIn Progress\nComplete\nClosed", "default": "New"},
+  {"fieldname": "action_plan", "fieldtype": "Long Text", "label": "Action Plan"},
+  {"fieldname": "target_completion_date", "fieldtype": "Date", "label": "Target Completion Date"},
+  {"fieldname": "resolution", "fieldtype": "Data", "label": "Resolution"}
+ ],
+ "links": [],
+ "modified": "2023-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Corrective Action Resolution",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"All","share":1,"write":1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

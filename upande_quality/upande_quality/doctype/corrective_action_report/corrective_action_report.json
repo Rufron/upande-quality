@@ -26,8 +26,9 @@
  "fields": [
   {
    "fieldname": "naming_series",
-   "fieldtype": "Series",
+   "fieldtype": "Select",
    "label": "Series",
+   "options": "CAR-.#####",
    "default": "CAR-.#####"
   },
   {
