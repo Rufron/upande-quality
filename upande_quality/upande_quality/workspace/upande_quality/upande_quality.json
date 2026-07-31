@@ -50,6 +50,16 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Corrective Action Resolution",
+   "link_count": 0,
+   "link_to": "Corrective Action Resolution",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Parameters & Config",
    "link_count": 0,
    "link_type": "DocType",
@@ -85,117 +95,9 @@
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Field Rejection Reason",
-   "link_count": 0,
-   "link_to": "Field Rejection Reason",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Specifications",
-   "link_count": 0,
-   "link_to": "Specifications",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Operations",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Box Label",
-   "link_count": 0,
-   "link_to": "Box Label",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Order Pick List",
-   "link_count": 0,
-   "link_to": "Order Pick List",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Solution Mix",
-   "link_count": 0,
-   "link_to": "Solution Mix",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "CFU Inspection Checksheet",
-   "link_count": 0,
-   "link_to": "CFU Inspection Checksheet",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Coldroom",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Cold Store Temperature Log",
-   "link_count": 0,
-   "link_to": "Cold Store Temperature Log",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Coldroom Cleaning Record",
-   "link_count": 0,
-   "link_to": "Coldroom Cleaning Record",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Coldroom Inspection Log",
-   "link_count": 0,
-   "link_to": "Coldroom Inspection Log",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
   }
  ],
- "modified": "2026-07-23 13:54:24.817468",
+ "modified": "2026-07-27 13:56:13.714215",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Upande Quality",

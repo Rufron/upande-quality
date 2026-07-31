@@ -1,0 +1,287 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-31 12:17:16.701818",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "section_main",
+  "farm",
+  "coldstore",
+  "col_break_1",
+  "cleaning_date",
+  "mode_of_cleaning",
+  "section_detergent",
+  "detergent_used",
+  "detergent_rate",
+  "col_break_2",
+  "detergent_rate_unit",
+  "detergent_solution_volume_l",
+  "section_disinfectant",
+  "disinfectant_used",
+  "disinfectant_rate",
+  "col_break_3",
+  "disinfectant_rate_unit",
+  "disinfectant_solution_volume_l",
+  "section_context",
+  "coldroom_volume_disinfected_m3",
+  "stock_quantity_stems",
+  "col_break_4",
+  "equipment_used",
+  "section_signoff",
+  "disinfected_by",
+  "col_break_5",
+  "supervised_by",
+  "section_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "default": "CCR-.YYYY.-.######",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "options": "CCR-.YYYY.-.######",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_main",
+   "fieldtype": "Section Break",
+   "label": "Cleaning"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "coldstore",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Cold Store",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "cleaning_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "mode_of_cleaning",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Mode of Cleaning",
+   "options": "Sweeping\nWashing",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_detergent",
+   "fieldtype": "Section Break",
+   "label": "Detergent"
+  },
+  {
+   "fieldname": "detergent_used",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Detergent Used",
+   "options": "\nMPD\nAerial\nOmo"
+  },
+  {
+   "fieldname": "detergent_rate",
+   "fieldtype": "Float",
+   "label": "Rate of Detergent",
+   "precision": "3"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "ml/L",
+   "fieldname": "detergent_rate_unit",
+   "fieldtype": "Select",
+   "label": "Detergent Rate Unit",
+   "options": "ml/L\ng/L"
+  },
+  {
+   "fieldname": "detergent_solution_volume_l",
+   "fieldtype": "Float",
+   "label": "Volume of Detergent Solution (L)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "section_disinfectant",
+   "fieldtype": "Section Break",
+   "label": "Disinfectant"
+  },
+  {
+   "fieldname": "disinfectant_used",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Disinfectant Used",
+   "options": "\nPhysan\nTOG 6\nSporekill\nSodium Hypochlorite"
+  },
+  {
+   "fieldname": "disinfectant_rate",
+   "fieldtype": "Float",
+   "label": "Rate of Disinfectant",
+   "precision": "3"
+  },
+  {
+   "fieldname": "col_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "ml/L",
+   "fieldname": "disinfectant_rate_unit",
+   "fieldtype": "Select",
+   "label": "Disinfectant Rate Unit",
+   "options": "ml/L\ng/L"
+  },
+  {
+   "fieldname": "disinfectant_solution_volume_l",
+   "fieldtype": "Float",
+   "label": "Volume of Disinfectant Solution (L)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "section_context",
+   "fieldtype": "Section Break",
+   "label": "Coldroom Context"
+  },
+  {
+   "fieldname": "coldroom_volume_disinfected_m3",
+   "fieldtype": "Float",
+   "label": "Volume Disinfected (m\u00b3)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "stock_quantity_stems",
+   "fieldtype": "Int",
+   "label": "Stock Quantity at Time of Disinfection (stems)"
+  },
+  {
+   "fieldname": "col_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "equipment_used",
+   "fieldtype": "Select",
+   "label": "Equipment Used",
+   "options": "\nPowered Knapsack\nFogging Machine"
+  },
+  {
+   "fieldname": "section_signoff",
+   "fieldtype": "Section Break",
+   "label": "Sign-off"
+  },
+  {
+   "fieldname": "disinfected_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Disinfected By"
+  },
+  {
+   "fieldname": "col_break_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supervised_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Supervised By (QC)"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-31 12:17:16.701818",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Coldroom Cleaning Record",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "QUALITY CONTROLLER",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "coldstore",
+ "track_changes": 1
+}

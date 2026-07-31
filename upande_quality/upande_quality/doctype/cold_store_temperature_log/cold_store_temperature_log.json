@@ -1,0 +1,195 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "format:{coldstore}-{log_date}",
+ "creation": "2026-07-31 12:14:02.103302",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_main",
+  "farm",
+  "coldstore",
+  "col_break_1",
+  "log_date",
+  "section_readings",
+  "temp_8am",
+  "temp_10am",
+  "temp_12pm",
+  "col_break_2",
+  "temp_2pm",
+  "temp_4pm",
+  "temp_6pm",
+  "temp_8pm",
+  "section_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_main",
+   "fieldtype": "Section Break",
+   "label": "Cold Store"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "coldstore",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Cold Store",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "log_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_readings",
+   "fieldtype": "Section Break",
+   "label": "Temperature Readings (\u00b0C)"
+  },
+  {
+   "fieldname": "temp_8am",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "8:00 AM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "temp_10am",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "10:00 AM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "temp_12pm",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "12 NOON",
+   "precision": "1"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "temp_2pm",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "2:00 PM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "temp_4pm",
+   "fieldtype": "Float",
+   "label": "4:00 PM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "temp_6pm",
+   "fieldtype": "Float",
+   "label": "6:00 PM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "temp_8pm",
+   "fieldtype": "Float",
+   "label": "8:00 PM",
+   "precision": "1"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-31 12:14:02.103302",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Cold Store Temperature Log",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "QUALITY CONTROLLER",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "coldstore",
+ "track_changes": 1
+}

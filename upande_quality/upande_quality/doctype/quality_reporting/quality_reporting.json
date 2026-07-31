@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "hash",
- "creation": "2023-01-01 00:00:00.000000",
+ "creation": "2023-01-01 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -25,39 +25,6 @@
   "quarantined_stems",
   "prepared_by",
   "unit_manager",
-  "section_quality",
-  "blackening",
-  "botrytis",
-  "rust",
-  "downy_mildew",
-  "powdery_mildew",
-  "black_spot",
-  "short_stem",
-  "pelican",
-  "live_thrips",
-  "live_aphids",
-  "broken_stem",
-  "less_buds",
-  "mixed_variety",
-  "drooping",
-  "thrips_damage",
-  "mite_damage",
-  "wrong_length",
-  "tight_cut_stage",
-  "advanced_cut_stage",
-  "bruises",
-  "chlorosis",
-  "scorching",
-  "poor_defoliation",
-  "fcm_larvae",
-  "fcm_egg",
-  "fcm_damages",
-  "helicoverpa_larvae",
-  "helicoverpa_egg",
-  "helicoverpa_damage",
-  "spodoptera_egg",
-  "spodoptera_damage",
-  "spodoptera_larvae",
   "section_items",
   "items",
   "amended_from",
@@ -170,171 +137,6 @@
    "options": "User"
   },
   {
-   "fieldname": "section_quality",
-   "fieldtype": "Section Break",
-   "label": "Quality Issues"
-  },
-  {
-   "fieldname": "blackening",
-   "fieldtype": "Int",
-   "label": "Blackening"
-  },
-  {
-   "fieldname": "botrytis",
-   "fieldtype": "Int",
-   "label": "Botrytis"
-  },
-  {
-   "fieldname": "rust",
-   "fieldtype": "Int",
-   "label": "Rust"
-  },
-  {
-   "fieldname": "downy_mildew",
-   "fieldtype": "Int",
-   "label": "Downy Mildew"
-  },
-  {
-   "fieldname": "powdery_mildew",
-   "fieldtype": "Int",
-   "label": "Powdery Mildew"
-  },
-  {
-   "fieldname": "black_spot",
-   "fieldtype": "Int",
-   "label": "Black Spot"
-  },
-  {
-   "fieldname": "short_stem",
-   "fieldtype": "Int",
-   "label": "Short Stem"
-  },
-  {
-   "fieldname": "pelican",
-   "fieldtype": "Int",
-   "label": "Pelican"
-  },
-  {
-   "fieldname": "live_thrips",
-   "fieldtype": "Int",
-   "label": "Live Thrips"
-  },
-  {
-   "fieldname": "live_aphids",
-   "fieldtype": "Int",
-   "label": "Live Aphids"
-  },
-  {
-   "fieldname": "broken_stem",
-   "fieldtype": "Int",
-   "label": "Broken Stem"
-  },
-  {
-   "fieldname": "less_buds",
-   "fieldtype": "Int",
-   "label": "Less Buds"
-  },
-  {
-   "fieldname": "mixed_variety",
-   "fieldtype": "Int",
-   "label": "Mixed Variety"
-  },
-  {
-   "fieldname": "drooping",
-   "fieldtype": "Int",
-   "label": "Drooping"
-  },
-  {
-   "fieldname": "thrips_damage",
-   "fieldtype": "Int",
-   "label": "Thrips Damage"
-  },
-  {
-   "fieldname": "mite_damage",
-   "fieldtype": "Int",
-   "label": "Mite Damage"
-  },
-  {
-   "fieldname": "wrong_length",
-   "fieldtype": "Int",
-   "label": "Wrong Length"
-  },
-  {
-   "fieldname": "tight_cut_stage",
-   "fieldtype": "Int",
-   "label": "Tight Cut Stage"
-  },
-  {
-   "fieldname": "advanced_cut_stage",
-   "fieldtype": "Int",
-   "label": "Advanced Cut Stage"
-  },
-  {
-   "fieldname": "bruises",
-   "fieldtype": "Int",
-   "label": "Bruises"
-  },
-  {
-   "fieldname": "chlorosis",
-   "fieldtype": "Int",
-   "label": "Chlorosis"
-  },
-  {
-   "fieldname": "scorching",
-   "fieldtype": "Int",
-   "label": "Scorching"
-  },
-  {
-   "fieldname": "poor_defoliation",
-   "fieldtype": "Int",
-   "label": "Poor Defoliation"
-  },
-  {
-   "fieldname": "fcm_larvae",
-   "fieldtype": "Int",
-   "label": "FCM Larvae"
-  },
-  {
-   "fieldname": "fcm_egg",
-   "fieldtype": "Int",
-   "label": "FCM Egg"
-  },
-  {
-   "fieldname": "fcm_damages",
-   "fieldtype": "Int",
-   "label": "FCM Damages"
-  },
-  {
-   "fieldname": "helicoverpa_larvae",
-   "fieldtype": "Int",
-   "label": "Helicoverpa Larvae"
-  },
-  {
-   "fieldname": "helicoverpa_egg",
-   "fieldtype": "Int",
-   "label": "Helicoverpa Egg"
-  },
-  {
-   "fieldname": "helicoverpa_damage",
-   "fieldtype": "Int",
-   "label": "Helicoverpa Damage"
-  },
-  {
-   "fieldname": "spodoptera_egg",
-   "fieldtype": "Int",
-   "label": "Spodoptera Egg"
-  },
-  {
-   "fieldname": "spodoptera_damage",
-   "fieldtype": "Int",
-   "label": "Spodoptera Damage"
-  },
-  {
-   "fieldname": "spodoptera_larvae",
-   "fieldtype": "Int",
-   "label": "Spodoptera Larvae"
-  },
-  {
    "fieldname": "section_items",
    "fieldtype": "Section Break",
    "label": "Items"
@@ -349,8 +151,8 @@
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "label": "Amended From",
-   "options": "Quality Reporting",
    "no_copy": 1,
+   "options": "Quality Reporting",
    "print_hide": 1,
    "read_only": 1
   },
@@ -368,7 +170,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2023-01-01 00:00:00.000000",
+ "modified": "2026-07-31 13:35:50.732116",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Quality Reporting",
@@ -399,6 +201,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

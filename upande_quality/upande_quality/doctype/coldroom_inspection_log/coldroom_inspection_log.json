@@ -1,0 +1,277 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-31 12:22:12.751524",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "section_main",
+  "farm",
+  "coldstore",
+  "col_break_1",
+  "inspection_date",
+  "section_conditions",
+  "floor_condition",
+  "floor_conditions",
+  "roof_condition",
+  "roof_conditions",
+  "walls_condition",
+  "walls_conditions",
+  "lights_condition",
+  "lights_conditions",
+  "col_break_2",
+  "doors_condition",
+  "doors_conditions",
+  "shelves_condition",
+  "shelves_conditions",
+  "drainage_condition",
+  "drainage_conditions",
+  "evaporators_condition",
+  "evaporators_conditions",
+  "section_signoff",
+  "inspected_by",
+  "section_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "default": "CIL-.YYYY.-.######",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "options": "CIL-.YYYY.-.######",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_main",
+   "fieldtype": "Section Break",
+   "label": "Inspection"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "coldstore",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Cold Store",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "inspection_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_conditions",
+   "fieldtype": "Section Break",
+   "label": "Conditions"
+  },
+  {
+   "fieldname": "floor_condition",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Floor",
+   "options": "\nGood condition\nClean\nDirty\nNeeds repair"
+  },
+  {
+   "fieldname": "floor_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Floor Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "roof_condition",
+   "fieldtype": "Select",
+   "label": "Roof",
+   "options": "\nGood condition\nClean\nDirty\nLeaking"
+  },
+  {
+   "fieldname": "roof_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Roof Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "walls_condition",
+   "fieldtype": "Select",
+   "label": "Walls",
+   "options": "\nGood condition\nClean\nDirty\nGap"
+  },
+  {
+   "fieldname": "walls_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Walls Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "lights_condition",
+   "fieldtype": "Select",
+   "label": "Lights",
+   "options": "\nGood condition\nDim bulb\nBlown bulb"
+  },
+  {
+   "fieldname": "lights_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Lights Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "doors_condition",
+   "fieldtype": "Select",
+   "label": "Doors",
+   "options": "\nGood condition\nNot closing\nGap"
+  },
+  {
+   "fieldname": "doors_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Doors Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "shelves_condition",
+   "fieldtype": "Select",
+   "label": "Shelves",
+   "options": "\nGood condition\nRusty\nBroken\nWorn out mesh"
+  },
+  {
+   "fieldname": "shelves_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Shelves Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "drainage_condition",
+   "fieldtype": "Select",
+   "label": "Drainage",
+   "options": "\nGood condition\nBlocked"
+  },
+  {
+   "fieldname": "drainage_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Drainage Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "evaporators_condition",
+   "fieldtype": "Select",
+   "label": "Evaporators",
+   "options": "\nGood condition\nIcing\nLeaking\nUnusual sound"
+  },
+  {
+   "fieldname": "evaporators_conditions",
+   "fieldtype": "Table MultiSelect",
+   "label": "Evaporators Conditions",
+   "options": "Coldroom Condition Selection"
+  },
+  {
+   "fieldname": "section_signoff",
+   "fieldtype": "Section Break",
+   "label": "Sign-off"
+  },
+  {
+   "fieldname": "inspected_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Inspected By"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-31 12:22:12.751524",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Coldroom Inspection Log",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "QUALITY CONTROLLER",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "coldstore",
+ "track_changes": 1
+}

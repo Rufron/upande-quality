@@ -1,0 +1,65 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-31 12:30:53.652203",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "farm",
+  "enabled",
+  "sales_shelf",
+  "max_allocation_age"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "sales_shelf",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Sales Shelf"
+  },
+  {
+   "columns": 2,
+   "fieldname": "max_allocation_age",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Max Allocation Age",
+   "precision": "0"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-31 12:30:53.652203",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Shelf Locations",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,18 @@
+[
+ {
+  "control_area": "Intake",
+  "control_point": "Intake",
+  "docstatus": 0,
+  "doctype": "QC Control Point",
+  "modified": "2026-07-27 13:56:13.819200",
+  "name": "Intake"
+ },
+ {
+  "control_area": "Packhouse",
+  "control_point": "Packhouse",
+  "docstatus": 0,
+  "doctype": "QC Control Point",
+  "modified": "2026-07-27 13:56:13.830115",
+  "name": "Packhouse"
+ }
+]

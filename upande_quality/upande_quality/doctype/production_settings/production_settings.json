@@ -1,0 +1,71 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-31 12:30:53.947770",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_main",
+  "amber_time",
+  "discard_age",
+  "section_shelves",
+  "shelf_locations"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_main",
+   "fieldtype": "Section Break",
+   "label": "Aging"
+  },
+  {
+   "fieldname": "amber_time",
+   "fieldtype": "Int",
+   "label": "Amber Time"
+  },
+  {
+   "fieldname": "discard_age",
+   "fieldtype": "Int",
+   "label": "Discard Age"
+  },
+  {
+   "fieldname": "section_shelves",
+   "fieldtype": "Section Break",
+   "label": "Shelf Locations"
+  },
+  {
+   "fieldname": "shelf_locations",
+   "fieldtype": "Table",
+   "label": "Shelf Locations",
+   "options": "Shelf Locations"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-31 12:30:53.947770",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Production Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

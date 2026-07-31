@@ -8,7 +8,9 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+# Quality Reporting / Corrective Action Report link into upande_kaitet
+# (Farm, Intake Quality Parameter), so kaitet must be installed first.
+required_apps = ["upande_kaitet"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -20,6 +22,29 @@ app_license = "mit"
 # 		"has_permission": "upande_quality.api.permission.has_app_permission"
 # 	}
 # ]
+
+# Fixtures
+# ------------------
+# The Upande Quality workspace renders the "QC" Custom HTML Block; that block
+# lives only in the DB unless exported here, so ship it so the workspace is not
+# blank on deployed sites.
+fixtures = [
+	{"doctype": "Custom HTML Block", "filters": [["name", "in", ["QC"]]]},
+	# QC Control Point master (seeded control points: Intake, Packhouse) — the
+	# control_point Link on Quality Reporting / CAR resolves against these.
+	{"doctype": "QC Control Point"},
+	# Field-visibility gating (eval depends_on) for the QC intake stages on the
+	# shared Stock Entry doctype + Quality Reporting Intake/Packhouse layout.
+	# Filtered to property in (depends_on, reqd) so ONLY our customizations ship,
+	# not other apps' Stock Entry property setters.
+	{
+		"doctype": "Property Setter",
+		"filters": [
+			["doc_type", "in", ["Quality Reporting", "Stock Entry"]],
+			["property", "in", ["depends_on", "reqd"]],
+		],
+	},
+]
 
 # Includes in <head>
 # ------------------

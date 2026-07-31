@@ -1,0 +1,180 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-31 11:54:11.572122",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "section_main",
+  "farm",
+  "tank",
+  "tank_capacity_l",
+  "col_break_1",
+  "mixing_date",
+  "mixing_time",
+  "section_readings",
+  "ph",
+  "col_break_2",
+  "ppm",
+  "section_chemicals",
+  "chemicals",
+  "section_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "default": "SM-.YYYY.-.######",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "options": "SM-.YYYY.-.######",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_main",
+   "fieldtype": "Section Break",
+   "label": "Mix"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "tank",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tank",
+   "options": "Post Harvest Mixing Tank",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "tank.capacity_l",
+   "fieldname": "tank_capacity_l",
+   "fieldtype": "Float",
+   "label": "Tank Capacity (L)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "mixing_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Mixing Date",
+   "reqd": 1
+  },
+  {
+   "default": "Now",
+   "fieldname": "mixing_time",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Mixing Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_readings",
+   "fieldtype": "Section Break",
+   "label": "Readings"
+  },
+  {
+   "fieldname": "ph",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "pH",
+   "precision": "1"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ppm",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "PPM",
+   "precision": "0"
+  },
+  {
+   "fieldname": "section_chemicals",
+   "fieldtype": "Section Break",
+   "label": "Chemicals"
+  },
+  {
+   "fieldname": "chemicals",
+   "fieldtype": "Table",
+   "label": "Chemicals",
+   "options": "Solution Mix Chemical",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-31 11:54:11.572122",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Solution Mix",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "tank",
+ "track_changes": 1
+}
