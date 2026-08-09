@@ -23,7 +23,6 @@
   "control_action",
   "variety",
   "quarantined_stems",
-  "prepared_by",
   "unit_manager",
   "section_items",
   "items",
@@ -54,29 +53,38 @@
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "harvest_time",
    "fieldtype": "Data",
-   "label": "Harvest Time"
+   "label": "Harvest Time",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "arrival_time",
    "fieldtype": "Data",
-   "label": "Arrival Time"
+   "label": "Arrival Time",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "transit_time",
    "fieldtype": "Data",
-   "label": "Transit Time"
+   "label": "Transit Time",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "section_solution",
    "fieldtype": "Section Break",
    "label": "Solution Details"
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "stems_received",
    "fieldtype": "Int",
-   "label": "Stems Received"
+   "label": "Stems Received",
+   "print_hide": 1
   },
   {
    "fieldname": "stems_checked",
@@ -84,34 +92,45 @@
    "label": "Stems Checked"
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "stems_per_bucket",
    "fieldtype": "Int",
-   "label": "Stems Per Bucket"
+   "label": "Stems Per Bucket",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "solution_level",
    "fieldtype": "Int",
-   "label": "Solution Level"
+   "label": "Solution Level",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "solution_hygeine",
    "fieldtype": "Data",
-   "label": "Solution Hygiene"
+   "label": "Solution Hygiene",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "solution_ph",
    "fieldtype": "Data",
-   "label": "Solution PH"
+   "label": "Solution PH",
+   "print_hide": 1
   },
   {
+   "depends_on": "eval:doc.control_point != 'Packhouse'",
    "fieldname": "chlorine_ppm",
    "fieldtype": "Int",
-   "label": "Chlorine PPM"
+   "label": "Chlorine PPM",
+   "print_hide": 1
   },
   {
    "fieldname": "control_action",
-   "fieldtype": "Data",
-   "label": "Control Action"
+   "fieldtype": "Select",
+   "label": "Control Action",
+   "options": "\nAccepted\nQuarantined\nRejected"
   },
   {
    "fieldname": "variety",
@@ -123,12 +142,6 @@
    "fieldname": "quarantined_stems",
    "fieldtype": "Int",
    "label": "Quarantined Stems"
-  },
-  {
-   "fieldname": "prepared_by",
-   "fieldtype": "Link",
-   "label": "Prepared By",
-   "options": "User"
   },
   {
    "fieldname": "unit_manager",
@@ -170,7 +183,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-31 13:35:50.732116",
+ "modified": "2026-08-04 13:49:31.215150",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Quality Reporting",

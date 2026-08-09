@@ -1,0 +1,31 @@
+{
+ "add_total_row": 0,
+ "add_translate_data": 0,
+ "columns": [],
+ "creation": "2025-11-13 08:03:34.186330",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": null,
+ "modified": "2026-03-16 15:38:14.186260",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Quality Assessment",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Quality Reporting",
+ "report_name": "Quality Assessment",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Quality Manager"
+  }
+ ],
+ "timeout": 0
+}

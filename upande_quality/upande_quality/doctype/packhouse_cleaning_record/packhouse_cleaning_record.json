@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "PCR-.YYYY.-.#####",
+ "creation": "2026-08-03 14:40:44.503489",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "date",
+  "area",
+  "mode_of_cleaning",
+  "col_break_1",
+  "inspected_by",
+  "sec_detergent",
+  "detergent_used",
+  "detergent_rate",
+  "detergent_rate_unit",
+  "detergent_volume_l",
+  "sec_disinfectant",
+  "disinfectant_used",
+  "disinfectant_rate",
+  "disinfectant_rate_unit",
+  "disinfectant_volume_l",
+  "disinfection_equipment",
+  "sec_remarks",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "Today",
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "area",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Area Cleaned",
+   "options": "Team A\nTeam B\nTeam C\nTeam Eldama\nPrint Room\nConsumable Store\nVase Room",
+   "reqd": 1
+  },
+  {
+   "fieldname": "mode_of_cleaning",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Mode of Cleaning",
+   "options": "\nWashing\nSweeping\nAerial"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "inspected_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Inspected By"
+  },
+  {
+   "fieldname": "sec_detergent",
+   "fieldtype": "Section Break",
+   "label": "Detergent"
+  },
+  {
+   "fieldname": "detergent_used",
+   "fieldtype": "Data",
+   "label": "Detergent Used"
+  },
+  {
+   "fieldname": "detergent_rate",
+   "fieldtype": "Float",
+   "label": "Rate of Detergent"
+  },
+  {
+   "fieldname": "detergent_rate_unit",
+   "fieldtype": "Select",
+   "label": "Detergent Rate Unit",
+   "options": "\nml/L\ng/L"
+  },
+  {
+   "fieldname": "detergent_volume_l",
+   "fieldtype": "Float",
+   "label": "Detergent Solution Volume (L)"
+  },
+  {
+   "fieldname": "sec_disinfectant",
+   "fieldtype": "Section Break",
+   "label": "Disinfectant"
+  },
+  {
+   "fieldname": "disinfectant_used",
+   "fieldtype": "Data",
+   "label": "Disinfectant Used"
+  },
+  {
+   "fieldname": "disinfectant_rate",
+   "fieldtype": "Float",
+   "label": "Rate of Disinfectant"
+  },
+  {
+   "fieldname": "disinfectant_rate_unit",
+   "fieldtype": "Select",
+   "label": "Disinfectant Rate Unit",
+   "options": "\nml/L\ng/L"
+  },
+  {
+   "fieldname": "disinfectant_volume_l",
+   "fieldtype": "Float",
+   "label": "Disinfectant Solution Volume (L)"
+  },
+  {
+   "fieldname": "disinfection_equipment",
+   "fieldtype": "Data",
+   "label": "Disinfection Equipment"
+  },
+  {
+   "fieldname": "sec_remarks",
+   "fieldtype": "Section Break",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-03 14:40:44.503489",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Packhouse Cleaning Record",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "area",
+ "track_changes": 1
+}
