@@ -24,8 +24,6 @@
   "variety",
   "quarantined_stems",
   "unit_manager",
-  "section_items",
-  "items",
   "amended_from",
   "section_qparams",
   "quality_parameters"
@@ -148,17 +146,6 @@
    "fieldtype": "Link",
    "label": "Unit Manager",
    "options": "User"
-  },
-  {
-   "fieldname": "section_items",
-   "fieldtype": "Section Break",
-   "label": "Items"
-  },
-  {
-   "fieldname": "items",
-   "fieldtype": "Table",
-   "label": "Items",
-   "options": "Intake Quality Parameter"
   },
   {
    "fieldname": "amended_from",

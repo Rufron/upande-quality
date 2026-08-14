@@ -5,5 +5,5 @@
 from frappe.model.document import Document
 
 
-class PackhouseCheckItem(Document):
+class PackhouseCondition(Document):
 	pass

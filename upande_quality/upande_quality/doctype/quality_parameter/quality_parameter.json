@@ -29,9 +29,10 @@
   {
    "columns": 3,
    "fieldname": "action",
-   "fieldtype": "Data",
+   "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Action"
+   "label": "Action",
+   "options": "\nAccepted\nReject\nQuarantined"
   },
   {
    "fieldname": "photo",

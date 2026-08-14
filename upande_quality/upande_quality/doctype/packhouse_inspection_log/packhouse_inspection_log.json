@@ -13,7 +13,7 @@
   "col_break_1",
   "inspected_by",
   "sec_checks",
-  "checks",
+  "components",
   "sec_remarks",
   "remarks"
  ],
@@ -28,10 +28,11 @@
   },
   {
    "fieldname": "area",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Area Inspected",
-   "options": "Team A\nTeam B\nTeam C\nTeam Eldama\nPrint Room\nConsumable Store\nVase Room",
+   "link_filters": "[[\"Post Harvest Team\",\"custom_is_inspection_area\",\"=\",1]]",
+   "options": "Post Harvest Team",
    "reqd": 1
   },
   {
@@ -47,13 +48,13 @@
   {
    "fieldname": "sec_checks",
    "fieldtype": "Section Break",
-   "label": "Conditions"
+   "label": "Checklist"
   },
   {
-   "fieldname": "checks",
+   "fieldname": "components",
    "fieldtype": "Table",
-   "label": "Checks",
-   "options": "Packhouse Check Item"
+   "label": "Components",
+   "options": "Packhouse Inspection Component"
   },
   {
    "fieldname": "sec_remarks",

@@ -189,7 +189,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
+  "value": "eval:doc.control_point=='Intake' || doc.control_point=='Packhouse'"
  },
  {
   "default_value": null,
@@ -261,22 +261,6 @@
   "docstatus": 0,
   "doctype": "Property Setter",
   "doctype_or_field": "DocField",
-  "field_name": "items",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.324210",
-  "module": null,
-  "name": "Quality Reporting-items-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
   "field_name": "quality_parameters",
   "is_system_generated": 1,
   "modified": "2026-07-23 16:32:46.346362",
@@ -285,7 +269,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
+  "value": "eval:doc.control_point=='Intake' || doc.control_point=='Packhouse'"
  },
  {
   "default_value": null,
@@ -314,22 +298,6 @@
   "modified": "2026-07-23 16:32:46.387034",
   "module": null,
   "name": "Quality Reporting-custom_inspection_mode-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_qc_stage",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.419331",
-  "module": null,
-  "name": "Quality Reporting-custom_qc_stage-depends_on",
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
@@ -445,7 +413,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_qc_stage==\"Final QC\""
+  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
  },
  {
   "default_value": null,
@@ -461,7 +429,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_qc_stage==\"Final QC\""
+  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
  },
  {
   "default_value": null,
@@ -477,7 +445,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_qc_stage==\"Final QC\""
+  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
  },
  {
   "default_value": null,
@@ -493,7 +461,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_qc_stage==\"Final QC\""
+  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
  },
  {
   "default_value": null,
@@ -509,7 +477,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_qc_stage==\"Online QC - Grading QC\""
+  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\""
  },
  {
   "default_value": null,
@@ -525,7 +493,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_qc_stage==\"Online QC - Reject Recorder\""
+  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Reject Recorder\""
  },
  {
   "default_value": null,

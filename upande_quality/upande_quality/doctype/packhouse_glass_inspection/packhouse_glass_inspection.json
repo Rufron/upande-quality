@@ -13,7 +13,25 @@
   "col_break_1",
   "inspected_by",
   "sec_checks",
-  "checks",
+  "window_glass",
+  "fluorescent_tube",
+  "digital_thermometer",
+  "high_bay_lamps",
+  "flood_lamps",
+  "door_glass",
+  "fire_extinguisher_glass",
+  "cba_frame",
+  "phone_gadget",
+  "cb_conditions",
+  "computer_screen",
+  "photo_frames",
+  "wall_clock",
+  "weighing_scale",
+  "vase_container",
+  "wall_temp",
+  "fire_exits",
+  "printer_dashboard",
+  "temperature_wall_check_box",
   "sec_remarks",
   "remarks"
  ],
@@ -47,13 +65,119 @@
   {
    "fieldname": "sec_checks",
    "fieldtype": "Section Break",
-   "label": "Glass Materials"
+   "label": "Glass Conditions"
   },
   {
-   "fieldname": "checks",
-   "fieldtype": "Table",
-   "label": "Checks",
-   "options": "Packhouse Check Item"
+   "fieldname": "window_glass",
+   "fieldtype": "Table MultiSelect",
+   "label": "Window Glass",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "fluorescent_tube",
+   "fieldtype": "Table MultiSelect",
+   "label": "Fluorescent Tube",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "digital_thermometer",
+   "fieldtype": "Table MultiSelect",
+   "label": "Digital Thermometer",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "high_bay_lamps",
+   "fieldtype": "Table MultiSelect",
+   "label": "High Bay Lamps",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "flood_lamps",
+   "fieldtype": "Table MultiSelect",
+   "label": "Flood Lamps",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "door_glass",
+   "fieldtype": "Table MultiSelect",
+   "label": "Door Glass",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "fire_extinguisher_glass",
+   "fieldtype": "Table MultiSelect",
+   "label": "Fire Extinguisher Glass",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "cba_frame",
+   "fieldtype": "Table MultiSelect",
+   "label": "CBA Frame",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "phone_gadget",
+   "fieldtype": "Table MultiSelect",
+   "label": "Phone Gadget",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "cb_conditions",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "computer_screen",
+   "fieldtype": "Table MultiSelect",
+   "label": "Computer Screen",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "photo_frames",
+   "fieldtype": "Table MultiSelect",
+   "label": "Photo Frames",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "wall_clock",
+   "fieldtype": "Table MultiSelect",
+   "label": "Wall Clock",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "weighing_scale",
+   "fieldtype": "Table MultiSelect",
+   "label": "Weighing Scale",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "vase_container",
+   "fieldtype": "Table MultiSelect",
+   "label": "Vase Container",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "wall_temp",
+   "fieldtype": "Table MultiSelect",
+   "label": "Wall Temp",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "fire_exits",
+   "fieldtype": "Table MultiSelect",
+   "label": "Fire Exits",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "printer_dashboard",
+   "fieldtype": "Table MultiSelect",
+   "label": "Printer Dashboard",
+   "options": "Packhouse Condition Selection"
+  },
+  {
+   "fieldname": "temperature_wall_check_box",
+   "fieldtype": "Table MultiSelect",
+   "label": "Temperature Wall Check Box",
+   "options": "Packhouse Condition Selection"
   },
   {
    "fieldname": "sec_remarks",
