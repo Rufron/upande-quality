@@ -26,6 +26,7 @@
   "unit_manager",
   "amended_from",
   "section_qparams",
+  "item_group",
   "quality_parameters"
  ],
  "fields": [
@@ -135,6 +136,13 @@
    "fieldtype": "Link",
    "label": "Variety",
    "options": "Item"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "item_group",
+   "fieldtype": "Data",
+   "label": "Item Group",
+   "read_only": 1
   },
   {
    "fieldname": "quarantined_stems",

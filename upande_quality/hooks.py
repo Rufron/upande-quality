@@ -10,7 +10,7 @@ app_license = "mit"
 
 # Quality Reporting / Corrective Action Report link into upande_kaitet
 # (Farm, Intake Quality Parameter), so kaitet must be installed first.
-required_apps = ["upande_kaitet"]
+# required_apps = ["upande_kaitet"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
