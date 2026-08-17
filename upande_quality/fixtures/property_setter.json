@@ -1,502 +1,6 @@
 [
  {
   "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "control_point",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:07.118550",
-  "module": null,
-  "name": "Quality Reporting-control_point-reqd",
-  "property": "reqd",
-  "property_type": "Check",
-  "row_name": null,
-  "value": "1"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "farm",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:45.937450",
-  "module": null,
-  "name": "Quality Reporting-farm-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "ghouse",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.058272",
-  "module": null,
-  "name": "Quality Reporting-ghouse-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "harvest_time",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.074757",
-  "module": null,
-  "name": "Quality Reporting-harvest_time-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "arrival_time",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.088488",
-  "module": null,
-  "name": "Quality Reporting-arrival_time-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "transit_time",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.103877",
-  "module": null,
-  "name": "Quality Reporting-transit_time-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "stems_per_bucket",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.118910",
-  "module": null,
-  "name": "Quality Reporting-stems_per_bucket-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "solution_level",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.134139",
-  "module": null,
-  "name": "Quality Reporting-solution_level-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "solution_hygeine",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.154661",
-  "module": null,
-  "name": "Quality Reporting-solution_hygeine-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "solution_ph",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.183493",
-  "module": null,
-  "name": "Quality Reporting-solution_ph-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "chlorine_ppm",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.199650",
-  "module": null,
-  "name": "Quality Reporting-chlorine_ppm-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "control_action",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.215881",
-  "module": null,
-  "name": "Quality Reporting-control_action-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake' || doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "variety",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.236284",
-  "module": null,
-  "name": "Quality Reporting-variety-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "quarantined_stems",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.259264",
-  "module": null,
-  "name": "Quality Reporting-quarantined_stems-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "prepared_by",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.285784",
-  "module": null,
-  "name": "Quality Reporting-prepared_by-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "unit_manager",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.309658",
-  "module": null,
-  "name": "Quality Reporting-unit_manager-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "quality_parameters",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.346362",
-  "module": null,
-  "name": "Quality Reporting-quality_parameters-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Intake' || doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_inspection_type",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.360502",
-  "module": null,
-  "name": "Quality Reporting-custom_inspection_type-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_inspection_mode",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.387034",
-  "module": null,
-  "name": "Quality Reporting-custom_inspection_mode-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_order_pick_list",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.449318",
-  "module": null,
-  "name": "Quality Reporting-custom_order_pick_list-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_customer",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.506679",
-  "module": null,
-  "name": "Quality Reporting-custom_customer-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_team",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.544871",
-  "module": null,
-  "name": "Quality Reporting-custom_team-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_control_area",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.577820",
-  "module": null,
-  "name": "Quality Reporting-custom_control_area-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_length",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.631743",
-  "module": null,
-  "name": "Quality Reporting-custom_length-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_specification",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:32:46.678212",
-  "module": null,
-  "name": "Quality Reporting-custom_specification-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point=='Packhouse'"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_box_label",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:46:35.235310",
-  "module": null,
-  "name": "Quality Reporting-custom_box_label-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_boxes_checked",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:46:35.402706",
-  "module": null,
-  "name": "Quality Reporting-custom_boxes_checked-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_boxes_staged",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:46:35.451999",
-  "module": null,
-  "name": "Quality Reporting-custom_boxes_staged-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_boxes_quarantined",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:46:35.494641",
-  "module": null,
-  "name": "Quality Reporting-custom_boxes_quarantined-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\""
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_bunches_affected",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:46:35.550861",
-  "module": null,
-  "name": "Quality Reporting-custom_bunches_affected-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\""
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Reporting",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocField",
-  "field_name": "custom_stems_affected",
-  "is_system_generated": 1,
-  "modified": "2026-07-23 16:46:35.568035",
-  "module": null,
-  "name": "Quality Reporting-custom_stems_affected-depends_on",
-  "property": "depends_on",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Reject Recorder\""
- },
- {
-  "default_value": null,
   "doc_type": "Stock Entry",
   "docstatus": 0,
   "doctype": "Property Setter",
@@ -509,7 +13,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -621,7 +125,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -637,7 +141,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -653,7 +157,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -669,7 +173,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -685,7 +189,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -701,7 +205,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -717,7 +221,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -733,7 +237,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -749,7 +253,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -765,7 +269,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -781,7 +285,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -797,7 +301,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -813,7 +317,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -845,7 +349,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Harvesting\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -925,7 +429,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -941,7 +445,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -957,7 +461,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -973,7 +477,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -989,7 +493,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -1053,7 +557,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -1069,7 +573,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:![\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)"
+  "value": "eval:(((![\"Receiving Quarantined\",\"Harvesting\",\"Field Rejects\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,

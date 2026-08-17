@@ -29,18 +29,20 @@ app_license = "mit"
 # lives only in the DB unless exported here, so ship it so the workspace is not
 # blank on deployed sites.
 fixtures = [
-	{"doctype": "Custom HTML Block", "filters": [["name", "in", ["QC"]]]},
+	{"doctype": "Custom HTML Block", "filters": [["name", "in", ["QC", "Upande Quality"]]]},
 	# QC Control Point master (seeded control points: Intake, Packhouse) — the
 	# control_point Link on Quality Reporting / CAR resolves against these.
 	{"doctype": "QC Control Point"},
 	# Field-visibility gating (eval depends_on) for the QC intake stages on the
-	# shared Stock Entry doctype + Quality Reporting Intake/Packhouse layout.
-	# Filtered to property in (depends_on, reqd) so ONLY our customizations ship,
-	# not other apps' Stock Entry property setters.
+	# shared Stock Entry doctype. Filtered to property in (depends_on, reqd) so
+	# ONLY our customizations ship, not other apps' Stock Entry property setters.
+	# NOTE: Quality Reporting's own custom fields + property setters (incl.
+	# field_order) are exported via custom/quality_reporting.json and applied on
+	# migrate (sync_on_migrate=1) — do not duplicate them here.
 	{
 		"doctype": "Property Setter",
 		"filters": [
-			["doc_type", "in", ["Quality Reporting", "Stock Entry"]],
+			["doc_type", "in", ["Stock Entry"]],
 			["property", "in", ["depends_on", "reqd"]],
 		],
 	},

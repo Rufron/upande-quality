@@ -1,12 +1,12 @@
 {
  "app": "upande_quality",
  "charts": [],
- "content": "[{\"id\":\"KwrOYtVRCH\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"QC\",\"col\":12}}]",
+ "content": "[{\"id\": \"KwrOYtVRCH\", \"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Upande Quality\", \"col\": 12}}]",
  "creation": "2026-07-21 13:58:06",
  "custom_blocks": [
   {
-   "custom_block_name": "QC",
-   "label": "QC"
+   "custom_block_name": "Upande Quality",
+   "label": "Upande Quality"
   }
  ],
  "docstatus": 0,
@@ -97,7 +97,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-27 13:56:13.714215",
+ "modified": "2026-08-17 10:42:19.845783",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Upande Quality",
