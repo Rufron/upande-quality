@@ -1,0 +1,133 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-06-22 16:33:03.565240",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "discarded",
+  "farm",
+  "greenhouse",
+  "col1",
+  "bucket_id",
+  "shelf",
+  "is_shelved",
+  "col2",
+  "age_days",
+  "age_hours",
+  "col3",
+  "variety",
+  "stem_qty",
+  "stem_length",
+  "harvest_date"
+ ],
+ "fields": [
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "discarded",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Discarded"
+  },
+  {
+   "bold": 1,
+   "fieldname": "farm",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Farm"
+  },
+  {
+   "fieldname": "greenhouse",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Greenhouse"
+  },
+  {
+   "fieldname": "col1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bucket_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Bucket ID",
+   "reqd": 1
+  },
+  {
+   "description": "Blank = not shelved",
+   "fieldname": "shelf",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shelf"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_shelved",
+   "fieldtype": "Check",
+   "label": "Shelved"
+  },
+  {
+   "fieldname": "col2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "age_days",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Age (Days)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "age_hours",
+   "fieldtype": "Float",
+   "label": "Age (Hrs)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variety"
+  },
+  {
+   "fieldname": "stem_qty",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Stems"
+  },
+  {
+   "fieldname": "stem_length",
+   "fieldtype": "Data",
+   "label": "Stem Length"
+  },
+  {
+   "fieldname": "harvest_date",
+   "fieldtype": "Datetime",
+   "label": "Date Added to Shelf"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-18 22:02:30.765774",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Discard Request Bucket",
+ "owner": "brian.k@upande.com",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

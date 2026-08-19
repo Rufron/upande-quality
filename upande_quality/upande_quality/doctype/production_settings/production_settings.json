@@ -2,54 +2,87 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "creation": "2026-08-08 13:14:46.428484",
- "default_view": "List",
+ "creation": "2026-07-31 12:30:53.947770",
  "doctype": "DocType",
+ "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "sales_section",
+  "section_main",
   "amber_time",
   "discard_age",
-  "column_break_segn",
-  "section_break_rvm8",
-  "shelf_locations"
+  "custom_takt_time",
+  "custom_max_standard_roses_stems_per_bucket",
+  "custom_max_spray_roses_stems_per_bucket",
+  "section_shelves",
+  "shelf_locations",
+  "custom_currency_price_lists",
+  "custom_discard_valuation_price_list"
  ],
  "fields": [
   {
-   "fieldname": "sales_section",
-   "fieldtype": "Section Break",
-   "label": "Sales"
-  },
-  {
    "fieldname": "amber_time",
-   "fieldtype": "Float",
+   "fieldtype": "Int",
    "label": "Amber Time"
   },
   {
    "fieldname": "discard_age",
-   "fieldtype": "Float",
+   "fieldtype": "Int",
    "label": "Discard Age"
-  },
-  {
-   "fieldname": "column_break_segn",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "section_break_rvm8",
-   "fieldtype": "Section Break"
   },
   {
    "fieldname": "shelf_locations",
    "fieldtype": "Table",
    "label": "Shelf Locations",
    "options": "Shelf Locations"
+  },
+  {
+   "fieldname": "section_main",
+   "fieldtype": "Section Break",
+   "label": "Aging"
+  },
+  {
+   "description": "Global takt time threshold (minutes) from issue to staging. Over this, the scheduler flags the OPL (warning only).",
+   "fieldname": "custom_takt_time",
+   "fieldtype": "Float",
+   "label": "Takt Time (Minutes)"
+  },
+  {
+   "fieldname": "custom_max_standard_roses_stems_per_bucket",
+   "fieldtype": "Int",
+   "label": "Max Standard Roses Stems Per Bucket",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "custom_max_spray_roses_stems_per_bucket",
+   "fieldtype": "Int",
+   "label": "Max Spray Roses Stems Per Bucket",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "section_shelves",
+   "fieldtype": "Section Break",
+   "label": "Shelf Locations"
+  },
+  {
+   "description": "Reference selling price list per currency (used for downgrade foregone revenue).",
+   "fieldname": "custom_currency_price_lists",
+   "fieldtype": "Table",
+   "label": "Currency Price Lists",
+   "options": "Currency Price List"
+  },
+  {
+   "description": "Price list used to value discarded stems (defaults to EUR Price List)",
+   "fieldname": "custom_discard_valuation_price_list",
+   "fieldtype": "Link",
+   "label": "Discard Valuation Price List",
+   "options": "Price List"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-08-08 13:14:46.428484",
+ "modified": "2026-08-18 21:57:42.276194",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
@@ -70,5 +103,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }

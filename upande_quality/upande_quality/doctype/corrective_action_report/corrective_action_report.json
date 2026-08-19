@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "naming_series:",
- "creation": "2023-01-01 00:00:00.000000",
+ "creation": "2023-01-01 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -10,12 +10,13 @@
   "issue",
   "date_of_incident",
   "farm",
-  "column_break_1",
   "requested_by",
+  "column_break_1",
   "control_point",
   "assigned_to",
   "status",
   "section_root_cause",
+  "custom_greenhouse",
   "root_cause",
   "corrective_action_plan",
   "section_dates",
@@ -25,15 +26,16 @@
  ],
  "fields": [
   {
+   "default": "CAR-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "CAR-.#####",
-   "default": "CAR-.#####"
+   "options": "CAR-.#####"
   },
   {
    "fieldname": "variety",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Variety",
    "options": "Item"
   },
@@ -45,6 +47,7 @@
   {
    "fieldname": "date_of_incident",
    "fieldtype": "Date",
+   "in_list_view": 1,
    "label": "Date of Incident"
   },
   {
@@ -66,21 +69,24 @@
   {
    "fieldname": "control_point",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Control Point",
    "options": "QC Control Point"
   },
   {
    "fieldname": "assigned_to",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Assigned To",
    "options": "User"
   },
   {
+   "default": "Pending",
    "fieldname": "status",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Status",
-   "options": "Pending\nIn Progress\nComplete",
-   "default": "Pending"
+   "options": "Pending\nIn Progress\nComplete"
   },
   {
    "fieldname": "section_root_cause",
@@ -116,10 +122,18 @@
    "fieldname": "action_taken",
    "fieldtype": "Long Text",
    "label": "Action Taken"
+  },
+  {
+   "fieldname": "custom_greenhouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Greenhouse",
+   "options": "Warehouse",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2023-01-01 00:00:00.000000",
+ "modified": "2026-08-18 21:56:24.855779",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Corrective Action Report",
@@ -150,6 +164,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

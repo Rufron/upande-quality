@@ -30,15 +30,19 @@ app_license = "mit"
 # blank on deployed sites.
 fixtures = [
 	{"doctype": "Custom HTML Block", "filters": [["name", "in", ["QC", "Upande Quality"]]]},
+	# Workspace Sidebar (new-style left nav tree; standard=0 so it does NOT ship
+	# with the workspace's module JSON). Carries the dashboard URL links + grouped
+	# DocType/Report links. Child rows (Workspace Sidebar Item) export with it.
+	{"doctype": "Workspace Sidebar", "filters": [["name", "in", ["Upande Quality"]]]},
 	# QC Control Point master (seeded control points: Intake, Packhouse) — the
 	# control_point Link on Quality Reporting / CAR resolves against these.
 	{"doctype": "QC Control Point"},
 	# Field-visibility gating (eval depends_on) for the QC intake stages on the
 	# shared Stock Entry doctype. Filtered to property in (depends_on, reqd) so
 	# ONLY our customizations ship, not other apps' Stock Entry property setters.
-	# NOTE: Quality Reporting's own custom fields + property setters (incl.
-	# field_order) are exported via custom/quality_reporting.json and applied on
-	# migrate (sync_on_migrate=1) — do not duplicate them here.
+	# NOTE: Quality Reporting's own fields (incl. the former custom_* packhouse
+	# fields) and their depends_on/field_order now live directly in the doctype
+	# JSON — nothing to ship here for it.
 	{
 		"doctype": "Property Setter",
 		"filters": [

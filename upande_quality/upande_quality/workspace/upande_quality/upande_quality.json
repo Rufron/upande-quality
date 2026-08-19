@@ -60,11 +60,151 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Parameters & Config",
+   "label": "Reports",
    "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quality Assessment",
+   "link_count": 0,
+   "link_to": "Quality Assessment",
+   "link_type": "Report",
+   "onboard": 0,
+   "report_ref_doctype": "Quality Reporting",
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Field Rejects Report",
+   "link_count": 0,
+   "link_to": "Field Rejects Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "report_ref_doctype": "Stock Entry",
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Post-Harvest & Coldroom",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Solution Mix",
+   "link_count": 0,
+   "link_to": "Solution Mix",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Post Harvest Mixing Tank",
+   "link_count": 0,
+   "link_to": "Post Harvest Mixing Tank",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Post Harvest Chemicals",
+   "link_count": 0,
+   "link_to": "Post Harvest Chemicals",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cold Store Temperature Log",
+   "link_count": 0,
+   "link_to": "Cold Store Temperature Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Coldroom Cleaning Record",
+   "link_count": 0,
+   "link_to": "Coldroom Cleaning Record",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Coldroom Inspection Log",
+   "link_count": 0,
+   "link_to": "Coldroom Inspection Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Packhouse Cleaning Record",
+   "link_count": 0,
+   "link_to": "Packhouse Cleaning Record",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Packhouse Glass Inspection",
+   "link_count": 0,
+   "link_to": "Packhouse Glass Inspection",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Packhouse Inspection Log",
+   "link_count": 0,
+   "link_to": "Packhouse Inspection Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Configuration",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Production Settings",
+   "link_count": 0,
+   "link_to": "Production Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
   },
   {
    "hidden": 0,
@@ -89,6 +229,26 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Packhouse Condition",
+   "link_count": 0,
+   "link_to": "Packhouse Condition",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Packhouse Component",
+   "link_count": 0,
+   "link_to": "Packhouse Component",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Packhouse Rejection Reason",
    "link_count": 0,
    "link_to": "Packhouse Rejection Reason",
@@ -97,7 +257,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-17 10:42:19.845783",
+ "modified": "2026-08-19 08:12:08.008936",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Upande Quality",

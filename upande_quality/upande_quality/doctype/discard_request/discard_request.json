@@ -1,0 +1,223 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "DR-.YYYY.-.###",
+ "creation": "2026-06-22 16:33:35.186867",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "age_threshold",
+  "age_unit",
+  "col1",
+  "requested_by",
+  "requested_date",
+  "sec_filters",
+  "variety",
+  "item_group",
+  "farm",
+  "col_filters",
+  "company",
+  "length",
+  "coldroom",
+  "sec_buckets",
+  "buckets",
+  "sec_details",
+  "remarks",
+  "col2",
+  "approved_by",
+  "approval_date",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "default": "5",
+   "description": "Fetch all buckets harvested this many units ago or longer",
+   "fieldname": "age_threshold",
+   "fieldtype": "Int",
+   "label": "Age Threshold",
+   "reqd": 1
+  },
+  {
+   "default": "Days",
+   "fieldname": "age_unit",
+   "fieldtype": "Select",
+   "label": "Unit",
+   "options": "Hours\nDays"
+  },
+  {
+   "fieldname": "col1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "__user",
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "requested_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Request Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_filters",
+   "fieldtype": "Section Break",
+   "label": "Filter Criteria (Optional)"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "label": "Variety",
+   "options": "Item"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm"
+  },
+  {
+   "fieldname": "col_filters",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "length",
+   "fieldtype": "Link",
+   "label": "Length",
+   "options": "Stem Length"
+  },
+  {
+   "fieldname": "coldroom",
+   "fieldtype": "Link",
+   "label": "Cold Room",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "sec_buckets",
+   "fieldtype": "Section Break",
+   "label": "Buckets to Discard"
+  },
+  {
+   "fieldname": "buckets",
+   "fieldtype": "Table",
+   "label": "Buckets",
+   "options": "Discard Request Bucket"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sec_details",
+   "fieldtype": "Section Break",
+   "label": "Approval Details"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "col2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approval_date",
+   "fieldtype": "Date",
+   "label": "Approval Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Discard Request",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-08-18 22:02:30.997320",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Discard Request",
+ "naming_rule": "Expression",
+ "owner": "brian.k@upande.com",
+ "permissions": [
+  {
+   "amend": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

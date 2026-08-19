@@ -3,7 +3,7 @@
  "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "PGI-.YYYY.-.#####",
- "creation": "2026-08-03 14:40:44.369937",
+ "creation": "2026-08-11 13:00:30.768065",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -28,7 +28,6 @@
   "wall_clock",
   "weighing_scale",
   "vase_container",
-  "wall_temp",
   "fire_exits",
   "printer_dashboard",
   "temperature_wall_check_box",
@@ -156,12 +155,6 @@
    "options": "Packhouse Condition Selection"
   },
   {
-   "fieldname": "wall_temp",
-   "fieldtype": "Table MultiSelect",
-   "label": "Wall Temp",
-   "options": "Packhouse Condition Selection"
-  },
-  {
    "fieldname": "fire_exits",
    "fieldtype": "Table MultiSelect",
    "label": "Fire Exits",
@@ -193,7 +186,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-03 14:40:44.369937",
+ "modified": "2026-08-18 23:35:20.172495",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Packhouse Glass Inspection",
