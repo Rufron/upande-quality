@@ -1,20 +1,11 @@
 {
  "actions": [],
  "autoname": "hash",
- "creation": "2026-08-16 09:22:04.692150",
+ "creation": "2026-08-18 22:03:44.573666",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "control_point",
-  "custom_inspection_type",
-  "custom_inspection_mode",
-  "custom_order_pick_list",
-  "custom_box_label",
-  "custom_customer",
-  "custom_team",
-  "custom_control_area",
-  "custom_length",
-  "custom_specification",
   "farm",
   "ghouse",
   "column_break_1",
@@ -24,28 +15,38 @@
   "section_solution",
   "stems_received",
   "stems_checked",
-  "custom_boxes_checked",
-  "custom_boxes_staged",
-  "custom_boxes_quarantined",
   "stems_per_bucket",
   "solution_level",
   "solution_hygeine",
   "solution_ph",
   "chlorine_ppm",
   "control_action",
-  "custom_reason",
   "variety",
   "quarantined_stems",
   "custom_stems_accepted",
   "custom_stems_rejected",
   "custom_stems_affected",
-  "custom_bunches_affected",
   "unit_manager",
-  "custom_recorder",
   "custom_corrective_action_report",
   "amended_from",
-  "section_qparams",
+  "section_packhouse",
+  "custom_inspection_type",
+  "custom_inspection_mode",
+  "custom_order_pick_list",
+  "custom_box_label",
   "item_group",
+  "custom_specification",
+  "column_break_2",
+  "custom_customer",
+  "custom_team",
+  "custom_control_area",
+  "custom_length",
+  "packhouse_information",
+  "custom_bunches_affected",
+  "custom_boxes_checked",
+  "custom_boxes_staged",
+  "custom_boxes_quarantined",
+  "section_qparams",
   "quality_parameters"
  ],
  "fields": [
@@ -156,7 +157,6 @@
    "options": "\nAccepted\nQuarantined\nRejected"
   },
   {
-   "depends_on": "eval:doc.control_point=='Intake'",
    "fieldname": "variety",
    "fieldtype": "Link",
    "label": "Variety",
@@ -276,11 +276,6 @@
    "label": "Boxes Quarantined"
   },
   {
-   "fieldname": "custom_reason",
-   "fieldtype": "Data",
-   "label": "Reason"
-  },
-  {
    "fieldname": "custom_stems_accepted",
    "fieldtype": "Int",
    "label": "Stems Accepted"
@@ -303,19 +298,28 @@
    "label": "Bunches Affected"
   },
   {
-   "fieldname": "custom_recorder",
-   "fieldtype": "Data",
-   "label": "Recorder"
-  },
-  {
    "fieldname": "custom_corrective_action_report",
    "fieldtype": "Data",
    "label": "Corrective Action Report"
+  },
+  {
+   "fieldname": "section_packhouse",
+   "fieldtype": "Section Break",
+   "label": "Packhouse"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "packhouse_information",
+   "fieldtype": "Section Break",
+   "label": "Packhouse Information"
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-18 21:57:40.792525",
+ "modified": "2026-08-21 16:49:45.666289",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Quality Reporting",
