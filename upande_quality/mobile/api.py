@@ -8068,3 +8068,825 @@ def update_submitted_field():
 
     except Exception as e:
         frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+
+@frappe.whitelist()
+def fetchVaselifeFormData():
+    # Server Script: fetchVaselifeFormData  (Type: API, Method: GET)
+    #
+    # Returns all dropdown options for the Vaselife mobile app:
+    #   breeders, varieties (Items + their breeder link), crops,
+    #   commercial_statuses, cut_stages, failure_reasons.
+    #
+    # DocTypes required (create in Frappe before enabling this script):
+    #   - Breeder            — existing doctype; name = breeder label
+    #   - Item               — existing; needs custom_breeder (Link → Breeder)
+    #   - Vaselife Crop      — simple doctype; name = crop label
+    #   - Vaselife Commercial Status — simple doctype; name = status label
+    #   - Vaselife Cut Stage — simple doctype; name = stage label (e.g. "1", "2"…)
+    #   - Vaselife Failure Reason    — simple doctype; name = reason label
+
+    frappe.response["message"] = {"success": False, "error": "Script failed"}
+
+    try:
+        breeders = frappe.get_all(
+            "Breeder",
+            fields=["name"],
+            order_by="name asc",
+        )
+
+        # Varieties = Items in the rose item groups only (not the whole item master).
+        # Select custom_breeder only if that Custom Field exists on this site, so the
+        # query never crashes on an instance where it hasn't been created yet.
+        item_fields = ["name", "item_name", "item_group"]
+        if frappe.db.has_column("Item", "custom_breeder"):
+            item_fields.append("custom_breeder")
+
+        varieties_raw = frappe.get_all(
+            "Item",
+            filters={"disabled": 0, "item_group": ["in", ["Spray Roses", "Standard Roses"]]},
+            fields=item_fields,
+            order_by="item_name asc",
+        )
+        varieties = [
+            {
+                "name": v.get("name"),
+                "variety": v.get("item_name") or v.get("name"),
+                "item_group": v.get("item_group") or "",
+                "breeder": v.get("custom_breeder") or "",
+            }
+            for v in varieties_raw
+        ]
+
+        crops = frappe.get_all(
+            "Vaselife Crop",
+            fields=["name"],
+            order_by="name asc",
+        )
+
+        commercial_statuses = frappe.get_all(
+            "Vaselife Commercial Status",
+            fields=["name"],
+            order_by="name asc",
+        )
+
+        cut_stages = frappe.get_all(
+            "Vaselife Cut Stage",
+            fields=["name"],
+            order_by="name asc",
+        )
+
+        failure_reasons = frappe.get_all(
+            "Vaselife Failure Reason",
+            fields=["name"],
+            order_by="name asc",
+        )
+
+        # Recent samples — powers the sample-code type-ahead on the observation form.
+        samples_raw = frappe.get_all(
+            "Vaselife Sample",
+            fields=["name", "variety", "sampling_date"],
+            order_by="creation desc",
+            limit_page_length=300,
+        )
+        samples = [
+            {
+                "name": s.get("name"),
+                "variety": s.get("variety") or "",
+                "sampling_date": str(s.get("sampling_date")) if s.get("sampling_date") else "",
+            }
+            for s in samples_raw
+        ]
+
+        frappe.response["message"] = {
+            "success": True,
+            "breeders": breeders,
+            "varieties": varieties,
+            "crops": crops,
+            "commercial_statuses": commercial_statuses,
+            "cut_stages": cut_stages,
+            "failure_reasons": failure_reasons,
+            "samples": samples,
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "fetchVaselifeFormData")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def getVaselifeBucket():
+    frappe.response["message"] = {"success": False, "error": "Script failed"}
+
+
+    def extract_time_string(pt_val):
+        if not pt_val:
+            return ""
+        try:
+            raw = str(pt_val)
+            if "," in raw:
+                raw = raw.split(",")[1].strip()
+            if "." in raw:
+                raw = raw.split(".")[0]
+            parts = raw.strip().split(":")
+            if len(parts) == 3:
+                return str(parts[0]).zfill(2) + ":" + str(parts[1]).zfill(2) + ":" + str(parts[2]).zfill(2)
+            if len(parts) == 2:
+                return str(parts[0]).zfill(2) + ":" + str(parts[1]).zfill(2) + ":00"
+            return ""
+        except Exception:
+            return ""
+
+
+    try:
+        data = frappe.request.get_json() or {}
+        bucket_id = (data.get("bucket_id") or "").strip()
+
+        if not bucket_id:
+            frappe.response["message"] = {"success": False, "error": "bucket_id is required."}
+        else:
+            entry = frappe.db.sql("""
+                SELECT posting_date, posting_time,
+                       custom_farm, custom_greenhouse, custom_stem_length
+                FROM `tabStock Entry`
+                WHERE custom_bucket_id = %s
+                  AND stock_entry_type = 'Harvesting'
+                  AND docstatus = 1
+                ORDER BY creation DESC
+                LIMIT 1
+            """, (bucket_id,), as_dict=1)
+
+            if not entry:
+                frappe.response["message"] = {
+                    "success": False,
+                    "error": "No harvest record found for bucket " + bucket_id + ".",
+                }
+            else:
+                e = entry[0]
+                frappe.response["message"] = {
+                    "success": True,
+                    "bucket_id": bucket_id,
+                    "harvest_date": str(e.posting_date) if e.posting_date else "",
+                    "harvest_time": extract_time_string(e.posting_time),
+                    "farm": e.custom_farm or "",
+                    "greenhouse": e.custom_greenhouse or "",
+                    "length": str(e.custom_stem_length) if e.custom_stem_length else "",
+                }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "getVaselifeBucket Error")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def saveVaselifeSample():
+    frappe.response["message"] = {"status": "error", "message": "Script failed"}
+
+
+    def extract_date_suffix(sampling_date):
+        parts = (sampling_date or "").split("-")
+        if len(parts) == 3:
+            return parts[2] + parts[1] + parts[0][2:]
+        return frappe.utils.nowdate().replace("-", "")[2:]
+
+
+    def num_to_letters(n):
+        result = ""
+        n = n + 1
+        while n > 0:
+            n -= 1
+            result = chr(65 + (n % 26)) + result
+            n //= 26
+        return result
+
+
+    def generate_sample_code(variety, sampling_date):
+        variety_slug = (variety or "").replace(" ", "")
+        prefix = variety_slug + extract_date_suffix(sampling_date)
+        existing = frappe.get_all(
+            "Vaselife Sample",
+            filters=[["name", "like", prefix + "%"]],
+            fields=["name"],
+        )
+        return prefix + num_to_letters(len(existing))
+
+
+    def safe_link(doctype, value):
+        if not value:
+            return None
+        return value if frappe.db.exists(doctype, value) else None
+
+
+    def to_float(v):
+        try:
+            return float(v) if v not in (None, "") else None
+        except (ValueError, TypeError):
+            return None
+
+
+    def to_int(v):
+        try:
+            return int(v) if v not in (None, "") else None
+        except (ValueError, TypeError):
+            return None
+
+
+    try:
+        raw = frappe.request.get_json() or {}
+        data = raw.get("data", raw)
+        frappe.log_error(json.dumps(data, indent=2, default=str), "saveVaselifeSample Payload")
+
+        sampling_date = (data.get("sampling_date") or "").strip()
+        variety       = (data.get("variety") or "").strip()
+
+        if not sampling_date:
+            frappe.response["message"] = {"status": "error", "message": "sampling_date is required."}
+        elif not variety:
+            frappe.response["message"] = {"status": "error", "message": "variety is required."}
+        elif not frappe.db.exists("Item", variety):
+            frappe.response["message"] = {"status": "error", "message": "Variety '" + variety + "' not found."}
+        else:
+            sample_code = generate_sample_code(variety, sampling_date)
+
+            sample_doc = frappe.get_doc({
+                "doctype":           "Vaselife Sample",
+                "name":              sample_code,
+                "sampling_date":     sampling_date,
+                "consignment":       data.get("consignment") or "",
+                "supermarket_date":  data.get("supermarket_date") or None,
+                "due_date":          data.get("due_date") or None,
+                "vase_date":         data.get("vase_date") or None,
+                "variety":           variety,
+                "breeder":           safe_link("Breeder", data.get("breeder") or ""),
+                "commercial_status": safe_link("Vaselife Commercial Status", data.get("commercial_status") or ""),
+                "crop":              safe_link("Vaselife Crop", data.get("crop") or ""),
+                "harvest_date":      data.get("harvest_date") or None,
+                "harvest_time":      data.get("harvest_time") or None,
+                "line_code":         data.get("line_code") or "",
+                "farm":              safe_link("Farm", data.get("farm") or ""),
+                "gh":                data.get("gh") or "",
+                "length":            to_float(data.get("length")),
+                "no_of_stems":       to_int(data.get("no_of_stems")),
+                "bud_height":        to_float(data.get("bud_height")),
+                "bud_width":         to_float(data.get("bud_width")),
+                "initial_cut_stage": safe_link("Vaselife Cut Stage", data.get("initial_cut_stage") or ""),
+                "prepared_by":       frappe.session.user,
+            })
+
+            sample_doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+
+            frappe.response["message"] = {
+                "status":      "success",
+                "name":        sample_doc.name,
+                "sample_code": sample_doc.name,
+                "message":     "Sample " + sample_doc.name + " saved successfully.",
+            }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "saveVaselifeSample Error")
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def saveVaselifeObservation():
+    frappe.response["message"] = {"status": "error", "message": "Script failed"}
+
+    try:
+        raw = frappe.request.get_json() or {}
+        data = raw.get("data", raw)
+        frappe.log_error(json.dumps(data, indent=2, default=str), "saveVaselifeObservation Payload")
+
+        sample_code = (data.get("sample_code") or "").strip()
+        obs_date    = (data.get("date") or "").strip()
+
+        if not sample_code:
+            frappe.response["message"] = {"status": "error", "message": "sample_code is required."}
+        elif not obs_date:
+            frappe.response["message"] = {"status": "error", "message": "date is required."}
+        elif not frappe.db.exists("Vaselife Sample", sample_code):
+            frappe.response["message"] = {"status": "error", "message": "Sample '" + sample_code + "' not found."}
+        else:
+            stems_failed = data.get("stems_failed")
+            try:
+                stems_failed = int(stems_failed) if stems_failed not in (None, "") else 0
+            except (ValueError, TypeError):
+                stems_failed = 0
+
+            reasons_raw = data.get("failure_reasons") or []
+            if not isinstance(reasons_raw, list):
+                reasons_raw = []
+
+            obs_doc = frappe.get_doc({
+                "doctype":         "Vaselife Observation",
+                "sample":          sample_code,
+                "date":            obs_date,
+                "stems_failed":    stems_failed,
+                "failure_reasons": json.dumps(reasons_raw),
+                "notes":           data.get("notes") or "",
+                "prepared_by":     frappe.session.user,
+            })
+
+            obs_doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+
+            frappe.response["message"] = {
+                "status":  "success",
+                "name":    obs_doc.name,
+                "message": "Observation " + obs_doc.name + " saved for sample " + sample_code + ".",
+            }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "saveVaselifeObservation Error")
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def getCurrentUserRoles():
+    try:
+        user = frappe.session.user
+        rows = frappe.get_all(
+            "Has Role",
+            filters={"parent": user, "parenttype": "User"},
+            fields=["role"],
+        )
+        roles = [r["role"] for r in rows if r.get("role")]
+        frappe.response["data"] = {
+            "user": user,
+            "roles": roles,
+        }
+    except Exception as e:
+        frappe.log_error("getCurrentUserRoles error: " + str(e))
+        frappe.response["http_status_code"] = 500
+        frappe.response["data"] = {"error": str(e)}
+
+
+@frappe.whitelist()
+def getGreenhouseData():
+    try:
+        data = frappe.request.get_json()
+        greenhouse_name = data.get("greenhouse_name")
+        if not greenhouse_name:
+            frappe.throw("Greenhouse name is required.")
+
+        # Fetch varieties via the most recent Crop Cycle for this greenhouse
+        varieties = []
+        cycles = frappe.get_all(
+            "Crop Cycle",
+            filters={"greenhouse": greenhouse_name},
+            fields=["name"],
+            order_by="modified desc",
+            limit=1
+        )
+        if cycles:
+            cycle_varieties = frappe.get_all(
+                "Crop Cycle Variety",
+                filters={"parent": cycles[0].name, "parenttype": "Crop Cycle"},
+                fields=["variety", "area_m2"],
+                order_by="variety asc"
+            )
+            varieties = [{"variety": v.variety, "area": v.area_m2} for v in cycle_varieties]
+
+        # Fetch employees linked to this greenhouse
+        employees = frappe.get_all(
+            "Employee",
+            filters={"custom_greenhouse": greenhouse_name},
+            fields=["employee_name"]
+        )
+
+        frappe.response["data"] = {"varieties": varieties, "employees": employees}
+    except Exception as e:
+        frappe.log_error(message=str(e), title="Get greenhouse data error")
+        frappe.throw(_("Error fetching greenhouse data: ") + str(e))
+
+
+@frappe.whitelist()
+def reportAppVersion():
+    # reportAppVersion
+    # Record one Mobile App Version Log row per authenticated user per day.
+    # Sandbox rules:
+    #   - no imports
+    #   - no return statements (set frappe.response instead)
+    #   - no augmented assignment, no in-place slicing
+    #   - no hasattr/isinstance, no os/file/exec
+    #   - use str() for date conversions
+
+    user = frappe.session.user
+
+    if user == "Guest":
+        frappe.throw("Authentication required.")
+
+    data = frappe.form_dict or {}
+    app_version = data.get("app_version")
+    platform = data.get("platform")
+    device_model = data.get("device_model")
+
+    if not app_version:
+        frappe.throw("app_version is required.")
+
+    today_str = str(frappe.utils.today())
+    now_str = str(frappe.utils.now())
+
+    existing = frappe.db.get_all(
+        "Mobile App Version Log",
+        filters={
+            "user": user,
+            "reported_on": [">=", today_str + " 00:00:00"],
+        },
+        fields=["name"],
+        limit_page_length=1,
+        order_by="reported_on desc",
+    )
+
+    if existing:
+        log_name = existing[0]["name"]
+        frappe.db.set_value(
+            "Mobile App Version Log",
+            log_name,
+            {
+                "app_version": app_version,
+                "platform": platform,
+                "device_model": device_model,
+                "reported_on": now_str,
+            },
+        )
+        action = "updated"
+    else:
+        doc = frappe.get_doc({
+            "doctype": "Mobile App Version Log",
+            "user": user,
+            "app_version": app_version,
+            "platform": platform,
+            "device_model": device_model,
+            "reported_on": now_str,
+        })
+        doc.insert(ignore_permissions=True)
+        log_name = doc.name
+        action = "created"
+
+    frappe.response["message"] = {
+        "ok": True,
+        "name": log_name,
+        "action": action,
+        "user": user,
+        "app_version": app_version,
+    }
+
+
+@frappe.whitelist()
+def reportDeviceTelemetry():
+    # Server Script (API), api_method = reportDeviceTelemetry
+    # Inserts one Device Telemetry record from the posted payload. Fail-safe, no submit.
+    # Payload: { "data": { device_id, model, os, app_version, ... , captured_at, is_connected } }
+    frappe.response["message"] = {"status": "error", "message": "Script failed"}
+    try:
+        data = frappe.request.get_json()
+        if isinstance(data, dict) and "data" in data:
+            data = data.get("data")
+        data = data or {}
+
+        fields = [
+            "device_id", "device_name", "model", "brand", "os", "os_version",
+            "app_name", "app_version", "build", "ota_update_id", "ota_channel", "battery_level",
+            "battery_state", "network_type", "cellular_generation",
+            "storage_free", "storage_total", "user", "user_full_name", "captured_at",
+        ]
+        doc = {"doctype": "Device Telemetry"}
+        i = 0
+        while i < len(fields):
+            f = fields[i]
+            doc[f] = data.get(f)
+            i = i + 1
+        doc["is_connected"] = 1 if data.get("is_connected") else 0
+        # Device sends ISO-8601 with a 'Z'/'T' which MySQL Datetime rejects — normalise
+        # to 'YYYY-MM-DD HH:MM:SS.ffffff'.
+        ts = data.get("captured_at")
+        doc["captured_at"] = str(ts).replace("T", " ").replace("Z", "")[:26] if ts else None
+        doc["raw_json"] = json.dumps(data)
+
+        d = frappe.get_doc(doc)
+        d.insert(ignore_permissions=True)
+        frappe.db.commit()
+        frappe.response["message"] = {"status": "success", "name": d.name}
+    except Exception as e:
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def submitFieldRejects():
+    variety = frappe.form_dict.get("variety")
+    no_of_stems = frappe.form_dict.get("no_of_stems")
+    rejection_reason = frappe.form_dict.get("rejection_reason")
+    farm = frappe.form_dict.get("farm")
+    greenhouse = frappe.form_dict.get("greenhouse")
+
+    if not variety or not no_of_stems or not rejection_reason or not farm or not greenhouse:
+        frappe.throw("Missing required fields: variety, no_of_stems, rejection_reason, farm, greenhouse")
+
+    qty = frappe.utils.cint(no_of_stems)
+    if qty <= 0:
+        frappe.throw("Number of stems must be greater than 0")
+
+    doc = frappe.get_doc({
+        "doctype": "Stock Entry",
+        "stock_entry_type": "Field Rejects",
+        "posting_date": frappe.utils.today(),
+        "posting_time": frappe.utils.nowtime(),
+        "company": "Karen Roses",
+        "custom_farm": farm,
+        "items": [
+            {
+                "s_warehouse": greenhouse,
+                "t_warehouse": "Rejects - KR",
+                "item_code": variety,
+                "qty": qty,
+                "custom_rejection_reason": rejection_reason,
+            }
+        ]
+    })
+
+    doc.insert()
+    doc.submit()
+
+    frappe.response["message"] = {
+        "status": "success",
+        "name": doc.name,
+        "message": "Field rejection recorded successfully"
+    }
+
+
+
+@frappe.whitelist()
+def fetchColdroomQCFormData():
+    try:
+        cp_rows = frappe.db.sql(
+            "SELECT name, control_point, control_area FROM `tabQC Control Point` WHERE control_area = 'Cold Room' ORDER BY control_point",
+            as_dict=1
+        )
+        control_points = [{"name": r.get("name"), "control_point": r.get("control_point") or r.get("name"), "control_area": r.get("control_area") or "Cold Room"} for r in cp_rows]
+
+        params = frappe.db.sql("SELECT name, parameter, tolerance_thresholds FROM `tabQC Parameters` ORDER BY parameter", as_dict=1)
+        reasons = [{"name": p.get("name"), "parameter": p.get("parameter") or p.get("name"), "tolerance_thresholds": p.get("tolerance_thresholds")} for p in params]
+
+        qc_roles = ["Packhouse Manager", "Quality Manager", "QUALITY CONTROLLER", "System Manager", "Administrator"]
+        role_ph = ",".join(["%s"] * len(qc_roles))
+        incharge_rows = frappe.db.sql(
+            "SELECT DISTINCT u.name, u.full_name FROM `tabUser` u JOIN `tabHas Role` r ON r.parent = u.name WHERE r.role IN (" + role_ph + ") AND u.enabled = 1 ORDER BY u.full_name LIMIT 50",
+            qc_roles, as_dict=1
+        )
+        if not incharge_rows:
+            incharge_rows = frappe.db.sql("SELECT name, full_name FROM `tabUser` WHERE enabled = 1 AND user_type = 'System User' ORDER BY full_name LIMIT 50", as_dict=1)
+
+        frappe.response["message"] = {
+            "success": True,
+            "control_points": control_points,
+            "reasons": reasons,
+            "qc_incharge_options": [dict(u) for u in incharge_rows],
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "fetchColdroomQCFormData Error")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def getColdroomBucket():
+    try:
+        data = frappe.form_dict
+        bucket_id = (data.get("bucket_id") or "").strip()
+        if not bucket_id:
+            frappe.throw("bucket_id is required")
+        bl = bucket_id.lower()
+
+        # Buckets are REUSED across harvest sessions, so we must scope to the most
+        # recent receiving for this bucket -- not aggregate its whole history (that
+        # mixed farms and took the oldest date, exaggerating stock age).
+        recv = frappe.db.sql("""
+            SELECT name, custom_farm AS farm, custom_greenhouse AS greenhouse,
+                   custom_stem_length AS length, custom_location AS location,
+                   custom_harvest_batch_no AS harvest_batch, posting_date
+            FROM `tabStock Entry`
+            WHERE LOWER(custom_received_bucket_id) = %s
+              AND stock_entry_type IN ('Receiving', 'Late Receipt')
+              AND docstatus = 1
+            ORDER BY creation DESC
+            LIMIT 1
+        """, (bl,), as_dict=1)
+
+        if not recv:
+            frappe.throw("No receiving record found for bucket %s" % bucket_id.upper())
+
+        entry = recv[0]
+
+        def gh(w):
+            w = w or ""
+            if " - " in w:
+                w = w.rsplit(" - ", 1)[0]
+            return w.strip()
+
+        vrows = frappe.db.sql("""
+            SELECT item_code, item_name, SUM(qty) AS stems, MAX(custom_stem_length) AS length
+            FROM `tabStock Entry Detail`
+            WHERE parent = %s
+            GROUP BY item_code, item_name
+            ORDER BY item_code
+        """, (entry.get("name"),), as_dict=1)
+
+        header_length = entry.get("length") or ""
+        varieties = []
+        for r in vrows:
+            code = r.get("item_code") or r.get("item_name") or ""
+            if not code:
+                continue
+            varieties.append({
+                "variety": code,
+                "item_name": r.get("item_name") or "",
+                "stems": int(r.get("stems") or 0),
+                "length": r.get("length") or header_length,
+            })
+
+        # Stock age = today - HARVEST date. Harvest date is embedded in the harvest
+        # batch no "{bucket}-{farm}-{variety}-{YYYY}-{MM}-{DD} HH:MM:SS"; fall back
+        # to the receiving posting date if it can't be parsed.
+        harvest_date = None
+        hb = entry.get("harvest_batch") or ""
+        parts = hb.split("-")
+        if len(parts) >= 6:
+            dd = parts[5].split(" ")[0]
+            harvest_date = parts[3] + "-" + parts[4] + "-" + dd
+        if not harvest_date and entry.get("posting_date"):
+            harvest_date = str(entry.get("posting_date"))
+
+        days_in_stock = 0
+        if harvest_date:
+            try:
+                days_in_stock = frappe.utils.date_diff(frappe.utils.today(), harvest_date)
+            except Exception:
+                days_in_stock = 0
+        if days_in_stock < 0:
+            days_in_stock = 0
+
+        frappe.response["message"] = {
+            "success": True,
+            "bucket_id": bucket_id.upper(),
+            "farm": entry.get("farm") or "",
+            "greenhouse": gh(entry.get("greenhouse")),
+            "packhouse": entry.get("location") or "",
+            "days_in_stock": days_in_stock,
+            "harvest_date": harvest_date or "",
+            "varieties": varieties,
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "getColdroomBucket Error")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def saveColdroomQC():
+    try:
+        data = frappe.form_dict
+        payload = data.get("data")
+        if isinstance(payload, str):
+            payload = frappe.parse_json(payload)
+        if not payload:
+            payload = data
+
+        control_point = payload.get("control_point", "")
+        if not control_point:
+            frappe.throw("control_point is required")
+        control_area = frappe.db.get_value("QC Control Point", control_point, "control_area") or "Cold Room"
+
+        bucket_id = payload.get("bucket_id", "")
+        rejections = payload.get("rejections") or []
+        if isinstance(rejections, str):
+            rejections = frappe.parse_json(rejections)
+
+        doc = frappe.new_doc("Coldroom QC")
+        doc.date = payload.get("date") or frappe.utils.nowdate()
+        doc.control_point = control_point
+        doc.control_area = control_area
+        doc.bucket_id = bucket_id
+        doc.farm = payload.get("farm", "")
+        doc.greenhouse = payload.get("greenhouse", "")
+        doc.packhouse = payload.get("packhouse", "")
+        doc.days_in_stock = int(payload.get("days_in_stock", 0) or 0)
+        qi = payload.get("qc_incharge", "")
+        doc.qc_incharge = qi if (qi and frappe.db.exists("User", qi)) else None
+        doc.recorder = frappe.session.user
+        doc.remarks = payload.get("remarks", "")
+
+        clean = []
+        total = 0
+        for r in rejections:
+            if not isinstance(r, dict):
+                continue
+            variety = (r.get("variety") or "").strip()
+            reason = (r.get("reason") or "").strip()
+            stems = int(r.get("stems", 0) or 0)
+            if not variety or not reason or stems <= 0:
+                continue
+            row = doc.append("rejections", {})
+            row.variety = variety
+            row.reason = reason
+            row.stems = stems
+            row.length = r.get("length", "")
+            clean.append({"variety": variety, "stems": stems})
+            total = total + stems
+
+        doc.total_stems_rejected = total
+        doc.insert(ignore_permissions=True)
+
+        # Rejected stems move out of the cold store: Material Transfer -> Rejects,
+        # typed 'Coldroom rejects'. Best-effort -- the QC record persists even if the
+        # stock move fails (e.g. the stems already left the cold store).
+        se_name = None
+        se_error = None
+        if clean:
+            try:
+                bl = (bucket_id or "").lower()
+                recv = frappe.db.sql("""
+                    SELECT name, company, custom_greenhouse, custom_receiving_batch_id,
+                           custom_harvest_batch_no
+                    FROM `tabStock Entry`
+                    WHERE LOWER(custom_received_bucket_id) = %s
+                      AND stock_entry_type IN ('Receiving','Late Receipt') AND docstatus = 1
+                    ORDER BY creation DESC LIMIT 1
+                """, (bl,), as_dict=1)
+
+                company = "Karen Roses"
+                gh_full = ""
+                harvest_batch = ""
+                recv_batch = ""
+                wh_by_item = {}
+                if recv:
+                    r0 = recv[0]
+                    company = r0.get("company") or company
+                    gh_full = r0.get("custom_greenhouse") or ""
+                    harvest_batch = r0.get("custom_harvest_batch_no") or ""
+                    recv_batch = r0.get("custom_receiving_batch_id") or ""
+                    dets = frappe.db.sql("""
+                        SELECT item_code, t_warehouse, cost_center, basic_rate
+                        FROM `tabStock Entry Detail` WHERE parent = %s
+                    """, (r0.get("name"),), as_dict=1)
+                    for d in dets:
+                        if d.get("item_code") and d.get("t_warehouse"):
+                            wh_by_item[d.get("item_code")] = d
+
+                target_wh = "Rejects - KR"
+                items = []
+                for c in clean:
+                    det = wh_by_item.get(c["variety"])
+                    s_wh = det.get("t_warehouse") if det else ""
+                    if not s_wh:
+                        continue
+                    item = {
+                        "item_code": c["variety"],
+                        "qty": c["stems"],
+                        "transfer_qty": c["stems"],
+                        "uom": frappe.db.get_value("Item", c["variety"], "stock_uom") or "Stems",
+                        "conversion_factor": 1.0,
+                        "s_warehouse": s_wh,
+                        "t_warehouse": target_wh,
+                        "basic_rate": (det.get("basic_rate") if det else 0) or 0,
+                        "allow_zero_valuation_rate": 1,
+                    }
+                    if det and det.get("cost_center"):
+                        item["cost_center"] = det.get("cost_center")
+                    items.append(item)
+
+                if items:
+                    se = frappe.get_doc({
+                        "doctype": "Stock Entry",
+                        "stock_entry_type": "Coldroom rejects",
+                        "purpose": "Material Transfer",
+                        "company": company,
+                        "posting_date": frappe.utils.nowdate(),
+                        "posting_time": frappe.utils.nowtime(),
+                        "set_posting_time": 1,
+                        "custom_received_bucket_id": bl,
+                        "custom_harvest_batch_no": harvest_batch,
+                        "custom_receiving_batch_id": recv_batch,
+                        "custom_farm": doc.farm,
+                        "custom_greenhouse": gh_full,
+                        "items": items,
+                    })
+                    se.insert(ignore_permissions=True)
+                    se.submit()
+                    se_name = se.name
+                    frappe.db.set_value("Coldroom QC", doc.name, "rejects_stock_entry", se_name, update_modified=False)
+            except Exception as se_exc:
+                se_error = str(se_exc)
+                frappe.log_error(frappe.get_traceback(), "saveColdroomQC stock move " + (bucket_id or ""))
+
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Coldroom QC " + doc.name + " submitted",
+            "total_stems_rejected": total,
+            "stock_entry": se_name,
+            "stock_entry_error": se_error,
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "saveColdroomQC Error")
+        frappe.response["message"] = {"status": "error", "message": str(e)}
