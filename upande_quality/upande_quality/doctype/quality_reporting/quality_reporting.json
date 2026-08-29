@@ -177,10 +177,11 @@
   },
   {
    "depends_on": "eval:doc.control_point=='Intake'",
+   "description": "The farm's unit manager (Employee, Designation \"Section Head\") at time of intake.",
    "fieldname": "unit_manager",
    "fieldtype": "Link",
    "label": "Unit Manager",
-   "options": "User"
+   "options": "Employee"
   },
   {
    "fieldname": "amended_from",

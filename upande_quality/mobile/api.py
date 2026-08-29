@@ -237,7 +237,7 @@ def correctDetails():
                     if kind == "bucket":
                         bid = target_id
                         # Resolve current session by direct latest-SE lookup across
-                        # both bucket fields (Receiving uses custom_received_bucket_id).
+                        # both bucket fields (Receiving uses custom_bucket_id).
                         sixty_days_ago = frappe.utils.add_to_date(
                             frappe.utils.now_datetime(), days=-60)
 
@@ -249,7 +249,7 @@ def correctDetails():
                                     "creation": [">=", str(sixty_days_ago)],
                                 },
                                 fields=["name", "custom_harvest_batch_no",
-                                        "custom_bucket_id", "custom_received_bucket_id",
+                                        "custom_bucket_id",
                                         "posting_date", "posting_time", "creation"],
                                 order_by="posting_date desc, posting_time desc, creation desc",
                                 limit=1,
@@ -257,7 +257,7 @@ def correctDetails():
                             return rows[0] if rows else None
 
                         candidates = []
-                        for fld in ("custom_bucket_id", "custom_received_bucket_id"):
+                        for fld in ("custom_bucket_id",):
                             row = latest_se_for(fld)
                             if row and row.get("custom_harvest_batch_no"):
                                 candidates.append(row)
@@ -276,7 +276,7 @@ def correctDetails():
                                     latest = c
                             bn = latest.get("custom_harvest_batch_no") or ""
                             canonical_bucket = (latest.get("custom_bucket_id") or
-                                                latest.get("custom_received_bucket_id") or bid)
+                                                latest.get("custom_bucket_id") or bid)
                             parts = bn.split("-") if bn else []
                             if len(parts) >= 6:
                                 dd = parts[5].split(" ")[0]
@@ -388,7 +388,7 @@ def correctDetails():
                                 upper = frappe.utils.add_days(narrow_date, 14)
                             receive_filters = {
                                 "stock_entry_type": ["in", ["Receiving", "Late Receipt"]],
-                                "custom_received_bucket_id": canonical_bucket,
+                                "custom_bucket_id": canonical_bucket,
                             }
                             if narrow_date and upper:
                                 receive_filters["posting_date"] = ["between", [narrow_date, upper]]
@@ -468,7 +468,7 @@ def createDiscardEntry():
             "Stock Entry",
             filters={
                 "stock_entry_type": ["in", ["Receiving", "Late Receipt"]],
-                "custom_received_bucket_id": bucket_id,
+                "custom_bucket_id": bucket_id,
                 "docstatus": 1
             },
             fields=["name"],
@@ -509,7 +509,7 @@ def createDiscardEntry():
             "Stock Entry",
             filters={
                 "stock_entry_type": "Discard",
-                "custom_received_bucket_id": bucket_id,
+                "custom_bucket_id": bucket_id,
                 "docstatus": 1,
                 "posting_date": today
             },
@@ -661,7 +661,7 @@ def createDiscardEntry():
             discard_entry.custom_harvester = receiving_doc.custom_harvester
             discard_entry.custom_harvester_payroll_number = receiving_doc.custom_harvester_payroll_number
             discard_entry.custom_harvest_batch_no = receiving_doc.custom_harvest_batch_no
-            discard_entry.custom_received_bucket_id = receiving_doc.custom_received_bucket_id
+            discard_entry.custom_bucket_id = receiving_doc.custom_bucket_id
             discard_entry.custom_stem_length = receiving_doc.custom_stem_length
             discard_entry.custom_graded_by = receiving_doc.custom_graded_by
             discard_entry.custom_grader_payroll_number = receiving_doc.custom_grader_payroll_number
@@ -2404,7 +2404,7 @@ def fetchPackhouseQCFormData():
             for br in bucket_rows:
                 gwh = frappe.db.sql(
                     "SELECT custom_greenhouse FROM `tabStock Entry`"
-                    " WHERE custom_received_bucket_id = %(bucket)s"
+                    " WHERE custom_bucket_id = %(bucket)s"
                     " AND stock_entry_type IN ('Receiving', 'Late Receipt')"
                     " AND docstatus = 1 AND custom_greenhouse IS NOT NULL"
                     " AND custom_greenhouse != ''"
@@ -2580,7 +2580,7 @@ def getBatchByBucket():
         SELECT name, custom_receiving_batch_id AS batch_no,
                custom_farm AS farm, company
         FROM `tabStock Entry`
-        WHERE LOWER(custom_received_bucket_id) = %s
+        WHERE LOWER(custom_bucket_id) = %s
           AND stock_entry_type IN ('Receiving', 'Late Receipt')
           AND docstatus = 1
         ORDER BY creation DESC
@@ -2600,7 +2600,7 @@ def getBatchByBucket():
     # 2. Get ALL buckets in batch + quarantine/release status in ONE big query
     all_data = frappe.db.sql("""
         SELECT
-            se.custom_received_bucket_id AS bucket_id,
+            se.custom_bucket_id AS bucket_id,
             sei.qty AS stems,
             sei.item_code,
             sei.item_name,
@@ -2635,12 +2635,13 @@ def getBatchByBucket():
                      AND rfq.custom_receiving_batch_id = se.custom_receiving_batch_id
                      THEN rfq.creation END) AS remove_quarantine_date,
 
-            -- Release / accept back (Material Transfer from Quarantine for this batch)
-            MAX(CASE WHEN rse.stock_entry_type = 'Material Transfer'
+            -- Release / accept back ("Quarantine Accept"; "Material Transfer" kept
+            -- for entries created before that type existed) from Quarantine for this batch
+            MAX(CASE WHEN rse.stock_entry_type IN ('Quarantine Accept', 'Material Transfer')
                      AND rsei.s_warehouse LIKE '%%Quarantine%%'
                      AND rse.custom_receiving_batch_id = se.custom_receiving_batch_id
                      THEN rse.name END) AS release_accept,
-            MAX(CASE WHEN rse.stock_entry_type = 'Material Transfer'
+            MAX(CASE WHEN rse.stock_entry_type IN ('Quarantine Accept', 'Material Transfer')
                      AND rsei.s_warehouse LIKE '%%Quarantine%%'
                      AND rse.custom_receiving_batch_id = se.custom_receiving_batch_id
                      THEN rse.creation END) AS release_accept_date,
@@ -2657,7 +2658,7 @@ def getBatchByBucket():
         INNER JOIN `tabStock Entry Detail` sei ON sei.parent = se.name
 
         LEFT JOIN `tabStock Entry` qse
-            ON qse.custom_received_bucket_id = se.custom_received_bucket_id
+            ON qse.custom_bucket_id = se.custom_bucket_id
             AND qse.custom_receiving_batch_id = se.custom_receiving_batch_id
             AND qse.docstatus = 1
 
@@ -2665,22 +2666,22 @@ def getBatchByBucket():
             ON qsei.parent = qse.name
 
         LEFT JOIN `tabStock Entry` rfq
-            ON rfq.custom_received_bucket_id = se.custom_received_bucket_id
+            ON rfq.custom_bucket_id = se.custom_bucket_id
             AND rfq.custom_receiving_batch_id = se.custom_receiving_batch_id
             AND rfq.docstatus = 1
             AND rfq.stock_entry_type = 'Remove From Quarantine'
 
         LEFT JOIN `tabStock Entry` rse
-            ON rse.custom_received_bucket_id = se.custom_received_bucket_id
+            ON rse.custom_bucket_id = se.custom_bucket_id
             AND rse.custom_receiving_batch_id = se.custom_receiving_batch_id
             AND rse.docstatus = 1
-            AND rse.stock_entry_type = 'Material Transfer'
+            AND rse.stock_entry_type IN ('Quarantine Accept', 'Material Transfer')
 
         LEFT JOIN `tabStock Entry Detail` rsei
             ON rsei.parent = rse.name
 
         LEFT JOIN `tabStock Entry` rejse
-            ON rejse.custom_received_bucket_id = se.custom_received_bucket_id
+            ON rejse.custom_bucket_id = se.custom_bucket_id
             AND rejse.custom_receiving_batch_id = se.custom_receiving_batch_id
             AND rejse.docstatus = 1
             AND rejse.stock_entry_type = 'Quarantine Rejects'
@@ -3683,7 +3684,7 @@ def getTraceability():
 
             if bucket_id and not target_session:
                 # Find the bucket's most recent SE — anchored journey, not a stale
-                # Bucket QR Code pointer. Receiving uses custom_received_bucket_id
+                # Bucket QR Code pointer. Receiving uses custom_bucket_id
                 # rather than custom_bucket_id, so query both and take the newest.
                 sixty_days_ago = frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-60)
 
@@ -3695,7 +3696,7 @@ def getTraceability():
                             "creation": [">=", str(sixty_days_ago)],
                         },
                         fields=["name", "custom_harvest_batch_no", "custom_bucket_id",
-                                "custom_received_bucket_id", "posting_date",
+                                "custom_bucket_id", "posting_date",
                                 "posting_time", "creation"],
                         order_by="posting_date desc, posting_time desc, creation desc",
                         limit=1,
@@ -3703,7 +3704,7 @@ def getTraceability():
                     return rows[0] if rows else None
 
                 candidates = []
-                for fld in ("custom_bucket_id", "custom_received_bucket_id"):
+                for fld in ("custom_bucket_id",):
                     row = latest_se_for(fld)
                     if row and row.get("custom_harvest_batch_no"):
                         candidates.append(row)
@@ -3726,7 +3727,7 @@ def getTraceability():
                     # Prefer custom_bucket_id; fall back to received_bucket_id for a
                     # Receiving-only result where source bucket isn't recorded.
                     canonical_bucket = (latest.get("custom_bucket_id") or
-                                        latest.get("custom_received_bucket_id") or "")
+                                        latest.get("custom_bucket_id") or "")
 
                 # Normalise bucket_id to the canonical case used in Stock Entry.
                 # Case-sensitive equality filters miss otherwise.
@@ -3798,13 +3799,13 @@ def getTraceability():
                     order_by="name asc",
                 )
 
-                # Receive SE has a dedicated field (custom_received_bucket_id) for the
+                # Receive SE has a dedicated field (custom_bucket_id) for the
                 # bucket. Drop the LIKE-on-batch_no entirely — it's not indexed.
                 receive_filters = {
                     "stock_entry_type": ["in", ["Receiving", "Late Receipt"]],
                 }
                 if bucket_id:
-                    receive_filters["custom_received_bucket_id"] = bucket_id
+                    receive_filters["custom_bucket_id"] = bucket_id
                 if narrow_date:
                     # Tight 14-day window after the harvest date. Late receipts beyond
                     # this aren't really late — they're another session entirely.
@@ -5622,16 +5623,13 @@ def releaseFromQuarantine():
     if action not in ("accept", "reject"):
         frappe.throw("action must be 'accept' or 'reject'")
 
-    ACCEPTED_STORAGE = "Kapkolia Receiving Storage - KR"
-
     bucket_id_lower = bucket_id.strip().lower()
     bucket_id_upper = bucket_id.strip().upper()
 
     CONTINUITY_FIELDS = [
         "custom_farm", "custom_location", "custom_business_unit",
-        "custom_employee", "custom_employee_name", "custom_greenhouse",
-        "custom_harvester", "custom_stem_length", "custom_graded_by",
-        "custom_grader_payroll_number", "custom_biometric_verified"
+        "custom_greenhouse", "custom_harvester", "custom_stem_length",
+        "custom_graded_by", "biometric_verified",
     ]
 
 
@@ -5657,8 +5655,7 @@ def releaseFromQuarantine():
             "doctype": "Stock Entry",
             "stock_entry_type": stock_entry_type,
             "purpose": purpose,
-            "custom_received_bucket_id": bucket_id_lower,
-            "custom_harvest_batch_no": entry.custom_harvest_batch_no or "",
+            "custom_bucket_id": bucket_id_lower,
             "custom_receiving_batch_id": batch_no,
             "company": entry.company or "",
             "posting_date": frappe.utils.nowdate(),
@@ -5682,15 +5679,14 @@ def releaseFromQuarantine():
                sei.qty, sei.item_code, sei.item_name,
                sei.s_warehouse, sei.t_warehouse,
                sei.cost_center, sei.basic_rate,
-               se.company, se.custom_harvest_batch_no, se.custom_receiving_batch_id,
+               se.company, se.custom_receiving_batch_id,
                se.custom_farm, se.custom_location, se.custom_business_unit,
-               se.custom_employee, se.custom_employee_name, se.custom_greenhouse,
-               se.custom_harvester, se.custom_stem_length, se.custom_graded_by,
-               se.custom_grader_payroll_number, se.biometric_verified,
+               se.custom_greenhouse, se.custom_harvester, se.custom_stem_length,
+               se.custom_graded_by, se.biometric_verified,
                se.creation
         FROM `tabStock Entry` se
         JOIN `tabStock Entry Detail` sei ON sei.parent = se.name
-        WHERE se.custom_received_bucket_id = %s
+        WHERE se.custom_bucket_id = %s
             AND se.custom_receiving_batch_id = %s
             AND se.docstatus = 1
         ORDER BY se.creation DESC
@@ -5731,7 +5727,7 @@ def releaseFromQuarantine():
         if e.creation <= quarantine_time:
             continue
         s_wh = (e.s_warehouse or "").lower()
-        if e.stock_entry_type == "Material Transfer" and "quarantine" in s_wh:
+        if e.stock_entry_type in ("Material Transfer", "Quarantine Accept") and "quarantine" in s_wh:
             frappe.throw("Bucket %s (Batch: %s) has already been released from quarantine" % (bucket_id_upper, batch_no))
         if e.stock_entry_type in ("Quarantine Rejects", "Remove From Quarantine"):
             frappe.throw("Bucket %s (Batch: %s) has already been released from quarantine" % (bucket_id_upper, batch_no))
@@ -5747,13 +5743,28 @@ def releaseFromQuarantine():
         frappe.throw("Only %s stems available in quarantine for bucket %s (Batch: %s)" % (available_stems, bucket_id_upper, batch_no))
 
     remaining = available_stems - stems_count
-    coldroom_wh = original_wh if original_wh else ACCEPTED_STORAGE
+    # Accepted stems normally return to `original_wh` (wherever this bucket was
+    # before it got quarantined). If that's somehow unavailable, fall back to the
+    # bucket's own farm coldstore using the standard "{Farm} Receiving Cold Store -
+    # {abbr}" naming — not a warehouse hardcoded to one specific farm/company.
+    entry_farm = entry.custom_farm or ""
+    entry_abbr = frappe.db.get_value("Company", entry.company, "abbr") if entry.company else None
+    coldroom_wh = original_wh
+    if not coldroom_wh and entry_farm and entry_abbr:
+        coldroom_wh = entry_farm + " Receiving Cold Store - " + entry_abbr
+
+    # Rejected stems are transferred into the farm's Rejects warehouse (same
+    # {Farm} Rejects - {abbr} convention used by the intake-reject flow in
+    # submitBatchQuality), so rejects stay visible in stock rather than vanishing
+    # via a plain Material Issue.
+    rejects_wh = (entry_farm + " Rejects - " + entry_abbr) if (entry_farm and entry_abbr) else None
 
     # Step 5: perform the movements. Each leg is isolated so a failure in one is
-    # reported instead of silently rolling back the whole release. A reject issues
-    # stems out of inventory (Quarantine Rejects); an accept transfers them back to
-    # the coldroom. Both accept-N and reject-N fully dispose the bucket: the other
-    # (M-N) stems are handled the opposite way.
+    # reported instead of silently rolling back the whole release. A reject
+    # transfers stems into the farm's Rejects warehouse (Quarantine Rejects); an
+    # accept transfers them back to the coldroom (Quarantine Accept). Both
+    # accept-N and reject-N fully dispose the bucket: the other (M-N) stems are
+    # handled the opposite way.
     movement_errors = []
     transfer_se = None
     reject_se = None
@@ -5775,16 +5786,16 @@ def releaseFromQuarantine():
         stems_accepted = stems_count
         stems_rejected = remaining
         # Accepted stems -> back to the coldroom they were quarantined from.
-        transfer_se = safe_move("accept-transfer", "Material Transfer", "Material Transfer", quarantine_wh, coldroom_wh, stems_accepted)
-        # Un-accepted remainder -> rejected out of inventory.
-        reject_se = safe_move("accept-reject-remainder", "Quarantine Rejects", "Material Issue", quarantine_wh, None, stems_rejected)
+        transfer_se = safe_move("accept-transfer", "Quarantine Accept", "Material Transfer", quarantine_wh, coldroom_wh, stems_accepted)
+        # Un-accepted remainder -> rejects warehouse.
+        reject_se = safe_move("accept-reject-remainder", "Quarantine Rejects", "Material Transfer", quarantine_wh, rejects_wh, stems_rejected)
     else:  # reject
         stems_rejected = stems_count
         stems_accepted = remaining
-        # Rejected stems -> issued out of inventory.
-        reject_se = safe_move("reject", "Quarantine Rejects", "Material Issue", quarantine_wh, None, stems_rejected)
+        # Rejected stems -> rejects warehouse.
+        reject_se = safe_move("reject", "Quarantine Rejects", "Material Transfer", quarantine_wh, rejects_wh, stems_rejected)
         # Good remainder -> transferred back to the coldroom.
-        transfer_se = safe_move("reject-return-remainder", "Material Transfer", "Material Transfer", quarantine_wh, coldroom_wh, stems_accepted)
+        transfer_se = safe_move("reject-return-remainder", "Quarantine Accept", "Material Transfer", quarantine_wh, coldroom_wh, stems_accepted)
 
     frappe.db.commit()
 
@@ -6626,7 +6637,7 @@ def savePackhouseQC():
             if bucket_id:
                 rows = frappe.db.sql(
                     "SELECT custom_greenhouse FROM `tabStock Entry`"
-                    " WHERE custom_received_bucket_id = %(bucket)s"
+                    " WHERE custom_bucket_id = %(bucket)s"
                     " AND stock_entry_type IN ('Receiving', 'Late Receipt')"
                     " AND docstatus = 1"
                     " AND custom_greenhouse IS NOT NULL AND custom_greenhouse != ''"
@@ -7206,6 +7217,26 @@ def setOfflineTrolleyFlags():
 
 @frappe.whitelist()
 def submitBatchQuality():
+    # Thin, exception-safe entrypoint. The mobile client keys success/failure off
+    # a top-level `status` field in the response body — a raw uncaught exception
+    # (e.g. a framework validation error like "Cost Center is mandatory") has no
+    # such field, and was being silently read by the app as a successful submit.
+    # Catching everything here and always answering with the same
+    # {status, http_status_code, message} shape guarantees the client can never
+    # mistake a failure for a submitted batch, regardless of where inside the
+    # real logic it went wrong.
+    try:
+        _submit_batch_quality_impl()
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error("submitBatchQuality failed", frappe.get_traceback())
+        frappe.response["status"] = "error"
+        frappe.response["http_status_code"] = getattr(e, "http_status_code", None) or 500
+        message = frappe.utils.strip_html(str(e)) if str(e) else "An error occurred while submitting quality data"
+        frappe.response["message"] = message
+
+
+def _submit_batch_quality_impl():
     # Server Script: submit_batch_quality   (API method: submitBatchQuality)
     #
     # Creates a Quality Reporting doc per (variety, action) for a scanned batch and,
@@ -7249,7 +7280,12 @@ def submitBatchQuality():
     stems_by_variety    = data.get("stems_checked_by_variety", {}) or {}
 
     if not batch_no:
-        frappe.throw("Missing batch number")
+        # Return the error in the same shape the client reads for success
+        # (top-level `status`), so a failure is never mistaken for a submit.
+        frappe.response["status"] = "error"
+        frappe.response["http_status_code"] = 400
+        frappe.response["message"] = "Missing batch number"
+        return
 
 
     def normalize_action(action):
@@ -7307,14 +7343,23 @@ def submitBatchQuality():
     solution_ph_val = str(solution_ph) if str(solution_ph) in VALID_PH else ""
     solution_hygiene_val = solution_hygiene if solution_hygiene in ("Clean", "Not Clean") else ""
 
-    WAREHOUSE_CONFIG = {
-        "rejected": "Rejects - KR",
-        "quarantined": "Kapkolia Receiving Quarantined - KR",
-    }
+    # Quarantine/reject target warehouses follow the same "{Farm} {Purpose} - {abbr}"
+    # convention as every other farm warehouse (e.g. "Kapkolia Receiving Cold Store
+    # - UFL"). This used to be a static dict hardcoded to "Kapkolia" + "- KR", which
+    # only ever worked for that one farm on that one company — every other farm (or
+    # any company not abbreviated "KR") silently failed to find its target
+    # warehouse. Resolved per-bucket from that bucket's own farm below.
     STOCK_ENTRY_TYPES = {
         "quarantined": "Receiving Quarantined",
         "rejected": "Quarantine Rejects",
     }
+
+    def warehouse_for(target_key, bucket_farm, company):
+        abbr = frappe.db.get_value("Company", company, "abbr") if company else None
+        if not (bucket_farm and abbr):
+            return None
+        suffix = "Receiving Quarantined" if target_key == "quarantined" else "Rejects"
+        return str(bucket_farm) + " " + suffix + " - " + str(abbr)
 
     created_reports = []
     stock_entries = []
@@ -7382,26 +7427,50 @@ def submitBatchQuality():
         return ""
 
 
-    # Look up unit_manager: Farm -> Employee ID -> User ID
-    unit_manager = ""
+    # Unit manager = the active Section Head assigned to this farm (Employee whose
+    # custom_farm is this farm and designation is "Section Head"). Quality
+    # Reporting.unit_manager is Link -> Employee (matching Farm.unit_manager's own
+    # design), so it's stored as the Employee reference directly — displayed by
+    # name, not payroll number, and populated whether or not that Employee has a
+    # linked User account. Corrective Action Report.assigned_to is a hard
+    # Link -> User (Frappe's assignment/ToDo mechanism requires a User), so we
+    # separately track the Employee's user_id for that, best-effort. If the farm
+    # has no Section Head configured, block with a clear instruction so quality is
+    # never submitted without an accountable unit manager.
+    unit_manager = ""       # Employee reference -> Quality Reporting.unit_manager
+    unit_manager_user = ""  # User reference (if any) -> CAR.assigned_to
     if farm:
-        emp_id = frappe.db.get_value("Farm", farm, "custom_unit_manager") or ""
-        if emp_id:
-            unit_manager = frappe.db.get_value("Employee", emp_id, "user_id") or ""
+        mgr = frappe.db.get_value(
+            "Employee",
+            {"custom_farm": farm, "designation": "Section Head", "status": "Active"},
+            ["name", "employee_name", "user_id"],
+            as_dict=True,
+        )
+        if not mgr:
+            # Return the error in the same shape the client reads for success
+            # (top-level `status`), so a failure is never mistaken for a submit.
+            frappe.response["status"] = "error"
+            frappe.response["http_status_code"] = 400
+            frappe.response["message"] = _("Please contact your IT administrator to add the unit manager for farm {0}").format(farm)
+            return
+        unit_manager = mgr.name or ""
+        unit_manager_user = mgr.user_id or ""
 
 
-    def should_create_car(greenhouse, variety):
-        if not variety or not greenhouse:
+    def should_create_car(car_farm, variety):
+        # Corrective Action Report has no greenhouse field, only `farm` — dedupe
+        # at that granularity (the field that actually exists and gets stored).
+        if not variety or not car_farm:
             return True
         existing_cars = frappe.db.sql("""
             SELECT name, status, target_date, actual_completion_date
             FROM `tabCorrective Action Report`
             WHERE variety = %s
-                AND custom_greenhouse = %s
+                AND farm = %s
                 AND status IN ('Pending', 'WIP')
             ORDER BY creation DESC
             LIMIT 1
-        """, (variety, greenhouse), as_dict=1)
+        """, (variety, car_farm), as_dict=1)
         if not existing_cars:
             return True
         car = existing_cars[0]
@@ -7477,7 +7546,7 @@ def submitBatchQuality():
             else:
                 receiving = frappe.db.sql("""
                     SELECT name FROM `tabStock Entry`
-                    WHERE TRIM(LOWER(custom_received_bucket_id)) = %s
+                    WHERE TRIM(LOWER(custom_bucket_id)) = %s
                         AND stock_entry_type = 'Receiving'
                         AND docstatus = 1
                     ORDER BY creation DESC LIMIT 1
@@ -7546,7 +7615,12 @@ def submitBatchQuality():
         # Stock movement (quarantine / reject only). Best-effort: never blocks.
         if effective_action in ("Quarantined", "Rejected") and receiving_doc and source_warehouse:
             target_key = "quarantined" if effective_action == "Quarantined" else "rejected"
-            target_warehouse = WAREHOUSE_CONFIG[target_key]
+            target_warehouse = warehouse_for(target_key, bucket_farm, company or receiving_doc.company)
+            if not target_warehouse:
+                frappe.log_error(
+                    "No farm/company to resolve the " + target_key + " warehouse for bucket " + bucket_id,
+                    "Submit Batch Quality - stock move " + bucket_id,
+                )
             entry_type = STOCK_ENTRY_TYPES[target_key]
             qty_to_move = bucket_stems if effective_action == "Rejected" else (bucket_stems - effective_rejected)
             if qty_to_move > 0:
@@ -7555,8 +7629,7 @@ def submitBatchQuality():
                         "doctype": "Stock Entry",
                         "stock_entry_type": entry_type,
                         "purpose": "Material Transfer",
-                        "custom_received_bucket_id": bucket_id.lower(),
-                        "custom_harvest_batch_no": receiving_doc.custom_harvest_batch_no or "",
+                        "custom_bucket_id": bucket_id.lower(),
                         "custom_receiving_batch_id": receiving_doc.custom_receiving_batch_id or "",
                         "company": company or receiving_doc.company or "",
                         "posting_date": frappe.utils.nowdate(),
@@ -7670,7 +7743,7 @@ def submitBatchQuality():
         # Corrective Action Report (isolated: never rolls back the report)
         if effective_action in ("Quarantined", "Rejected") and variety_val:
             try:
-                if should_create_car(greenhouse, item_code):
+                if should_create_car(farm_val, item_code):
                     # Build issue text from quality concerns for this variety
                     issue_parts = []
                     variety_concerns = concerns_by_variety.get(item_code, {}) or {}
@@ -7690,15 +7763,15 @@ def submitBatchQuality():
                         "date_of_incident": frappe.utils.nowdate(),
                         "requested_by": frappe.session.user,
                         "control_point": car_control_point,
-                        "assigned_to": unit_manager or frappe.session.user,
+                        "assigned_to": unit_manager_user or frappe.session.user,
                         "status": "Pending",
                         "issue": issue_text,
                         "root_cause": "To be determined",
                         "corrective_action_plan": "To be determined",
                         "target_date": frappe.utils.add_days(frappe.utils.nowdate(), 7),
                     }
-                    if gh_val:
-                        car_data["custom_greenhouse"] = gh_val
+                    if farm_val:
+                        car_data["farm"] = farm_val
                     car_doc = frappe.get_doc(car_data)
                     car_doc.insert(ignore_permissions=True)
                     corrective_action_reports.append(car_doc.name)
