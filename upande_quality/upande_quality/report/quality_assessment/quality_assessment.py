@@ -33,7 +33,7 @@ def get_base_columns():
 
 def get_tail_columns():
     return [
-        {"fieldname": "prepared_by", "label": "Prepared By", "fieldtype": "Link", "options": "User", "width": 150},
+        {"fieldname": "prepared_by", "label": "Created By", "fieldtype": "Link", "options": "User", "width": 150},
         {"fieldname": "unit_manager", "label": "Unit Manager", "fieldtype": "Link", "options": "User", "width": 150},
         {"fieldname": "sampled_percentage", "label": "Sampled %", "fieldtype": "Percent", "width": 120},
         {"fieldname": "ftr", "label": "FTR %", "fieldtype": "Percent", "width": 100},
@@ -144,7 +144,7 @@ def get_data(filters):
             qr.chlorine_ppm,
             qr.control_action,
             qr.quarantined_stems,
-            qr.prepared_by,
+            qr.owner as prepared_by,
             qr.unit_manager
         FROM `tabQuality Reporting` qr
         WHERE {where_clause}
