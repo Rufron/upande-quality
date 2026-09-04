@@ -1,7 +1,7 @@
 {
  "actions": [],
- "autoname": "hash",
- "creation": "2026-08-18 22:03:44.573666",
+ "allow_import": 1,
+ "creation": "2026-09-01 22:08:50.102788",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -28,6 +28,7 @@
   "custom_stems_affected",
   "unit_manager",
   "custom_corrective_action_report",
+  "custom_remarks",
   "amended_from",
   "section_packhouse",
   "custom_inspection_type",
@@ -43,6 +44,7 @@
   "custom_length",
   "packhouse_information",
   "custom_bunches_affected",
+  "custom_bunches_sampled",
   "custom_boxes_checked",
   "custom_boxes_staged",
   "custom_boxes_quarantined",
@@ -177,11 +179,10 @@
   },
   {
    "depends_on": "eval:doc.control_point=='Intake'",
-   "description": "The farm's unit manager (Employee, Designation \"Section Head\") at time of intake.",
    "fieldname": "unit_manager",
    "fieldtype": "Link",
    "label": "Unit Manager",
-   "options": "Employee"
+   "options": "User"
   },
   {
    "fieldname": "amended_from",
@@ -316,15 +317,25 @@
    "fieldname": "packhouse_information",
    "fieldtype": "Section Break",
    "label": "Packhouse Information"
+  },
+  {
+   "fieldname": "custom_remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
+   "fieldname": "custom_bunches_sampled",
+   "fieldtype": "Int",
+   "label": "Bunches Sampled"
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-21 16:49:45.666289",
+ "modified": "2026-09-03 19:58:53.374150",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Quality Reporting",
- "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [
   {

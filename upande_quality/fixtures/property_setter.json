@@ -13,7 +13,7 @@
   "property": "depends_on",
   "property_type": "Data",
   "row_name": null,
-  "value": "eval:doc.custom_bucket_id"
+  "value": "eval:(((![\"Receiving\",\"Receiving Quarantined\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
  },
  {
   "default_value": null,
@@ -318,6 +318,22 @@
   "property_type": "Data",
   "row_name": null,
   "value": "eval:(((![\"Receiving Quarantined\",\"Harvesting\"].includes(doc.stock_entry_type)) && (doc.stock_entry_type != \"Material Transfer\")) && (doc.stock_entry_type != \"Packhouse Rejects\")) && (doc.stock_entry_type != \"Quarantine Rejects\")"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Stock Entry",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "custom_received_bucket_id",
+  "is_system_generated": 1,
+  "modified": "2026-07-27 12:57:07.084185",
+  "module": null,
+  "name": "Stock Entry-custom_received_bucket_id-depends_on",
+  "property": "depends_on",
+  "property_type": "Data",
+  "row_name": null,
+  "value": "eval:doc.stock_entry_type != \"Harvesting\""
  },
  {
   "default_value": null,

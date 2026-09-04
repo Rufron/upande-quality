@@ -14,5 +14,21 @@
   "doctype": "QC Control Point",
   "modified": "2026-07-27 13:56:13.830115",
   "name": "Packhouse"
+ },
+ {
+  "control_area": null,
+  "control_point": "FIELD",
+  "docstatus": 0,
+  "doctype": "QC Control Point",
+  "modified": "2026-09-01 16:17:59.149609",
+  "name": "FIELD"
+ },
+ {
+  "control_area": null,
+  "control_point": "COLDBOOM",
+  "docstatus": 0,
+  "doctype": "QC Control Point",
+  "modified": "2026-09-01 16:17:59.195546",
+  "name": "COLDBOOM"
  }
 ]
