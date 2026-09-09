@@ -910,7 +910,11 @@ def createDiscardEntry():
 def createReceivingStockEntry():
     try:
         data = frappe.request.get_json()
-        bucket_id = data.get("bucket_id")
+        # Real-world scans/typed entries can carry stray leading/trailing
+        # whitespace (a hand-typed QR payload, a scanner quirk) that never
+        # matches Bucket QR Code's exact id -- trim before the exists check
+        # below, same as other input fields elsewhere in this file already do.
+        bucket_id = (data.get("bucket_id") or "").strip() or None
         custom_receiving_batch_id = data.get("custom_receiving_batch_id")
 
         def blank_geo():
@@ -1005,24 +1009,38 @@ def createReceivingStockEntry():
             frappe.response["number_of_stems"] = str(total)
             return
 
-        # Every unreceived Harvesting entry accumulated for this bucket since
-        # the last successful receive -- NOT just last_stock_entry. Standard
-        # roses harvest once per cycle (the "already in use" guard on the
-        # harvest side prevents a second one), but Spray Roses grade straight
-        # in the field: each grading scan creates its OWN Harvesting entry for
-        # the same bucket_id, so several can legitimately pile up before the
-        # bucket is received. Scoping by "not yet linked to a receiving entry"
-        # (rather than any date/batch window) is what correctly bounds this to
-        # just the current cycle -- a receive claims everything unclaimed, so
-        # a later cycle starts genuinely empty.
+        # Every unreceived Harvesting entry accumulated for the CURRENT
+        # journey only -- NOT just last_stock_entry, but also NOT every
+        # historically-unclaimed entry either. Standard roses harvest once
+        # per cycle (the "already in use" guard on the harvest side prevents
+        # a second one), but Spray Roses grade straight in the field: each
+        # grading scan creates its OWN Harvesting entry for the same
+        # bucket_id, so several can legitimately pile up before the bucket
+        # is received. "Not yet linked to a receiving entry" alone isn't
+        # enough to bound that to just the current cycle, though -- a bucket
+        # can have an EARLIER, abandoned journey's entries sitting unclaimed
+        # too (never received, and the bucket has since moved on to a new
+        # journey -- those stems are simply gone, not still in the bucket).
+        # current_journey_start (set on the harvest that started THIS
+        # journey) is what actually draws that line.
         all_harvests = frappe.get_all(
             "Stock Entry",
             filters={"custom_bucket_id": bucket_id, "stock_entry_type": "Harvesting", "docstatus": 1},
             fields=["name", "farm", "custom_greenhouse", "custom_harvester", "custom_stem_length",
-                    "custom_cut_stage", "posting_date", "custom_receiving_entry"],
+                    "custom_cut_stage", "posting_date", "custom_receiving_entry", "creation"],
             order_by="creation asc",
         )
         unclaimed = [h for h in all_harvests if not h.get("custom_receiving_entry")]
+
+        journey_start = bucket_qr_doc.current_journey_start
+        if journey_start:
+            start_creation = frappe.db.get_value("Stock Entry", journey_start, "creation")
+            if start_creation:
+                unclaimed = [h for h in unclaimed if h.get("creation") >= start_creation]
+        # else: no marker recorded (this bucket's current journey started
+        # before this field existed) -- fall back to every unclaimed entry,
+        # same as before. Not a deliberate design choice, just the honest
+        # state of pre-existing data.
 
         if not unclaimed:
             # Data-integrity gap (In Use with nothing unclaimed) -- surface it
@@ -1084,6 +1102,41 @@ def createReceivingStockEntry():
                 if key not in variety_length_src:
                     variety_length_src[key] = r.get("t_warehouse") or h.get("custom_greenhouse") or greenhouse
                 total_stems += q
+
+        # A bucket can sit unreceived for days (a Spray Roses bucket that's
+        # never been re-scanned since its last grading pass, or a Standard
+        # Roses bucket nobody's got round to receiving) -- receiving it is
+        # still valid (posting backdates to the harvest date below), but the
+        # operator scanning it TODAY may not realize it's stale: they may
+        # have the wrong bucket, or expect today's harvest to be in there.
+        # Surface that explicitly and require an explicit confirm_receive
+        # before actually creating the Receiving entry, rather than silently
+        # backdating. "No harvest today" = the most recent unclaimed entry
+        # in this journey isn't dated today; a bucket topped up today (even
+        # if it also carries older entries from the same still-open journey)
+        # does not trigger this.
+        latest_harvest_date = max(h["posting_date"] for h in unclaimed)
+        if (
+            frappe.utils.getdate(latest_harvest_date) != frappe.utils.getdate(frappe.utils.nowdate())
+            and not data.get("confirm_receive")
+        ):
+            varieties_seen = sorted({v for (v, _length) in variety_length_qty})
+            variety_display = varieties_seen[0] if len(varieties_seen) == 1 else ", ".join(varieties_seen)
+            frappe.response["http_status_code"] = 200
+            frappe.response["status"] = "no_harvest_on_date"
+            frappe.response["message"] = (
+                "Bucket " + str(bucket_id) + " was not harvested today. Last harvest was on "
+                + frappe.utils.formatdate(latest_harvest_date) + " -- " + (variety_display or "Unspecified")
+                + " from " + str(greenhouse) + " (" + str(farm) + "). It has not been received yet -- "
+                "receive it now?"
+            )
+            frappe.response["farm"] = farm
+            frappe.response["greenhouse"] = greenhouse
+            frappe.response["stem_length"] = stem_length
+            frappe.response["number_of_stems"] = str(total_stems)
+            frappe.response["variety"] = variety_display
+            frappe.response["harvest_date"] = str(latest_harvest_date)
+            return
 
         farm_doc = frappe.get_doc("Farm", farm)
         company = farm_doc.company
@@ -1152,6 +1205,7 @@ def createReceivingStockEntry():
             # Receiving entry. Still under the for_update lock taken above.
             bucket_qr_doc.status = "Available"
             bucket_qr_doc.last_stock_entry = stock_entry.name
+            bucket_qr_doc.current_journey_start = None
             bucket_qr_doc.save(ignore_permissions=True)
             frappe.db.commit()
 
