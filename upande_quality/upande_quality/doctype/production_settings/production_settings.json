@@ -12,7 +12,9 @@
   "discard_age",
   "column_break_segn",
   "section_break_rvm8",
-  "shelf_locations"
+  "shelf_locations",
+  "harvesting_section",
+  "harvest_item_group_config"
  ],
  "fields": [
   {
@@ -43,6 +45,18 @@
   {
    "fieldname": "section_break_rvm8",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "harvesting_section",
+   "fieldtype": "Section Break",
+   "label": "Harvesting"
+  },
+  {
+   "description": "Per-bucket stem cap enforced by both Harvesting (Standard Roses) and Grading (Spray Roses) on the mobile app. Keyed by Item Group -- the nearest configured ancestor group applies if an item's own leaf group isn't listed. Leave a group unset (or 0) for no cap.",
+   "fieldname": "harvest_item_group_config",
+   "fieldtype": "Table",
+   "label": "Max Stems Per Bucket (by Item Group)",
+   "options": "Harvest Item Group Config"
   }
  ],
  "grid_page_length": 50,
@@ -64,6 +78,16 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "read": 1,
+   "select": 1,
+   "role": "Stock User"
+  },
+  {
+   "read": 1,
+   "select": 1,
+   "role": "Agriculture User"
   }
  ],
  "row_format": "Dynamic",

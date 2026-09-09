@@ -654,7 +654,7 @@ def createDiscardEntry():
             discard_entry.set_posting_time = 1
 
             # Copy custom fields from receiving entry
-            discard_entry.custom_farm = receiving_doc.custom_farm
+            discard_entry.farm = receiving_doc.farm
             discard_entry.custom_location = receiving_doc.custom_location
             discard_entry.custom_business_unit = receiving_doc.custom_business_unit
             discard_entry.custom_greenhouse = receiving_doc.custom_greenhouse
@@ -926,59 +926,264 @@ def createReceivingStockEntry():
             blank_geo()
             raise Exception("bucket_id is required")
 
-        company = "Upande Farms Limited"
-        abbr = frappe.db.get_value("Company", company, "abbr")
-        cost_center = frappe.db.get_value("Company", company, "cost_center") or ("Main - " + str(abbr))
-
-        bucket_doc_exists = bool(frappe.db.exists("Bucket QR Code", bucket_id))
-
-        # Every Harvesting entry for this bucket (newest first). The link field
-        # custom_receiving_entry tells us which are already received.
-        harvests = frappe.db.get_all(
-            "Stock Entry",
-            filters={"custom_bucket_id": bucket_id, "stock_entry_type": "Harvesting", "docstatus": 1},
-            fields=["name", "custom_farm", "custom_greenhouse", "custom_harvester",
-                    "custom_stem_length", "custom_cut_stage", "custom_bucket_id",
-                    "custom_receiving_entry", "posting_date"],
-            order_by="creation desc",
-        )
-
-        if not harvests and not bucket_doc_exists:
+        if not frappe.db.exists("Bucket QR Code", bucket_id):
             frappe.response["http_status_code"] = 404
             frappe.response["message"] = "This bucket " + str(bucket_id) + " does not exist and has never been used in the system"
             frappe.response["status"] = "not_exist"
             blank_geo()
-        elif not harvests:
+            return
+
+        # ======================================
+        # BUCKET STATUS IS THE GUARD (with row lock)
+        # ======================================
+        # Mirrors the exact pattern createHarvestStockEntry uses on the other
+        # side of this same bucket lifecycle: In Use <-> Available, guarded by
+        # for_update=True so a second near-simultaneous receive of the SAME
+        # bucket (double-tap, retry after a slow response) blocks on this row
+        # lock instead of racing past the status check, then correctly sees
+        # "Available" once it unblocks and short-circuits to already_received.
+        #
+        # Previously this checked a per-Stock-Entry custom_receiving_entry
+        # link field that was never actually getting set, so every scan
+        # re-aggregated the bucket's ENTIRE harvest history instead of just
+        # the current cycle -- that's what "received more than the harvest"
+        # was: not a duplicate bug alone, but unscoped accumulation across
+        # every harvest this bucket has ever had. Scoping to last_stock_entry
+        # (set to "In Use" only by the current harvest, per the harvest-side
+        # guard that blocks re-harvesting an In Use bucket) fixes both.
+        try:
+            bucket_qr_doc = frappe.get_doc("Bucket QR Code", bucket_id, for_update=True)
+        except Exception as lock_err:
+            # Under real concurrent load (two near-simultaneous scans of the
+            # same bucket) the loser can hit a row-version conflict acquiring
+            # this very lock, before the winner's own commit is even visible
+            # yet to this transaction. That's the DB protecting us, not a
+            # real failure -- re-fetch fresh (no lock needed; the winner has
+            # already committed by the time this driver-level error surfaces)
+            # and report it the same way a sequential repeat scan would.
+            if "changed since last read" not in str(lock_err):
+                raise
+            frappe.db.rollback()
+            bucket_qr_doc = frappe.get_doc("Bucket QR Code", bucket_id)
+            last_se = bucket_qr_doc.last_stock_entry
+            total = 0
+            last_se_doc = None
+            if last_se:
+                last_se_doc = frappe.get_doc("Stock Entry", last_se)
+                total = sum(
+                    float(r["qty"] or 0)
+                    for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": last_se}, fields=["qty"])
+                )
+            frappe.response["http_status_code"] = 200
+            frappe.response["message"] = "Bucket already received " + str(bucket_id)
+            frappe.response["status"] = "already_received"
+            frappe.response["farm"] = last_se_doc.farm if last_se_doc else ""
+            frappe.response["greenhouse"] = last_se_doc.custom_greenhouse if last_se_doc else ""
+            frappe.response["stem_length"] = last_se_doc.custom_stem_length if last_se_doc else ""
+            frappe.response["number_of_stems"] = str(total)
+            return
+
+        if bucket_qr_doc.status != "In Use":
+            last_se = bucket_qr_doc.last_stock_entry
+            if not last_se:
+                frappe.response["http_status_code"] = 404
+                frappe.response["message"] = "No stock entry found for bucket " + str(bucket_id)
+                frappe.response["status"] = "not_harvested"
+                blank_geo()
+                return
+            last_se_doc = frappe.get_doc("Stock Entry", last_se)
+            total = sum(
+                float(r["qty"] or 0)
+                for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": last_se}, fields=["qty"])
+            )
+            frappe.response["http_status_code"] = 200
+            frappe.response["message"] = "Bucket already received " + str(bucket_id)
+            frappe.response["status"] = "already_received"
+            frappe.response["farm"] = last_se_doc.farm
+            frappe.response["greenhouse"] = last_se_doc.custom_greenhouse
+            frappe.response["stem_length"] = last_se_doc.custom_stem_length
+            frappe.response["number_of_stems"] = str(total)
+            return
+
+        # Every unreceived Harvesting entry accumulated for this bucket since
+        # the last successful receive -- NOT just last_stock_entry. Standard
+        # roses harvest once per cycle (the "already in use" guard on the
+        # harvest side prevents a second one), but Spray Roses grade straight
+        # in the field: each grading scan creates its OWN Harvesting entry for
+        # the same bucket_id, so several can legitimately pile up before the
+        # bucket is received. Scoping by "not yet linked to a receiving entry"
+        # (rather than any date/batch window) is what correctly bounds this to
+        # just the current cycle -- a receive claims everything unclaimed, so
+        # a later cycle starts genuinely empty.
+        all_harvests = frappe.get_all(
+            "Stock Entry",
+            filters={"custom_bucket_id": bucket_id, "stock_entry_type": "Harvesting", "docstatus": 1},
+            fields=["name", "farm", "custom_greenhouse", "custom_harvester", "custom_stem_length",
+                    "custom_cut_stage", "posting_date", "custom_receiving_entry"],
+            order_by="creation asc",
+        )
+        unclaimed = [h for h in all_harvests if not h.get("custom_receiving_entry")]
+
+        if not unclaimed:
+            # Data-integrity gap (In Use with nothing unclaimed) -- surface it
+            # rather than guessing at a harvest to receive.
             frappe.response["http_status_code"] = 404
-            frappe.response["message"] = "No stock entry found for bucket " + str(bucket_id)
+            frappe.response["message"] = "Bucket " + str(bucket_id) + " is marked In Use but has no unreceived harvest entries"
             frappe.response["status"] = "not_harvested"
             blank_geo()
-        else:
-            farm = harvests[0].get("custom_farm")
-            greenhouse = harvests[0].get("custom_greenhouse")
-            harvester_id = harvests[0].get("custom_harvester")
-            stem_length = harvests[0].get("custom_stem_length") or ""
-            cut_stage = harvests[0].get("custom_cut_stage") or ""
-            # Full trace forward: harvest date from the harvest entry; grading details
-            # (grader + grading date) from a Grading entry for this bucket, so the
-            # receiving entry carries the whole harvest+grading context.
-            harvest_date = harvests[0].get("posting_date")
-            grading_row = frappe.db.get_value(
-                "Stock Entry",
-                {"stock_entry_type": "Grading", "custom_bucket_id": bucket_id, "docstatus": 1},
-                ["custom_graded_by", "custom_grading_date"],
-                as_dict=True,
-                order_by="creation desc",
-            )
-            graded_by = grading_row.custom_graded_by if grading_row else None
-            grading_date = grading_row.custom_grading_date if grading_row else None
-            unreceived = [h for h in harvests if not h.get("custom_receiving_entry")]
+            return
 
-            if not unreceived:
+        # Header-level fields: a bucket doesn't change farm/greenhouse mid-cycle,
+        # so the earliest unclaimed harvest is as good a representative as any.
+        first = unclaimed[0]
+        farm = first["farm"]
+        greenhouse = first["custom_greenhouse"]
+        harvester_id = first["custom_harvester"]
+        stem_length = first["custom_stem_length"] or ""
+        cut_stage = first["custom_cut_stage"] or ""
+        harvest_date = first["posting_date"]
+
+        # Grading details (grader + grading date) for this bucket. There's no
+        # real persisted batch-number field to scope this more tightly by
+        # (custom_harvest_batch_no is set in memory by createHarvestStockEntry
+        # but was never actually a Custom Field on this site, so it never
+        # survives a reload), and with several harvest entries now in play
+        # there's no reliable one-to-one match to a specific Grading entry
+        # either -- "most recent Grading entry for this bucket" is a known
+        # simplification, informational only (header-level, not per row).
+        grading_row = frappe.db.get_value(
+            "Stock Entry",
+            {"stock_entry_type": "Grading", "custom_bucket_id": bucket_id, "docstatus": 1},
+            ["custom_graded_by", "custom_grading_date"],
+            as_dict=True,
+            order_by="creation desc",
+        )
+        graded_by = grading_row.custom_graded_by if grading_row else None
+        grading_date = grading_row.custom_grading_date if grading_row else None
+
+        # Group by (variety, stem length) across every unclaimed harvest --
+        # stem length lives on the harvest's OWN parent record (never on its
+        # child row; nothing populates it there), so it's carried down from
+        # each contributing harvest entry rather than read off its item rows.
+        # This is what actually answers "multiple varieties / multiple
+        # lengths of the same variety": each distinct (item, length) pair
+        # becomes its own row on the Receiving entry, with the length set on
+        # the CHILD row (custom_stem_length exists there and was simply never
+        # used) rather than collapsed into a single parent-level value.
+        variety_length_qty = {}
+        variety_length_src = {}
+        total_stems = 0
+        for h in unclaimed:
+            h_length = h.get("custom_stem_length") or ""
+            for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": h["name"]},
+                                       fields=["item_code", "qty", "t_warehouse"]):
+                v = r.get("item_code")
+                key = (v, h_length)
+                q = float(r.get("qty") or 0)
+                variety_length_qty[key] = variety_length_qty.get(key, 0) + q
+                if key not in variety_length_src:
+                    variety_length_src[key] = r.get("t_warehouse") or h.get("custom_greenhouse") or greenhouse
+                total_stems += q
+
+        farm_doc = frappe.get_doc("Farm", farm)
+        company = farm_doc.company
+        abbr = frappe.db.get_value("Company", company, "abbr")
+        cost_center = frappe.db.get_value("Company", company, "cost_center") or ("Main - " + str(abbr))
+        # Per-farm receiving cold store (created once as setup; not auto-made here).
+        to_warehouse = str(farm) + " Receiving Cold Store - " + str(abbr)
+
+        posting_date2 = frappe.utils.getdate(harvest_date)
+        curr_date = frappe.utils.getdate(frappe.utils.nowdate())
+        days_difference = (curr_date - posting_date2).days
+        # Old harvests post on the harvest date; same-day post today.
+        valid_posting_date = harvest_date if days_difference >= 1 else frappe.utils.nowdate()
+
+        items = []
+        for v, length in sorted(variety_length_qty):
+            items.append({
+                "item_code": v,
+                "qty": variety_length_qty[(v, length)],
+                "uom": "Stems",
+                "stock_uom": "Stems",
+                "conversion_factor": 1,
+                "t_warehouse": to_warehouse,
+                "s_warehouse": variety_length_src[(v, length)],
+                "cost_center": cost_center,
+                "custom_stem_length": length,
+                "allow_zero_valuation_rate": 1,
+            })
+
+        try:
+            stock_entry = frappe.get_doc({
+                "doctype": "Stock Entry",
+                "stock_entry_type": "Receiving",
+                "custom_bucket_id": bucket_id,
+                "company": company,
+                "set_posting_time": 1,
+                "posting_date": valid_posting_date,
+                "to_warehouse": to_warehouse,
+                "cost_center": cost_center,
+                "farm": farm,
+                "custom_greenhouse": greenhouse,
+                "custom_harvester": harvester_id,
+                "custom_cut_stage": cut_stage,
+                "custom_harvest_date": harvest_date,
+                "custom_grading_date": grading_date,
+                "custom_graded_by": graded_by,
+                "business_unit": "Roses",
+                "custom_stem_length": stem_length,
+                "custom_receiving_batch_id": custom_receiving_batch_id,
+                "items": items,
+            })
+            stock_entry.insert(ignore_permissions=True)
+            stock_entry.flags.ignore_validate = True
+            stock_entry.submit()
+
+            # Kept for audit/traceability lookups that already read this field --
+            # link EVERY harvest entry this receive actually claimed, not just
+            # one, so the Connections tab shows the full set (and so none of
+            # them get picked up again by a later receive on this bucket).
+            for h in unclaimed:
+                frappe.db.set_value("Stock Entry", h["name"], "custom_receiving_entry", stock_entry.name)
+
+            # THE fix: release the bucket back to Available so it can be
+            # harvested into again, and so a repeat/retry scan of the SAME
+            # bucket sees "already received" instead of creating another
+            # Receiving entry. Still under the for_update lock taken above.
+            bucket_qr_doc.status = "Available"
+            bucket_qr_doc.last_stock_entry = stock_entry.name
+            bucket_qr_doc.save(ignore_permissions=True)
+            frappe.db.commit()
+
+            frappe.response["http_status_code"] = 200
+            frappe.response["message"] = "Receiving Stock Entry created successfully"
+            frappe.response["stock_entry_name"] = stock_entry.name
+            frappe.response["status"] = "received"
+            frappe.response["farm"] = farm
+            frappe.response["greenhouse"] = greenhouse
+            frappe.response["stem_length"] = stem_length
+            frappe.response["number_of_stems"] = str(total_stems)
+        except Exception as inner_e:
+            frappe.db.rollback()
+            # The for_update lock narrows the window a lot, but under real
+            # concurrent load (two near-simultaneous scans of the same
+            # bucket) the loser can still reach this point after the winner
+            # has already committed -- the DB's own row-version check on the
+            # bucket save is what actually catches it here (driver-specific
+            # exception class, hence matching on the message rather than
+            # importing a particular driver's error type). Report it the same
+            # way a sequential repeat scan would read, not as a scary error:
+            # nothing was left half-done -- the rollback above undoes this
+            # attempt's own Stock Entry too, not just the bucket update.
+            if "changed since last read" in str(inner_e) or "TimestampMismatchError" in str(type(inner_e)):
+                fresh_bucket = frappe.get_doc("Bucket QR Code", bucket_id)
+                last_se = fresh_bucket.last_stock_entry
                 total = 0
-                for h in harvests:
-                    for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": h["name"]}, fields=["qty"]):
-                        total += float(r["qty"] or 0)
+                if last_se:
+                    total = sum(
+                        float(r["qty"] or 0)
+                        for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": last_se}, fields=["qty"])
+                    )
                 frappe.response["http_status_code"] = 200
                 frappe.response["message"] = "Bucket already received " + str(bucket_id)
                 frappe.response["status"] = "already_received"
@@ -987,94 +1192,14 @@ def createReceivingStockEntry():
                 frappe.response["stem_length"] = stem_length
                 frappe.response["number_of_stems"] = str(total)
             else:
-                # Group unreceived harvest items by variety (a bucket may hold several).
-                variety_qty = {}
-                variety_src = {}
-                total_stems = 0
-                for h in unreceived:
-                    for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": h["name"]},
-                                               fields=["item_code", "qty", "t_warehouse"]):
-                        v = r.get("item_code")
-                        q = float(r.get("qty") or 0)
-                        variety_qty[v] = variety_qty.get(v, 0) + q
-                        if v not in variety_src:
-                            variety_src[v] = r.get("t_warehouse") or greenhouse
-                        total_stems += q
-
-                # Per-farm receiving cold store (created once as setup; not auto-made here).
-                to_warehouse = str(farm) + " Receiving Cold Store - " + str(abbr)
-
-                posting_date = harvests[0].get("posting_date")
-                posting_date2 = frappe.utils.getdate(posting_date)
-                curr_date = frappe.utils.getdate(frappe.utils.nowdate())
-                days_difference = (curr_date - posting_date2).days
-                # Old harvests post on the harvest date; same-day post today.
-                valid_posting_date = posting_date if days_difference >= 1 else frappe.utils.nowdate()
-                stock_entry_type = "Receiving"
-
-                items = []
-                for v in sorted(variety_qty):
-                    items.append({
-                        "item_code": v,
-                        "qty": variety_qty[v],
-                        "uom": "Stems",
-                        "stock_uom": "Stems",
-                        "conversion_factor": 1,
-                        "t_warehouse": to_warehouse,
-                        "s_warehouse": variety_src[v],
-                        "cost_center": cost_center,
-                        "allow_zero_valuation_rate": 1,
-                    })
-
-                try:
-                    stock_entry = frappe.get_doc({
-                        "doctype": "Stock Entry",
-                        "stock_entry_type": stock_entry_type,
-                        "custom_bucket_id": bucket_id,
-                        "company": company,
-                        "set_posting_time": 1,
-                        "posting_date": valid_posting_date,
-                        "to_warehouse": to_warehouse,
-                        "cost_center": cost_center,
-                        "custom_farm": farm,
-                        "custom_greenhouse": greenhouse,
-                        "custom_harvester": harvester_id,
-                        "custom_cut_stage": cut_stage,
-                        "custom_harvest_date": harvest_date,
-                        "custom_grading_date": grading_date,
-                        "custom_graded_by": graded_by,
-                        "custom_business_unit": "Roses",
-                        "custom_stem_length": stem_length,
-                        "custom_receiving_batch_id": custom_receiving_batch_id,
-                        "items": items,
-                    })
-                    stock_entry.insert(ignore_permissions=True)
-                    stock_entry.flags.ignore_validate = True
-                    stock_entry.submit()
-
-                    # Link every received harvest entry to this receiving entry.
-                    for h in unreceived:
-                        frappe.db.set_value("Stock Entry", h["name"], "custom_receiving_entry", stock_entry.name)
-                    frappe.db.commit()
-
-                    frappe.response["http_status_code"] = 200
-                    frappe.response["message"] = "Receiving Stock Entry created successfully"
-                    frappe.response["stock_entry_name"] = stock_entry.name
-                    frappe.response["status"] = "received"
-                    frappe.response["farm"] = farm
-                    frappe.response["greenhouse"] = greenhouse
-                    frappe.response["stem_length"] = stem_length
-                    frappe.response["number_of_stems"] = str(total_stems)
-                except Exception as inner_e:
-                    frappe.db.rollback()
-                    frappe.response["http_status_code"] = 500
-                    frappe.response["message"] = "Error creating stock entry: " + str(inner_e)
-                    frappe.log_error("Receiving Error", str(inner_e))
-                    frappe.response["status"] = "error"
-                    frappe.response["farm"] = farm
-                    frappe.response["greenhouse"] = greenhouse
-                    frappe.response["stem_length"] = stem_length
-                    frappe.response["number_of_stems"] = str(total_stems)
+                frappe.response["http_status_code"] = 500
+                frappe.response["message"] = "Error creating stock entry: " + str(inner_e)
+                frappe.log_error("Receiving Error", str(inner_e))
+                frappe.response["status"] = "error"
+                frappe.response["farm"] = farm
+                frappe.response["greenhouse"] = greenhouse
+                frappe.response["stem_length"] = stem_length
+                frappe.response["number_of_stems"] = str(total_stems)
     except Exception as e:
         if not frappe.response.get("http_status_code"):
             frappe.response["http_status_code"] = 500
@@ -1535,7 +1660,7 @@ def createShelvingEntry():
                     else:
                         # 2. Staleness check
                         days_since_receiving = (today_date - recv_date).days
-                        origin_farm = receiving_doc.custom_farm or farm
+                        origin_farm = receiving_doc.farm or farm
                         max_allowed_days = 50 if origin_farm and origin_farm.lower() == "kapkolia" else 40
 
                         if days_since_receiving > max_allowed_days:
@@ -2578,7 +2703,7 @@ def getBatchByBucket():
     # 1. Find receiving entry + batch_no (fast single row)
     receiving = frappe.db.sql("""
         SELECT name, custom_receiving_batch_id AS batch_no,
-               custom_farm AS farm, company
+               farm, company
         FROM `tabStock Entry`
         WHERE LOWER(custom_bucket_id) = %s
           AND stock_entry_type IN ('Receiving', 'Late Receipt')
@@ -2607,7 +2732,7 @@ def getBatchByBucket():
             sei.t_warehouse AS warehouse,
             sei.basic_rate,
             sei.cost_center,
-            se.custom_farm AS farm,
+            se.farm,
             se.custom_greenhouse AS greenhouse,
             se.name AS stock_entry,
             se.creation,
@@ -2804,7 +2929,7 @@ def getBucketStatus():
                 },
                 fields=[
                     "name",
-                    "custom_farm",
+                    "farm",
                     "custom_greenhouse",
                     "custom_stem_length",
                     "posting_date"
@@ -2835,7 +2960,7 @@ def getBucketStatus():
 
                     data.append({
                         "stock_entry": se.name,
-                        "custom_farm": se.custom_farm,
+                        "custom_farm": se.farm,
                         "custom_greenhouse": se.custom_greenhouse,
                         "custom_stem_length": se.custom_stem_length,
                         "number_of_stems": total_stems,
@@ -3778,7 +3903,7 @@ def getTraceability():
                     "Stock Entry",
                     filters=harvest_filters,
                     fields=["name", "owner", "posting_date", "posting_time",
-                            "custom_farm", "custom_greenhouse", "custom_stem_length",
+                            "farm", "custom_greenhouse", "custom_stem_length",
                             "custom_harvest_batch_no", "custom_harvester"],
                     order_by="name asc",
                 )
@@ -3820,7 +3945,7 @@ def getTraceability():
                     "Stock Entry",
                     filters=receive_filters,
                     fields=["name", "owner", "posting_date", "posting_time",
-                            "custom_farm", "custom_greenhouse", "custom_stem_length",
+                            "farm", "custom_greenhouse", "custom_stem_length",
                             "custom_harvest_batch_no",
                             "to_warehouse", "stock_entry_type"],
                     limit=20,
@@ -4078,8 +4203,8 @@ def getTraceability():
                     recv.get("custom_greenhouse") or ""
                 ).split(" - ")[0]
                 farm = (
-                    h.get("custom_farm") or
-                    recv.get("custom_farm") or
+                    h.get("farm") or
+                    recv.get("farm") or
                     (shelf or {}).get("shelf_farm") or
                     (bunch_info or {}).get("farm") or ""
                 )
@@ -4501,12 +4626,12 @@ def gradingReplacementOptions():
                                 "Stock Entry",
                                 filters={"custom_bucket_id": destination_bucket,
                                          "stock_entry_type": "Harvesting"},
-                                fields=["custom_farm"],
+                                fields=["farm"],
                                 order_by="posting_date desc, creation desc",
                                 limit=1,
                             )
                             if hv:
-                                farm = hv[0].get("custom_farm") or ""
+                                farm = hv[0].get("farm") or ""
 
                         if not stem_length or not farm:
                             frappe.response["http_status_code"] = 400
@@ -4885,7 +5010,7 @@ def listPendingReshelving():
             fields=[
                 "name", "custom_bunch_id", "custom_pending_source_bucket",
                 "custom_pending_since", "custom_stem_length",
-                "custom_harvest_batch_no", "custom_farm",
+                "custom_harvest_batch_no", "farm",
                 "owner", "modified_by",
             ],
             order_by="custom_pending_since asc",
@@ -4931,7 +5056,7 @@ def listPendingReshelving():
                 "variety": b.get("item_code") or "",
                 "stem_length": b.get("stem_length") or r.get("custom_stem_length") or "",
                 "bunch_size": str(b.get("bunch_size") or ""),
-                "farm": b.get("farm") or r.get("custom_farm") or "",
+                "farm": b.get("farm") or r.get("farm") or "",
                 "flagged_by": user_names.get(r.get("modified_by") or "",
                                              r.get("modified_by") or ""),
             })
@@ -5048,12 +5173,12 @@ def listReplacementCandidates():
                     old_harvest_rows = frappe.get_all(
                         "Stock Entry",
                         filters={"custom_bucket_id": bucket_id, "stock_entry_type": "Harvesting"},
-                        fields=["custom_farm"],
+                        fields=["farm"],
                         order_by="posting_date desc, posting_time desc, creation desc",
                         limit=1,
                     )
                     if old_harvest_rows:
-                        farm = old_harvest_rows[0].get("custom_farm") or ""
+                        farm = old_harvest_rows[0].get("farm") or ""
 
                 if not variety or not stem_length or not farm:
                     frappe.response["http_status_code"] = 400
@@ -5288,7 +5413,7 @@ def moveBunch():
                         "custom_harvest_batch_no": ["like", source_prefix + "%"],
                     },
                     fields=["name", "custom_harvest_batch_no", "custom_stem_length",
-                            "custom_farm", "custom_pending_reshelving"],
+                            "farm", "custom_pending_reshelving"],
                     order_by="creation desc",
                     limit=1,
                 )
@@ -5395,7 +5520,7 @@ def moveBunch():
                         if sh:
                             source_farm = sh[0].get("farm") or ""
                     if not source_farm:
-                        source_farm = grading.get("custom_farm") or ""
+                        source_farm = grading.get("farm") or ""
 
                     # Bunch size in stems — from Grading SE detail rows
                     bunch_size_stems = 10
@@ -5627,7 +5752,7 @@ def releaseFromQuarantine():
     bucket_id_upper = bucket_id.strip().upper()
 
     CONTINUITY_FIELDS = [
-        "custom_farm", "custom_location", "custom_business_unit",
+        "farm", "custom_location", "custom_business_unit",
         "custom_greenhouse", "custom_harvester", "custom_stem_length",
         "custom_graded_by", "biometric_verified",
     ]
@@ -5680,7 +5805,7 @@ def releaseFromQuarantine():
                sei.s_warehouse, sei.t_warehouse,
                sei.cost_center, sei.basic_rate,
                se.company, se.custom_receiving_batch_id,
-               se.custom_farm, se.custom_location, se.custom_business_unit,
+               se.farm, se.custom_location, se.custom_business_unit,
                se.custom_greenhouse, se.custom_harvester, se.custom_stem_length,
                se.custom_graded_by, se.biometric_verified,
                se.creation
@@ -5747,7 +5872,7 @@ def releaseFromQuarantine():
     # before it got quarantined). If that's somehow unavailable, fall back to the
     # bucket's own farm coldstore using the standard "{Farm} Receiving Cold Store -
     # {abbr}" naming — not a warehouse hardcoded to one specific farm/company.
-    entry_farm = entry.custom_farm or ""
+    entry_farm = entry.farm or ""
     entry_abbr = frappe.db.get_value("Company", entry.company, "abbr") if entry.company else None
     coldroom_wh = original_wh
     if not coldroom_wh and entry_farm and entry_abbr:
@@ -5915,12 +6040,12 @@ def replaceBucket():
                         old_harvest_rows = frappe.get_all(
                             "Stock Entry",
                             filters={"custom_bucket_id": bucket_id, "stock_entry_type": "Harvesting"},
-                            fields=["custom_farm"],
+                            fields=["farm"],
                             order_by="posting_date desc, posting_time desc, creation desc",
                             limit=1,
                         )
                         if old_harvest_rows:
-                            farm = old_harvest_rows[0].get("custom_farm") or ""
+                            farm = old_harvest_rows[0].get("farm") or ""
 
                     if not variety or not stem_length or not farm:
                         frappe.response["http_status_code"] = 400
@@ -6948,7 +7073,7 @@ def savePackhouseQC():
                     "items": [se_item]
                 }
                 if farm and frappe.db.exists("Farm", farm):
-                    se_doc["custom_farm"] = farm
+                    se_doc["farm"] = farm
                 if se_greenhouse_warehouse and frappe.db.exists("Warehouse", se_greenhouse_warehouse):
                     se_doc["custom_greenhouse"] = se_greenhouse_warehouse
 
@@ -6997,7 +7122,7 @@ def savePackhouseQC():
                         "items": [r_item]
                     }
                     if farm and frappe.db.exists("Farm", farm):
-                        r_doc["custom_farm"] = farm
+                        r_doc["farm"] = farm
                     r_se = frappe.get_doc(r_doc)
                     r_se.insert(ignore_permissions=True)
                     r_se.submit()
@@ -7571,7 +7696,7 @@ def _submit_batch_quality_impl():
             if not greenhouse:
                 greenhouse = receiving_doc.custom_greenhouse or ""
             if not bucket_farm:
-                bucket_farm = receiving_doc.custom_farm or farm
+                bucket_farm = receiving_doc.farm or farm
 
         # Without a variety there is nothing to report on.
         if not item_code:
@@ -7652,10 +7777,9 @@ def _submit_batch_quality_impl():
                         }]
                     }
                     continuity_fields = [
-                        "custom_farm", "custom_location", "custom_business_unit",
-                        "custom_employee", "custom_employee_name", "custom_greenhouse",
-                        "custom_harvester", "custom_stem_length", "custom_graded_by",
-                        "custom_grader_payroll_number", "custom_biometric_verified",
+                        "farm", "custom_location", "custom_business_unit",
+                        "custom_greenhouse", "custom_harvester", "custom_stem_length",
+                        "custom_graded_by", "biometric_verified",
                     ]
                     for field in continuity_fields:
                         if receiving_doc.get(field):
@@ -8281,7 +8405,7 @@ def getVaselifeBucket():
         else:
             entry = frappe.db.sql("""
                 SELECT posting_date, posting_time,
-                       custom_farm, custom_greenhouse, custom_stem_length
+                       farm, custom_greenhouse, custom_stem_length
                 FROM `tabStock Entry`
                 WHERE custom_bucket_id = %s
                   AND stock_entry_type = 'Harvesting'
@@ -8302,7 +8426,7 @@ def getVaselifeBucket():
                     "bucket_id": bucket_id,
                     "harvest_date": str(e.posting_date) if e.posting_date else "",
                     "harvest_time": extract_time_string(e.posting_time),
-                    "farm": e.custom_farm or "",
+                    "farm": e.farm or "",
                     "greenhouse": e.custom_greenhouse or "",
                     "length": str(e.custom_stem_length) if e.custom_stem_length else "",
                 }
@@ -8667,7 +8791,7 @@ def submitFieldRejects():
         "posting_date": frappe.utils.today(),
         "posting_time": frappe.utils.nowtime(),
         "company": "Karen Roses",
-        "custom_farm": farm,
+        "farm": farm,
         "items": [
             {
                 "s_warehouse": greenhouse,
@@ -8735,11 +8859,11 @@ def getColdroomBucket():
         # recent receiving for this bucket -- not aggregate its whole history (that
         # mixed farms and took the oldest date, exaggerating stock age).
         recv = frappe.db.sql("""
-            SELECT name, custom_farm AS farm, custom_greenhouse AS greenhouse,
+            SELECT name, farm, custom_greenhouse AS greenhouse,
                    custom_stem_length AS length, custom_location AS location,
-                   custom_harvest_batch_no AS harvest_batch, posting_date
+                   custom_receiving_batch_id AS harvest_batch, posting_date
             FROM `tabStock Entry`
-            WHERE LOWER(custom_received_bucket_id) = %s
+            WHERE LOWER(custom_bucket_id) = %s
               AND stock_entry_type IN ('Receiving', 'Late Receipt')
               AND docstatus = 1
             ORDER BY creation DESC
@@ -8757,8 +8881,11 @@ def getColdroomBucket():
                 w = w.rsplit(" - ", 1)[0]
             return w.strip()
 
+        # Stock Entry Detail has no stem-length column of its own — length is
+        # only ever recorded on the parent Stock Entry, so every variety row
+        # falls back to that header value.
         vrows = frappe.db.sql("""
-            SELECT item_code, item_name, SUM(qty) AS stems, MAX(custom_stem_length) AS length
+            SELECT item_code, item_name, SUM(qty) AS stems
             FROM `tabStock Entry Detail`
             WHERE parent = %s
             GROUP BY item_code, item_name
@@ -8775,7 +8902,7 @@ def getColdroomBucket():
                 "variety": code,
                 "item_name": r.get("item_name") or "",
                 "stems": int(r.get("stems") or 0),
-                "length": r.get("length") or header_length,
+                "length": header_length,
             })
 
         # Stock age = today - HARVEST date. Harvest date is embedded in the harvest
@@ -8936,10 +9063,10 @@ def saveColdroomQC():
                         "posting_date": frappe.utils.nowdate(),
                         "posting_time": frappe.utils.nowtime(),
                         "set_posting_time": 1,
-                        "custom_received_bucket_id": bl,
+                        "custom_bucket_id": bl,
                         "custom_harvest_batch_no": harvest_batch,
                         "custom_receiving_batch_id": recv_batch,
-                        "custom_farm": doc.farm,
+                        "farm": doc.farm,
                         "custom_greenhouse": gh_full,
                         "items": items,
                     })
@@ -8963,3 +9090,4 @@ def saveColdroomQC():
     except Exception as e:
         frappe.log_error(str(e), "saveColdroomQC Error")
         frappe.response["message"] = {"status": "error", "message": str(e)}
+
