@@ -5787,6 +5787,229 @@ def releaseFromQuarantine():
     frappe.response["rejects_warehouse"] = rejects_warehouse
 
 
+def _resolve_bucket_quarantine(bucket_id, batch_no, action, stems_to_release):
+    """Fully resolve ONE bucket out of quarantine in a single submit.
+
+    Mirrors releaseFromQuarantine's per-bucket logic, but raises ValueError on a
+    bad/empty bucket and does NOT commit, so the batch endpoint can process many
+    buckets and commit once. The whole bucket always leaves quarantine:
+        accept N -> Quarantine Accept(N) to storage + Quarantine Rejects(rest)
+        reject N -> Quarantine Rejects(N) to rejects WH + Quarantine Accept(rest)
+    """
+    ACCEPTED_STORAGE = "Kapkolia Receiving Storage - KR"
+    CONTINUITY_FIELDS = ["custom_greenhouse", "custom_harvester"]
+
+    bucket_id_lower = bucket_id.strip().lower()
+    bucket_id_upper = bucket_id.strip().upper()
+
+    def build_movement(stock_entry_type, purpose, s_warehouse, t_warehouse, qty, entry):
+        item = {
+            "item_code": entry.item_code or "",
+            "item_name": entry.item_name or "",
+            "qty": qty,
+            "transfer_qty": qty,
+            "uom": "Stems",
+            "stock_uom": "Stems",
+            "conversion_factor": 1.0,
+            "s_warehouse": s_warehouse,
+            "cost_center": entry.cost_center or "",
+            "basic_rate": entry.basic_rate or 0,
+            "basic_amount": qty * (entry.basic_rate or 0),
+            "allow_zero_valuation_rate": 1,
+        }
+        if t_warehouse:
+            item["t_warehouse"] = t_warehouse
+
+        se_data = {
+            "doctype": "Stock Entry",
+            "stock_entry_type": stock_entry_type,
+            "purpose": purpose,
+            "custom_bucket_id": bucket_id_lower,
+            "custom_harvest_batch_no": entry.custom_harvest_batch_no or "",
+            "custom_receiving_batch_id": batch_no,
+            "company": entry.company or "",
+            "posting_date": frappe.utils.nowdate(),
+            "posting_time": frappe.utils.nowtime(),
+            "set_posting_time": 1,
+            "items": [item],
+        }
+        for field in CONTINUITY_FIELDS:
+            if entry.get(field):
+                se_data[field] = entry.get(field)
+
+        se_doc = frappe.get_doc(se_data)
+        se_doc.flags.ignore_links = True
+        se_doc.insert(ignore_permissions=True)
+        se_doc.submit()
+        return se_doc
+
+    all_entries = frappe.db.sql("""
+        SELECT se.name, se.stock_entry_type,
+               sei.qty, sei.item_code, sei.item_name,
+               sei.s_warehouse, sei.t_warehouse,
+               sei.cost_center, sei.basic_rate,
+               se.company, se.custom_receiving_batch_id,
+               se.custom_greenhouse, se.custom_harvester,
+               se.creation
+        FROM `tabStock Entry` se
+        JOIN `tabStock Entry Detail` sei ON sei.parent = se.name
+        WHERE se.custom_bucket_id = %s
+            AND se.custom_receiving_batch_id = %s
+            AND se.docstatus = 1
+        ORDER BY se.creation DESC
+    """, (bucket_id_lower, batch_no), as_dict=1)
+
+    quarantine_entry = None
+    for e in all_entries:
+        t_wh = (e.t_warehouse or "").lower()
+        if "quarantine" in t_wh and e.custom_receiving_batch_id == batch_no:
+            quarantine_entry = e
+            break
+    if not quarantine_entry:
+        for e in all_entries:
+            if e.stock_entry_type in ("Receiving Quarantined", "Quarantine Transfer") and e.custom_receiving_batch_id == batch_no:
+                quarantine_entry = e
+                break
+    if not quarantine_entry:
+        raise ValueError("No quarantined entry found for bucket %s in batch %s" % (bucket_id_upper, batch_no))
+
+    entry = quarantine_entry
+    quarantine_wh = entry.t_warehouse or ""
+    original_wh = entry.s_warehouse or ""
+
+    net_row = frappe.db.sql("""
+        SELECT
+            SUM(CASE WHEN sei.t_warehouse LIKE '%%Quarantin%%' THEN sei.qty ELSE 0 END)
+          - SUM(CASE WHEN sei.s_warehouse LIKE '%%Quarantin%%' THEN sei.qty ELSE 0 END) AS net
+        FROM `tabStock Entry` se
+        JOIN `tabStock Entry Detail` sei ON sei.parent = se.name
+        WHERE se.custom_bucket_id = %s
+          AND se.custom_receiving_batch_id = %s
+          AND se.docstatus = 1
+    """, (bucket_id_lower, batch_no), as_dict=1)
+    available_stems = int(net_row[0].net) if (net_row and net_row[0].net is not None) else 0
+
+    if available_stems <= 0:
+        raise ValueError("Bucket %s (Batch: %s) has no stems remaining in quarantine." % (bucket_id_upper, batch_no))
+
+    stems_count = available_stems
+    if stems_to_release not in (None, ""):
+        stems_count = int(stems_to_release)
+
+    if stems_count > available_stems:
+        raise ValueError("Only %s stems available in quarantine for bucket %s (Batch: %s)" % (available_stems, bucket_id_upper, batch_no))
+
+    target_warehouse = original_wh if original_wh else ACCEPTED_STORAGE
+    rejects_warehouse = frappe.db.get_value(
+        "Warehouse",
+        {"company": entry.company, "disabled": 0, "warehouse_name": ["like", "%Reject%"]},
+        "name",
+    ) or "Rejects - KR"
+
+    if action == "accept":
+        accepted_qty = stems_count
+        rejected_qty = available_stems - stems_count
+    else:  # reject
+        rejected_qty = stems_count
+        accepted_qty = available_stems - stems_count
+
+    accepted_entry = None
+    rejected_entry = None
+    if rejected_qty > 0:
+        rejected_entry = build_movement("Quarantine Rejects", "Material Transfer", quarantine_wh, rejects_warehouse, rejected_qty, entry)
+    if accepted_qty > 0:
+        accepted_entry = build_movement("Quarantine Accept", "Material Transfer", quarantine_wh, target_warehouse, accepted_qty, entry)
+
+    stock_entries = [dd.name for dd in (accepted_entry, rejected_entry) if dd]
+    return {
+        "bucket_id": bucket_id_upper,
+        "accepted_stems": accepted_qty,
+        "rejected_stems": rejected_qty,
+        "stock_entries": stock_entries,
+        "target_warehouse": target_warehouse,
+        "rejects_warehouse": rejects_warehouse,
+        "remaining_in_quarantine": available_stems - accepted_qty - rejected_qty,
+    }
+
+
+@frappe.whitelist()
+def releaseBatchFromQuarantine():
+    """Resolve an ENTIRE quarantined batch in one submit.
+
+    Payload:
+      { "batch_no": "...",
+        "buckets": [
+            {"bucket_id": "...", "rejected_stems": N},   # accept the rest
+            {"bucket_id": "..."},                        # no issues -> accept all
+            ...
+        ] }
+
+    Per bucket the flagged `rejected_stems` go to Quarantine Rejects and everything
+    else in that bucket is accepted (Quarantine Accept); a bucket with no
+    `rejected_stems` (or 0) is fully accepted. No bucket is left partially in
+    quarantine. `action` + `stems_to_release` are still honoured if a caller sends
+    them instead. Each bucket is isolated with a savepoint, so one bad bucket is
+    reported in `errors` and never rolls back the others; a single commit persists
+    everything that succeeded.
+    """
+    data = frappe.request.get_json()
+    data = data.get("data", data)
+
+    batch_no = data.get("batch_no", "")
+    buckets = data.get("buckets", []) or []
+
+    if not batch_no:
+        frappe.throw("batch_no is required")
+    if not buckets:
+        frappe.throw("buckets is required")
+
+    results = []
+    errors = []
+    total_accepted = 0
+    total_rejected = 0
+
+    for i, b in enumerate(buckets):
+        bucket_id = (b.get("bucket_id") or "").strip()
+        if not bucket_id:
+            continue
+
+        # Preferred input: a per-bucket rejected count (rest is accepted).
+        # Falls back to an explicit action + stems_to_release if provided.
+        if b.get("rejected_stems") not in (None, ""):
+            action = "reject"
+            stems_to_release = int(b.get("rejected_stems"))
+        else:
+            action = b.get("action") or "accept"
+            if action not in ("accept", "reject"):
+                action = "accept"
+            stems_to_release = b.get("stems_to_release")
+
+        sp = "bkt_%d" % i
+        frappe.db.savepoint(sp)
+        try:
+            res = _resolve_bucket_quarantine(bucket_id, batch_no, action, stems_to_release)
+            total_accepted += res["accepted_stems"]
+            total_rejected += res["rejected_stems"]
+            results.append(res)
+        except Exception as e:
+            frappe.db.rollback(save_point=sp)
+            errors.append({"bucket_id": bucket_id.upper(), "error": str(e)})
+
+    frappe.db.commit()
+
+    frappe.response["status"] = "success" if results else "error"
+    frappe.response["message"] = "Batch %s: %d bucket(s) resolved (%d accepted, %d rejected)%s." % (
+        batch_no, len(results), total_accepted, total_rejected,
+        ("; %d failed" % len(errors)) if errors else "",
+    )
+    frappe.response["batch_no"] = batch_no
+    frappe.response["buckets_resolved"] = len(results)
+    frappe.response["total_accepted_stems"] = total_accepted
+    frappe.response["total_rejected_stems"] = total_rejected
+    frappe.response["results"] = results
+    frappe.response["errors"] = errors
+
+
 @frappe.whitelist()
 def replaceBucket():
     data = frappe.request.get_json()
