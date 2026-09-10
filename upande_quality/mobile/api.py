@@ -1009,38 +1009,60 @@ def createReceivingStockEntry():
             frappe.response["number_of_stems"] = str(total)
             return
 
-        # Every unreceived Harvesting entry accumulated for the CURRENT
-        # journey only -- NOT just last_stock_entry, but also NOT every
-        # historically-unclaimed entry either. Standard roses harvest once
-        # per cycle (the "already in use" guard on the harvest side prevents
-        # a second one), but Spray Roses grade straight in the field: each
-        # grading scan creates its OWN Harvesting entry for the same
-        # bucket_id, so several can legitimately pile up before the bucket
-        # is received. "Not yet linked to a receiving entry" alone isn't
-        # enough to bound that to just the current cycle, though -- a bucket
-        # can have an EARLIER, abandoned journey's entries sitting unclaimed
-        # too (never received, and the bucket has since moved on to a new
-        # journey -- those stems are simply gone, not still in the bucket).
-        # current_journey_start (set on the harvest that started THIS
-        # journey) is what actually draws that line.
+        # Latest only -- never guess a journey boundary by aggregating
+        # historical "unclaimed" entries. That invented aggregation (not
+        # something asked for) is what actually caused a real 2026-09-09
+        # incident: bucket "e36be6" had unclaimed Harvesting entries at FOUR
+        # different farms spanning six weeks (a bucket_id collision seeded
+        # by a migration/backfill run), and aggregating "every unclaimed
+        # entry" merged all of it into one Receiving entry.
+        #
+        # Standard roses harvest once per cycle (the "already in use" guard
+        # on the harvest side prevents a second one), so there's only ever
+        # one live entry to receive. Spray Roses grade straight in the
+        # field: several grading scans can legitimately pile up in ONE real
+        # session before the bucket is received, and current_journey_start
+        # (set on the harvest that started that session) is what bounds
+        # that -- but only when it's actually there. When it's not (a
+        # bucket whose journey started before this field existed, or any
+        # other gap), don't fall back to scanning history at all: take just
+        # the single latest Harvesting entry, exactly like the standards
+        # case, rather than merging whatever else happens to share this
+        # bucket_id text.
         all_harvests = frappe.get_all(
             "Stock Entry",
             filters={"custom_bucket_id": bucket_id, "stock_entry_type": "Harvesting", "docstatus": 1},
             fields=["name", "farm", "custom_greenhouse", "custom_harvester", "custom_stem_length",
                     "custom_cut_stage", "posting_date", "custom_receiving_entry", "creation"],
-            order_by="creation asc",
+            order_by="creation desc",
         )
-        unclaimed = [h for h in all_harvests if not h.get("custom_receiving_entry")]
+        if not all_harvests:
+            frappe.response["http_status_code"] = 404
+            frappe.response["message"] = "No stock entry found for bucket " + str(bucket_id)
+            frappe.response["status"] = "not_harvested"
+            blank_geo()
+            return
+
+        latest = all_harvests[0]
+        if latest.get("custom_receiving_entry"):
+            # The most recent harvest is already claimed -- nothing new to
+            # receive (a data-integrity gap if the bucket is still "In Use").
+            frappe.response["http_status_code"] = 404
+            frappe.response["message"] = "Bucket " + str(bucket_id) + " is marked In Use but has no unreceived harvest entries"
+            frappe.response["status"] = "not_harvested"
+            blank_geo()
+            return
 
         journey_start = bucket_qr_doc.current_journey_start
-        if journey_start:
-            start_creation = frappe.db.get_value("Stock Entry", journey_start, "creation")
-            if start_creation:
-                unclaimed = [h for h in unclaimed if h.get("creation") >= start_creation]
-        # else: no marker recorded (this bucket's current journey started
-        # before this field existed) -- fall back to every unclaimed entry,
-        # same as before. Not a deliberate design choice, just the honest
-        # state of pre-existing data.
+        start_creation = frappe.db.get_value("Stock Entry", journey_start, "creation") if journey_start else None
+        if start_creation:
+            unclaimed = [
+                h for h in all_harvests
+                if not h.get("custom_receiving_entry") and h.get("creation") >= start_creation
+            ]
+            unclaimed.reverse()  # oldest first, matching the rest of this function's expectations
+        else:
+            unclaimed = [latest]
 
         if not unclaimed:
             # Data-integrity gap (In Use with nothing unclaimed) -- surface it
@@ -1737,6 +1759,38 @@ def createShelvingEntry():
                                 }
                             }
                         else:
+                            # 3. Max shelving age (Production Settings) -- distinct
+                            # from the staleness check above: that one bounds days
+                            # since RECEIVING (fixed 40/50-day cap, meant for normal
+                            # operation); this one bounds days since HARVEST via a
+                            # configurable cap, introduced 2026-09-10 specifically to
+                            # keep pre-fix (contaminated) buckets off the shelf while
+                            # the 2026-09-09 journey/receiving fixes bed in. Blank or
+                            # 0 means no cap -- distinct reason/message so the two
+                            # checks are never confused with each other in the field.
+                            max_shelving_age = frappe.db.get_single_value("Production Settings", "max_shelving_age")
+                            harvest_age_days = (today_date - harvest_date).days
+
+                            if max_shelving_age and harvest_age_days > max_shelving_age:
+                                frappe.log_error("Max Shelving Age Validation Failed",
+                                                f"Bucket {bucket_id} harvested on {harvest_date} "
+                                                f"({harvest_age_days} days ago). "
+                                                f"Max shelving age: {max_shelving_age} day(s). Data: {data}")
+                                frappe.response["data"] = {
+                                    "status": "failed",
+                                    "reason": "harvest_too_old",
+                                    "message": f"Cannot shelf bucket — harvested on {harvest_date} "
+                                               f"({harvest_age_days} days ago), over the maximum shelving "
+                                               f"age of {max_shelving_age} day(s).",
+                                    "payload": {
+                                        "bucket_id": bucket_id,
+                                        "harvested_on": str(harvest_date),
+                                        "harvest_age_days": harvest_age_days,
+                                        "max_shelving_age": max_shelving_age
+                                    }
+                                }
+                                return
+
                             # ─────────────────────────────────────────────────────
                             # ALL CHECKS PASSED → proceed with shelving
                             # ─────────────────────────────────────────────────────

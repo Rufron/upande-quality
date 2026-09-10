@@ -10,6 +10,7 @@
   "sales_section",
   "amber_time",
   "discard_age",
+  "max_shelving_age",
   "column_break_segn",
   "section_break_rvm8",
   "shelf_locations",
@@ -26,6 +27,12 @@
    "fieldname": "discard_age",
    "fieldtype": "Float",
    "label": "Discard Age"
+  },
+  {
+   "description": "Shelving refuses a bucket whose harvest is older than this many days (checked against the Harvesting entry's posting_date, not the Receiving date). Leave blank or 0 for no cap. Introduced 2026-09-10 to keep pre-fix (contaminated) buckets from reaching the shelf while the journey/receiving fixes deployed 2026-09-09 bed in -- only harvests from 2026-09-09 onward are guaranteed clean.",
+   "fieldname": "max_shelving_age",
+   "fieldtype": "Int",
+   "label": "Max Shelving Age (Days)"
   },
   {
    "fieldname": "shelf_locations",
