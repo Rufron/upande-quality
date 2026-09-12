@@ -1565,15 +1565,30 @@ def createShelvingEntry():
     def check_and_submit_opl(bucket_id, result):
         """
         Check if OPL(s) referencing this bucket can now be submitted.
-        Submit only when no row is still in transit (in_transit = 1) or
-        awaiting transfer (awaiting_transfer = 1) - i.e. every transfer
-        bucket has been shelved at the sales farm. Local buckets carry neither flag.
+
+        Delegates entirely to upande_packhouse's single central readiness
+        check (sales_allocation._try_submit_opl_if_complete /
+        opl_submit_blockers) instead of a separate, weaker "are the transfer
+        rows shelved" loop that used to live here. That loop started
+        `all_ready = True` and only ever flipped it to False for rows already
+        flagged as a transfer -- an OPL with no transfer rows at all (or one
+        whose transfer rows just got shelved) would submit the instant this
+        ran, regardless of whether its required stems were actually fully
+        allocated yet, or whether a mixed-box/bunch OPL's sibling colour-lines
+        were still unallocated. The central helper checks stem coverage
+        (against the GLOBAL confirmed-stems total, not scoped to one farm)
+        and mix/bunch-group completeness in addition to transfer status, and
+        Order Pick List's own before_submit re-enforces the same rules as a
+        doctype-level backstop even if this call site were ever bypassed.
         """
         result["opl_submitted"] = []
 
         try:
             if not frappe.get_meta("Pick List Item").get_field("bucket"):
                 return
+
+            from upande_packhouse.upande_packhouse.page.sales_allocation.sales_allocation import _try_submit_opl_if_complete
+
             # Find OPL(s) that reference this bucket
             opl_rows = frappe.db.sql("""
                 SELECT DISTINCT parent
@@ -1583,44 +1598,22 @@ def createShelvingEntry():
 
             for row in opl_rows:
                 opl_name = row.parent
-                opl_doc = frappe.get_doc("Order Pick List", opl_name)
-
-                # Skip if already submitted
-                if opl_doc.docstatus == 1:
+                # Skip (don't re-report) an OPL that was already submitted
+                # before this bucket-shelve event -- _try_submit_opl_if_complete
+                # would still return True for it (idempotent), but only a
+                # freshly-submitted-just-now OPL belongs in this response.
+                if frappe.db.get_value("Order Pick List", opl_name, "docstatus") == 1:
+                    continue
+                if not _try_submit_opl_if_complete(opl_name):
                     continue
 
-                # Submit only when EVERY transfer bucket has been shelved at the sales farm.
-                # A row is "part of a transfer" if it carries ANY transfer flag: in
-                # transit (in_transit), awaiting transfer (awaiting_transfer),
-                # or saved to a trolley (loaded_in_trolley). Such a row blocks the
-                # submit ONLY while it is not yet shelved (shelved != 1) — once
-                # shelved it counts as done, no matter which stale transfer flags linger
-                # (the offline setOfflineTrolleyFlags path leaves awaiting_transfer=1).
-                # Local sales-shelf buckets carry no transfer flag, so they never block.
-                all_ready = True
-                for loc in opl_doc.table_ytkc:
-                    is_transfer = (
-                        loc.in_transit == 1
-                        or loc.awaiting_transfer == 1
-                        or (loc.loaded_in_trolley or 0) == 1
-                    )
-                    if is_transfer and (loc.shelved or 0) != 1:
-                        all_ready = False
-                        break
-
-                # Submit if all ready
-                if all_ready:
-                    opl_doc.flags.ignore_permissions = True
-                    opl_doc.submit()
-                    frappe.db.commit()
-
-                    result["opl_submitted"].append(opl_name)
-
-                    frappe.log_error(
-                        title="OPL Auto-Submitted",
-                        message=f"OPL {opl_name} auto-submitted after bucket {bucket_id} shelved. "
-                                f"All items now ready for packing."
-                    )
+                frappe.db.commit()
+                result["opl_submitted"].append(opl_name)
+                frappe.log_error(
+                    title="OPL Auto-Submitted",
+                    message=f"OPL {opl_name} auto-submitted after bucket {bucket_id} shelved. "
+                            f"All items now ready for packing."
+                )
 
         except Exception as e:
             frappe.log_error("OPL Auto-Submit Check Failed", str(e))
@@ -1855,6 +1848,41 @@ def createShelvingEntry():
                             shelf_doc = result.get("shelf_doc")
                             shelf_doc.farm = farm
 
+                            # A bucket can be RECEIVED at one farm's coldstore but
+                            # SHELVED at a different one (physically carried there --
+                            # e.g. a satellite farm's harvest consolidated onto
+                            # Kapkolia's sales shelf). The Shelf Item's warehouse must
+                            # reflect where the stock actually is NOW (this shelf's own
+                            # farm), or allocation keeps reading a warehouse the stems
+                            # have already left.
+                            #
+                            # Posts the ARRIVAL hop(s) of the real `SO Warehouse Mapping`
+                            # route (upande_packhouse.stock_movement) -- the same
+                            # ledger-aware, multi-hop engine allocation's
+                            # move_allocation_to_sold already uses for the terminal
+                            # (sale) hop. stock_movement.post_arrival stops BEFORE that
+                            # terminal hop (shelving is an arrival, not a sale) and is
+                            # safe to call every time: each leg is skipped once this
+                            # bucket's own ledger balance in that warehouse is zero, so
+                            # re-shelving-adjacent calls never double-move stock. This
+                            # replaces an earlier, simpler farm-keyed "Farm Transfer"
+                            # mechanism (roses_warehouse_map.transfer_to_farm_warehouse)
+                            # that overlapped with this engine instead of using it.
+                            from upande_packhouse import stock_movement
+                            business_unit = data.get("business_unit") or "Roses"
+                            warehouse_by_ri = {}
+                            for ri in receiving_doc.items:
+                                arrival = stock_movement.post_arrival(
+                                    bucket_id=bucket_id,
+                                    item_code=ri.item_code,
+                                    qty=ri.qty,
+                                    source_warehouse=ri.t_warehouse,
+                                    business_unit=business_unit,
+                                    farm=farm,
+                                    stem_length=stem_length,
+                                )
+                                warehouse_by_ri[ri.name] = arrival["warehouse"]
+
                             # Add bucket to shelf
                             total_qty = 0
                             for ri in receiving_doc.items:
@@ -1865,7 +1893,7 @@ def createShelvingEntry():
                                 new_item.stem_length = stem_length
                                 new_item.stem_qty = ri.qty
                                 new_item.greenhouse = ri.s_warehouse
-                                new_item.warehouse = ri.t_warehouse
+                                new_item.warehouse = warehouse_by_ri.get(ri.name, ri.t_warehouse)
                                 new_item.cut_stage = receiving_doc.custom_cut_stage
                                 new_item.harvest_date = harvest_date
                                 new_item.receiving_date = recv_date
