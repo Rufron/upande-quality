@@ -1,0 +1,215 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "Prompt",
+ "creation": "2026-09-14 09:08:57.140322",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sampling_date",
+  "consignment",
+  "col_b1",
+  "supermarket_date",
+  "du_date",
+  "vase_date",
+  "sec_flower",
+  "variety",
+  "breeder",
+  "col_b2",
+  "commercial_status",
+  "crop",
+  "sec_harvest",
+  "harvest_date",
+  "harvest_time",
+  "col_b3",
+  "line_code",
+  "farm",
+  "gh",
+  "sec_measurements",
+  "length",
+  "no_of_stems",
+  "col_b4",
+  "bud_height",
+  "bud_width",
+  "initial_cut_stage",
+  "sec_meta",
+  "prepared_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "sampling_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Sampling Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "consignment",
+   "fieldtype": "Data",
+   "label": "Consignment"
+  },
+  {
+   "fieldname": "col_b1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supermarket_date",
+   "fieldtype": "Date",
+   "label": "Supermarket Date"
+  },
+  {
+   "fieldname": "du_date",
+   "fieldtype": "Date",
+   "label": "Du Date"
+  },
+  {
+   "fieldname": "vase_date",
+   "fieldtype": "Date",
+   "label": "Vase Date"
+  },
+  {
+   "fieldname": "sec_flower",
+   "fieldtype": "Section Break",
+   "label": "Flower Details"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variety",
+   "reqd": 1
+  },
+  {
+   "fieldname": "breeder",
+   "fieldtype": "Data",
+   "label": "Breeder"
+  },
+  {
+   "fieldname": "col_b2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "commercial_status",
+   "fieldtype": "Select",
+   "label": "Commercial Status",
+   "options": "Trials\nSemi Commercial\nCommercial"
+  },
+  {
+   "fieldname": "crop",
+   "fieldtype": "Select",
+   "label": "Crop",
+   "options": "Rose\nSpray Rose"
+  },
+  {
+   "fieldname": "sec_harvest",
+   "fieldtype": "Section Break",
+   "label": "Harvest"
+  },
+  {
+   "fieldname": "harvest_date",
+   "fieldtype": "Date",
+   "label": "Harvest Date"
+  },
+  {
+   "fieldname": "harvest_time",
+   "fieldtype": "Time",
+   "label": "Harvest Time"
+  },
+  {
+   "fieldname": "col_b3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "line_code",
+   "fieldtype": "Data",
+   "label": "Line Code"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm"
+  },
+  {
+   "fieldname": "gh",
+   "fieldtype": "Data",
+   "label": "Greenhouse"
+  },
+  {
+   "fieldname": "sec_measurements",
+   "fieldtype": "Section Break",
+   "label": "Measurements"
+  },
+  {
+   "fieldname": "length",
+   "fieldtype": "Float",
+   "label": "Length (cm)"
+  },
+  {
+   "fieldname": "no_of_stems",
+   "fieldtype": "Int",
+   "label": "No. of Stems"
+  },
+  {
+   "fieldname": "col_b4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bud_height",
+   "fieldtype": "Float",
+   "label": "Bud Height (mm)"
+  },
+  {
+   "fieldname": "bud_width",
+   "fieldtype": "Float",
+   "label": "Bud Width (mm)"
+  },
+  {
+   "fieldname": "initial_cut_stage",
+   "fieldtype": "Select",
+   "label": "Initial Cut Stage",
+   "options": "1\n2\n3\n4\n5"
+  },
+  {
+   "fieldname": "sec_meta",
+   "fieldtype": "Section Break",
+   "label": "Meta"
+  },
+  {
+   "fieldname": "prepared_by",
+   "fieldtype": "Data",
+   "label": "Prepared By"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-14 14:23:34.998318",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Vaselife Sample",
+ "naming_rule": "Set by user",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

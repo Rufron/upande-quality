@@ -1,7 +1,7 @@
 {
  "actions": [],
- "allow_import": 1,
- "creation": "2026-09-01 22:08:50.102788",
+ "autoname": "hash",
+ "creation": "2026-08-18 22:03:44.573666",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -23,32 +23,31 @@
   "control_action",
   "variety",
   "quarantined_stems",
-  "custom_stems_accepted",
-  "custom_stems_rejected",
-  "custom_stems_affected",
+  "stems_accepted",
+  "stems_rejected",
+  "stems_affected",
   "unit_manager",
-  "custom_corrective_action_report",
-  "custom_remarks",
+  "corrective_action_report",
   "amended_from",
   "section_packhouse",
-  "custom_inspection_type",
-  "custom_inspection_mode",
-  "custom_order_pick_list",
-  "custom_box_label",
+  "inspection_type",
+  "inspection_mode",
+  "order_pick_list",
+  "box_label",
   "item_group",
-  "custom_specification",
+  "specification",
   "column_break_2",
-  "custom_customer",
-  "custom_team",
-  "custom_control_area",
-  "custom_length",
+  "customer",
+  "team",
+  "control_area",
+  "length",
   "packhouse_information",
-  "custom_total_bunches",
-  "custom_bunches_sampled",
-  "custom_bunches_affected",
-  "custom_boxes_checked",
-  "custom_boxes_staged",
-  "custom_boxes_quarantined",
+  "bunches_allocated",
+  "bunches_sampled",
+  "bunches_affected",
+  "boxes_checked",
+  "boxes_staged",
+  "boxes_quarantined",
   "section_qparams",
   "quality_parameters"
  ],
@@ -168,8 +167,9 @@
   {
    "depends_on": "eval:doc.control_point=='Packhouse'",
    "fieldname": "item_group",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "label": "Item Group",
+   "options": "Item Group",
    "read_only": 1
   },
   {
@@ -180,10 +180,11 @@
   },
   {
    "depends_on": "eval:doc.control_point=='Intake'",
+   "description": "The farm's unit manager (Employee, Designation \"Section Head\") at time of intake.",
    "fieldname": "unit_manager",
    "fieldtype": "Link",
    "label": "Unit Manager",
-   "options": "User"
+   "options": "Employee"
   },
   {
    "fieldname": "amended_from",
@@ -207,105 +208,6 @@
    "options": "Quality Parameter"
   },
   {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_inspection_type",
-   "fieldtype": "Data",
-   "label": "Inspection Type"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_inspection_mode",
-   "fieldtype": "Data",
-   "label": "Inspection Mode"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_order_pick_list",
-   "fieldtype": "Data",
-   "label": "Order Pick List"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "custom_box_label",
-   "fieldtype": "Data",
-   "label": "Box Label"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_customer",
-   "fieldtype": "Data",
-   "label": "Customer"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_team",
-   "fieldtype": "Data",
-   "label": "Team"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_control_area",
-   "fieldtype": "Data",
-   "label": "Control Area"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_length",
-   "fieldtype": "Data",
-   "label": "Stem Length"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "custom_specification",
-   "fieldtype": "Data",
-   "label": "Specification"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "custom_boxes_checked",
-   "fieldtype": "Int",
-   "label": "Boxes Checked"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "custom_boxes_staged",
-   "fieldtype": "Int",
-   "label": "Boxes Staged"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "custom_boxes_quarantined",
-   "fieldtype": "Int",
-   "label": "Boxes Quarantined"
-  },
-  {
-   "fieldname": "custom_stems_accepted",
-   "fieldtype": "Int",
-   "label": "Stems Accepted"
-  },
-  {
-   "fieldname": "custom_stems_rejected",
-   "fieldtype": "Int",
-   "label": "Stems Rejected"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Reject Recorder\"",
-   "fieldname": "custom_stems_affected",
-   "fieldtype": "Int",
-   "label": "Stems Affected"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
-   "fieldname": "custom_bunches_affected",
-   "fieldtype": "Int",
-   "label": "Bunches Affected"
-  },
-  {
-   "fieldname": "custom_corrective_action_report",
-   "fieldtype": "Data",
-   "label": "Corrective Action Report"
-  },
-  {
    "fieldname": "section_packhouse",
    "fieldtype": "Section Break",
    "label": "Packhouse"
@@ -316,33 +218,139 @@
   },
   {
    "fieldname": "packhouse_information",
-   "fieldtype": "Section Break",
-   "label": "Packhouse Information"
+   "fieldtype": "Section Break"
   },
   {
-   "fieldname": "custom_remarks",
-   "fieldtype": "Small Text",
-   "label": "Remarks"
+   "fieldname": "stems_accepted",
+   "fieldtype": "Int",
+   "label": "Stems Accepted"
+  },
+  {
+   "fieldname": "stems_rejected",
+   "fieldtype": "Int",
+   "label": "Stems Rejected"
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Reject Recorder\"",
+   "fieldname": "stems_affected",
+   "fieldtype": "Int",
+   "label": "Stems Affected"
+  },
+  {
+   "depends_on": "eval:doc.control_action==\"Quarantined\" || doc.control_action==\"Rejected\"",
+   "fieldname": "corrective_action_report",
+   "fieldtype": "Link",
+   "label": "Corrective Action Report",
+   "options": "Corrective Action Report"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "inspection_type",
+   "fieldtype": "Data",
+   "label": "Inspection Type"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "inspection_mode",
+   "fieldtype": "Data",
+   "label": "Inspection Mode"
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
+   "fieldname": "box_label",
+   "fieldtype": "Link",
+   "label": "Box Label",
+   "options": "Box Label"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "specification",
+   "fieldtype": "Link",
+   "label": "Specification",
+   "options": "Specifications"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "team",
+   "fieldtype": "Link",
+   "label": "Team",
+   "options": "Packing Teams"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "control_area",
+   "fieldtype": "Data",
+   "label": "Control Area"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse' & 'Intake'",
+   "fieldname": "length",
+   "fieldtype": "Link",
+   "label": "Stem Length",
+   "options": "Stem Length"
   },
   {
    "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
-   "fieldname": "custom_bunches_sampled",
+   "description": "Total bunches in the linked Order Pick List.",
+   "fieldname": "bunches_allocated",
    "fieldtype": "Int",
-   "label": "Bunches Sampled"
+   "label": "Bunches Allocated",
+   "non_negative": 1,
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
-   "fieldname": "custom_total_bunches",
+   "fieldname": "bunches_sampled",
    "fieldtype": "Int",
-   "label": "Total Bunches"
+   "label": "Bunches Sampled",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
+   "fieldname": "bunches_affected",
+   "fieldtype": "Int",
+   "label": "Bunches Affected"
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
+   "fieldname": "boxes_checked",
+   "fieldtype": "Int",
+   "label": "Boxes Checked"
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
+   "fieldname": "boxes_staged",
+   "fieldtype": "Int",
+   "label": "Boxes Staged"
+  },
+  {
+   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
+   "fieldname": "boxes_quarantined",
+   "fieldtype": "Int",
+   "label": "Boxes Quarantined"
+  },
+  {
+   "depends_on": "eval:doc.control_point=='Packhouse'",
+   "fieldname": "order_pick_list",
+   "fieldtype": "Link",
+   "label": "Order Pick List",
+   "options": "Order Pick List"
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-04 13:16:28.224483",
+ "modified": "2026-09-14 19:15:08.394704",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Quality Reporting",
+ "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [
   {

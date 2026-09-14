@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intake FTR Overview | Quality Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+:root{
+  /* SCP design tokens (scp_app) mapped onto existing variable names */
+  --bg:#f5f7fa;--bg-card:#ffffff;--bg-hover:#eef2f7;--bg-muted:#eef2f7;
+  --border:#e5e7eb;--border-2:#d1d5db;
+  --text:#1f2937;--text-2:#4b5563;--text-3:#6b7280;--text-4:#9ca3af;
+  --accent:#1f2937;
+  --good:#5bb45d;--warn:#f59e0b;--bad:#e63946;--plan:#d1d5db;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:0 4px 12px rgba(0,0,0,.08);
+  --f:'Poppins','Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
+  /* SCP chart palette */
+  --c-cyan:#2ba6e0;--c-pink:#e66baa;--c-purple:#8466c7;--c-amber:#e9a23b;--c-green:#5bb45d;--c-indigo:#3d54b0;--c-red:#e63946;
+}
+/* Take dashboard out of Frappe layout entirely — fill viewport */
+html,body{margin:0!important;padding:0!important;overflow:hidden!important;height:100vh!important}
+.navbar,header,.page-breadcrumbs,.page-header,.page-header-wrapper,.web-footer,footer,
+.website-edit-button,.btn-edit-page,.edit-page-btn,.scroll-to-top,.back-to-top,
+.website-banner,.call-to-action,.frappe-chat,#frappe-chat,.telegram-share,.share-buttons,
+.web-page-edit,.published-edit{display:none!important}
+.aph *{box-sizing:border-box;margin:0;padding:0}
+.aph{position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;z-index:2147483000;
+  font-family:var(--f);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:grid;grid-template-columns:240px 1fr;font-feature-settings:'cv11','ss01','ss03'}
+
+.aph svg.ic{width:16px;height:16px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.aph .aph-side svg.ic{width:15px;height:15px;stroke-width:1.6;color:var(--text-3)}
+.aph .aph-side .nav-item.active svg.ic{color:#fff}
+.aph .aph-kpi svg.ic{width:18px;height:18px;color:var(--text-3);stroke-width:1.5}
+
+/* SIDEBAR */
+.aph-side{background:var(--bg-card);border-right:1px solid var(--border);height:100vh;position:sticky;top:0;display:flex;flex-direction:column;overflow:hidden}
+.aph-side .brand{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.aph-side .brand .mark{width:36px;height:36px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;letter-spacing:-0.02em;border-radius:7px}
+.aph-side .brand .name{font-weight:600;font-size:14px;line-height:1.15;letter-spacing:-0.015em}
+.aph-side .brand .name small{display:block;font-size:11px;color:var(--text-3);font-weight:400;margin-top:2px}
+/* Note: "nav" collides with Bootstrap's .nav (flex-wrap:wrap) loaded by Frappe —
+   force nowrap + column here or items wrap into a phantom second column */
+.aph-side .nav{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 0 16px;margin:0;list-style:none;display:flex;flex-direction:column;flex-wrap:nowrap!important}
+.aph-side .group-lbl{padding:14px 20px 4px;font-size:10px;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase;font-weight:600;display:block}
+.aph-side .group-lbl:first-child{padding-top:10px}
+.aph-side .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text-2);font-weight:500;user-select:none;transition:background .12s ease,color .12s ease;margin:1px 8px;border-radius:6px;box-sizing:border-box;text-decoration:none}
+.aph-side .nav-item:hover{background:var(--bg-hover);color:var(--text);text-decoration:none}
+.aph-side .nav-item.active{background:var(--accent);color:#fff;font-weight:500}
+.aph-side .nav-item .badge{margin-left:auto;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text-2);background:var(--bg-muted);padding:1px 7px;border-radius:9px;line-height:1.4}
+.aph-side .nav-item.active .badge{color:#fff;background:rgba(255,255,255,.18)}
+.aph-side .nav-item.stub{color:var(--text-3)}
+.aph-side .nav-item.stub svg.ic{opacity:.55}
+.aph-side .footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-2)}
+.aph-side .footer .av{width:24px;height:24px;border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:10px;color:var(--text)}
+.aph-side .footer .who{flex:1;line-height:1.2;overflow:hidden}
+.aph-side .footer .who .nm{font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aph-side .footer .who .em{font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aph-side .home-link{display:flex;align-items:center;gap:11px;margin:8px 8px 0;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:500;color:var(--text-2);text-decoration:none;transition:background .12s ease,color .12s ease}
+.aph-side .home-link:hover{background:var(--bg-hover);color:var(--text);text-decoration:none}
+.aph-side .home-link svg.ic{width:15px;height:15px;stroke-width:1.6;color:var(--text-3)}
+
+/* MAIN */
+.aph-main{min-width:0;height:100vh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.aph-content{flex:1}
+.aph-topbar{background:rgba(255,255,255,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10}
+.aph-topbar h1{font-size:18px;font-weight:600;letter-spacing:-0.02em}
+.aph-topbar .crumb{color:var(--text-3);font-size:11px;font-weight:500;padding-left:14px;border-left:1px solid var(--border);height:18px;line-height:18px;letter-spacing:.02em}
+.aph-topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+/* date-pill moved to aph-filter-bar .date-block */
+.aph-topbar .presets{display:flex;border:1px solid var(--border-2);border-radius:7px;overflow:hidden;height:32px}
+.aph-topbar .presets .p{padding:0 12px;font-size:11px;font-weight:500;cursor:pointer;color:var(--text-2);background:var(--bg-card);border-right:1px solid var(--border);display:flex;align-items:center}
+.aph-topbar .presets .p:last-child{border-right:0}
+.aph-topbar .presets .p:hover{background:var(--bg-hover);color:var(--text)}
+.aph-topbar .presets .p.active{background:var(--accent);color:#fff}
+.aph-topbar .btn{padding:0 14px;height:32px;border:1px solid var(--border-2);background:var(--bg-card);color:var(--text);border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--f);display:flex;align-items:center;gap:6px}
+.aph-topbar .btn:hover{background:var(--bg-hover)}
+.aph-topbar .btn svg{width:14px;height:14px}
+
+.aph-content{padding:28px}
+.aph-page-hd{margin-bottom:24px}
+.aph-page-hd .ttl{font-size:24px;font-weight:600;letter-spacing:-0.025em;line-height:1.15}
+.aph-page-hd .sub{font-size:13px;color:var(--text-2);margin-top:4px}
+
+.aph-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:28px}
+.aph-kpi{background:var(--bg-card);border:1px solid var(--border);padding:20px 22px;border-radius:12px;position:relative;min-height:118px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--shadow-sm);transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.aph-kpi:hover{border-color:var(--border-2);box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.aph-kpi .ic-wrap{position:absolute;top:18px;right:20px;width:30px;height:30px;border-radius:7px;background:var(--bg-muted);display:flex;align-items:center;justify-content:center}
+.aph-kpi .lbl{font-size:11px;color:var(--text-2);letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+.aph-kpi .v{font-size:32px;font-weight:600;letter-spacing:-0.035em;font-feature-settings:'tnum';margin-top:10px;line-height:1}
+.aph-kpi .sub{font-size:11px;color:var(--text-3);margin-top:8px;font-weight:500}
+.aph-kpi .sub strong{color:var(--text-2);font-weight:600}
+
+.aph-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;width:100%;box-sizing:border-box}
+/* full-width rows — !important so no theme/global CSS can shrink them */
+.aph-grid.col-1{display:grid!important;grid-template-columns:1fr!important;width:100%!important;max-width:none!important}
+.aph-grid.col-1 > .aph-card{width:100%!important;max-width:none!important;box-sizing:border-box}
+.aph-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-sizing:border-box;width:100%;min-width:0;box-shadow:var(--shadow-sm)}
+.aph-card-hd{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.aph-card-hd .ttl{font-weight:600;font-size:14px;letter-spacing:-0.01em;white-space:nowrap}
+.aph-card-hd .sub{color:var(--text-3);font-size:11px;font-weight:500}
+.aph-card-body{padding:18px 22px}
+.aph-card-body.padless{padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+table.aph-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.aph-tbl th{text-align:left;padding:11px 16px;background:var(--bg-card);font-size:11px;color:var(--text-3);letter-spacing:.04em;text-transform:uppercase;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+.aph-tbl td{padding:11px 16px;border-bottom:1px solid var(--border);font-feature-settings:'tnum';white-space:nowrap}
+.aph-tbl tr:last-child td{border-bottom:0}
+.aph-tbl tr:hover td{background:var(--bg-hover)}
+.aph-tbl td.num,.aph-tbl th.num{text-align:right}
+.aph-tbl td.mono{font-family:var(--mono);font-size:12px;color:var(--text-2)}
+.aph-tbl td.dim{color:var(--text-3)}
+.aph-tbl td.strong{font-weight:600}
+
+.aph-empty{padding:40px;text-align:center;color:var(--text-3);font-size:13px}
+.aph-loading{padding:60px;text-align:center;color:var(--text-3);font-size:12px}
+.aph-err{background:var(--text);color:#fff;padding:12px 16px;border-radius:7px;font-size:12px;margin:14px 28px;font-family:var(--mono)}
+.aph-stub{padding:56px 28px;text-align:center;background:var(--bg-card);border:1px dashed var(--border-2);border-radius:10px}
+.aph-stub .ttl{font-size:16px;font-weight:600;margin-bottom:6px}
+.aph-stub .sub{font-size:13px;color:var(--text-2)}
+
+.aph-bar-row{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--border)}
+.aph-bar-row:last-child{border-bottom:0}
+.aph-bar-row .lbl{width:54px;font-size:13px;font-weight:600}
+.aph-bar-row .bar{flex:1;height:8px;background:var(--bg-muted);border-radius:4px;overflow:hidden}
+.aph-bar-row .bar .fill{height:100%;background:var(--text);border-radius:4px}
+.aph-bar-row .val{width:170px;text-align:right;font-size:12px;color:var(--text-2);font-feature-settings:'tnum'}
+
+.aph-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:10px;font-size:11px;background:var(--bg-muted);color:var(--text);font-weight:500;line-height:1.5}
+
+/* Chart wrappers: the scroll container always spans the full card; the inner
+   div's width is set in px by JS = max(available width, minimum), so the chart
+   always fills the page on wide screens and scrolls sideways on narrow ones */
+.aph-chart-scroll{display:block;width:100%!important;max-width:none!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 16px;box-sizing:border-box}
+.aph-chart-inner{position:relative;width:100%}
+
+/* Wide table scroll wrapper (proforma / non-export invoice ledgers) */
+.aph-tbl-scroll{display:block;width:100%!important;max-width:none!important;overflow-x:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
+
+/* ── Narrow screens / mobile ─────────────────────────────────────────── */
+@media (max-width: 900px){
+  html,body{overflow:auto!important}
+  .aph{display:flex;flex-direction:column;position:fixed}
+  /* sidebar becomes a compact top bar with a horizontally scrolling nav */
+  .aph-side{width:100%;height:auto;position:relative;flex:0 0 auto;border-right:0;border-bottom:1px solid var(--border);overflow:visible}
+  .aph-side .brand{padding:10px 16px;border-bottom:0}
+  .aph-side .home-link{margin:0 8px 8px;width:max-content}
+  .aph-side .nav{flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;padding:0 8px 8px;-webkit-overflow-scrolling:touch}
+  .aph-side .group-lbl{display:none}
+  .aph-side .nav-item{flex:0 0 auto;margin:0 2px;white-space:nowrap;padding:7px 12px}
+  .aph-side .footer{display:none}
+  .aph-main{flex:1 1 auto;height:auto;min-height:0}
+  .aph-topbar{position:static;flex-wrap:wrap;gap:8px;padding:10px 14px}
+  .aph-topbar .crumb{display:none}
+  .aph-topbar .right{margin-left:0;width:100%;flex-wrap:wrap}
+  .aph-content{padding:14px}
+  .aph-err{margin:14px}
+  /* everything single-column */
+  .aph-grid{grid-template-columns:1fr}
+  .aph-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .aph-kpi{min-height:100px;padding:16px 18px}
+  .aph-kpi .v{font-size:26px}
+  .aph-page-hd .ttl{font-size:20px}
+}
+</style>
+
+<!-- ════════ Page-specific tweaks (appended; reference tokens above are untouched) ════════ -->
+<style>
+/* ── Dedicated filter bar below topbar ── */
+.aph-filter-bar{background:rgba(255,255,255,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;position:sticky;top:57px;z-index:9}
+.aph-filter-bar{width:100%}
+.aph-filter-bar .fb-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;width:100%;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+/* let the filter groups shrink to share the row instead of overflowing */
+.aph-filter-bar .fb-row .filter-group{flex:1 1 0;min-width:0}
+.aph-filter-bar .fb-row .fb-sep,.aph-filter-bar .fb-row .date-block{flex-shrink:0}
+.aph .filter-group .ms{min-width:0;width:100%}
+.aph-filter-bar .fb-sep{width:1px;height:22px;background:var(--border-2);flex-shrink:0;margin:0 4px}
+/* ── Date range block ── */
+.aph-filter-bar .date-block{display:flex;align-items:center;background:var(--bg-card);border:1px solid var(--border-2);border-radius:7px;height:32px;overflow:hidden}
+.aph-filter-bar .date-block .dl{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;padding:0 9px;border-right:1px solid var(--border);height:100%;display:flex;align-items:center;background:var(--bg-muted);white-space:nowrap}
+.aph-filter-bar .date-block input{border:0;padding:0 6px;font-size:12px;font-family:var(--f);font-feature-settings:'tnum';background:transparent;outline:0;width:100px;font-weight:500;color:var(--text);height:100%}
+.aph-filter-bar .date-block .dsep{padding:0 4px;color:var(--text-3);font-size:12px;pointer-events:none}
+.aph-filter-bar .date-block .dclr{padding:0 10px;font-size:12px;color:var(--text-3);cursor:pointer;border-left:1px solid var(--border);height:100%;display:flex;align-items:center;background:none;border-top:0;border-right:0;border-bottom:0;font-family:var(--f);line-height:1}
+.aph-filter-bar .date-block .dclr:hover{color:var(--text);background:var(--bg-hover)}
+/* ── Filter groups ── */
+.aph .filter-group{display:flex;align-items:center;gap:5px;background:var(--bg-card);padding:0 8px;border-radius:7px;border:1px solid var(--border-2);height:32px}
+.aph .filter-label{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.aph .form-control{height:28px;padding:0 6px;font-size:12px;font-family:var(--f);font-feature-settings:'tnum';background:transparent;border:none;color:var(--text);min-width:78px;outline:0;font-weight:500}
+.aph select.form-control{cursor:pointer}
+.aph .live-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--text);background:var(--bg-card);
+  border:1px solid var(--border-2);border-radius:7px;padding:0 14px;height:32px;cursor:pointer;font-family:var(--f);transition:background .12s ease}
+.aph .live-badge:hover{background:var(--bg-hover)}
+
+/* ── Active-filter badges (rendered into the page header sub area) ── */
+.aph .active-filter-badge{background:var(--bg-muted);color:var(--text);padding:3px 9px;border-radius:10px;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:5px;line-height:1.5}
+.aph .clear-badge{cursor:pointer;font-size:11px;opacity:.6}
+.aph .clear-badge:hover{opacity:1}
+
+/* ── Chart wrappers inside aph-card bodies ── */
+.aph .chart-scroll{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}
+.aph .chart-scroll canvas{min-width:600px}
+.aph .chart-box{position:relative;height:300px}
+.aph 
+.aph .chart-box.tall{min-height:360px}
+.aph 
+
+/* ── FTR farm table (kept as aph-tbl, scrolling body) ── */
+.aph .ftr-scroll{max-height:360px;overflow:auto}
+.aph .ftr-bar{display:inline-block;height:6px;border-radius:3px;background:var(--accent-teal,#2d9ea0);min-width:2px;vertical-align:middle;margin-left:8px}
+.aph .ftr-low{background:var(--bad)}
+.aph .ftr-medium{background:var(--warn)}
+.aph .ftr-high{background:var(--good)}
+.aph .totals-row td{font-weight:600}
+
+/* ── Loading / error / empty states (render output) ── */
+.aph .loading-state{text-align:center;padding:40px 20px;color:var(--text-3)}
+.aph .spinner{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--text);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.aph .error-state{background:#fde8ec;color:var(--bad);padding:12px 16px;border-radius:8px;border-left:3px solid var(--bad);font-size:11px}
+.aph .empty-state{text-align:center;padding:30px 20px;color:var(--text-2);font-size:11px}
+
+/* ── shared multiselect (farm etc.) ── */
+.aph .ms{position:relative;display:inline-block;min-width:118px;font-size:12px;vertical-align:middle}
+.aph .ms-control{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:28px;padding:2px 22px 2px 4px;border:none;border-radius:5px;background:transparent;cursor:pointer;position:relative}
+.aph .ms-control:after{content:"\25BE";position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:10px;pointer-events:none}
+.aph .ms-ph{color:var(--text-3)}
+.aph .ms-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;line-height:1.6;max-width:120px}
+.aph .ms-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aph .ms-chip b{cursor:pointer;font-weight:700;opacity:.85}
+.aph .ms-chip b:hover{opacity:1}
+.aph .ms-count{background:var(--bg-muted);color:var(--text);border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600}
+.aph .ms-panel{position:absolute;z-index:200;top:calc(100% + 6px);left:0;min-width:210px;background:var(--bg-card);border:1px solid var(--border-2);border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.16);display:none;flex-direction:column;max-height:300px}
+.aph .ms.open .ms-panel{display:flex}
+.aph .ms-search{margin:7px;padding:5px 8px;border:1px solid var(--border-2);border-radius:5px;font-size:12px;outline:none;font-family:var(--f)}
+.aph .ms-actions{display:flex;gap:12px;padding:0 10px 6px;border-bottom:1px solid var(--border)}
+.aph .ms-actions a{color:var(--text-2);cursor:pointer;font-size:11px;font-weight:500}
+.aph .ms-actions a:hover{color:var(--text)}
+.aph .ms-list{overflow-y:auto;padding:4px 0}
+.aph .ms-opt{display:flex;align-items:center;gap:7px;padding:5px 11px;cursor:pointer}
+.aph .ms-opt:hover{background:var(--bg-hover)}
+.aph .ms-opt input{margin:0;cursor:pointer}
+.aph .ms-opt.hidden{display:none}
+.aph .ms-empty{padding:9px 11px;color:var(--text-3)}
+/* ── Period control: Year + Week side-by-side in one panel ── */
+.aph .ms-panel.ms-period{flex-direction:row;min-width:260px}
+.aph .ms-period .ms-col{display:flex;flex-direction:column;flex:1 1 0;min-width:110px}
+.aph .ms-period .ms-col + .ms-col{border-left:1px solid var(--border)}
+.aph .ms-period .ms-col-hd{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;padding:8px 11px 2px}
+.aph .ms-period .ms-actions{border-bottom:1px solid var(--border)}
+.aph .ms-period .ms-list{max-height:230px}
+@media(max-width:900px){
+  .aph-filter-bar{top:0;position:static;padding:10px 14px}
+  .aph-filter-bar .fb-sep{display:none}
+  .aph-filter-bar .fb-row{flex-wrap:wrap}
+  .aph .filter-group{height:auto;min-height:32px}
+  .aph-filter-bar .date-block input{width:100px}
+}
+</style>
+
+<style>
+/* Upande UFD overlay :: coffee topbar layout (real topbar, sidebar removed) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600&display=swap');
+:root{
+  --bg:#f4f3ef;--bg-card:#fafaf6;--bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.07);--border-2:rgba(10,10,10,0.13);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --signal:#228883;--f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+/* kill the grid + sidebar; single column with our topbar on top */
+.aph{background:#f4f3ef!important;display:block!important;grid-template-columns:none!important;overflow-y:auto!important}
+.aph-side{display:none!important}
+.aph-main{height:auto!important;min-height:0!important;width:100%!important;overflow:visible!important}
+/* real topbar */
+.uqtop{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;background:#fafaf6;padding:10px 28px;border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(10,10,10,.03),0 4px 16px -8px rgba(10,10,10,.05)}
+.uqbrand{display:flex;align-items:center;gap:11px;flex-shrink:0}
+.uqmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 13.5px var(--f);color:#0a0a0a;line-height:1.1}
+.uqp small{display:block;font:500 9.5px var(--f);text-transform:uppercase;letter-spacing:1.5px;color:#8a8780;margin-top:1px}
+.uqnav{display:flex;gap:2px;margin-left:8px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav::-webkit-scrollbar{display:none}
+.uqnav a{padding:8px 12px;font:500 12.5px var(--f);color:#5a5a52;text-decoration:none;border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04);color:#0a0a0a}
+.uqnav a.on{background:#0a0a0a;color:#fafaf6}
+.uqsep{width:1px;height:18px;background:rgba(10,10,10,.08);margin:0 6px;flex-shrink:0;align-self:center}
+/* page chrome under the topbar */
+.aph-topbar,.aph-filter-bar{position:static!important;background:rgba(250,250,246,.9)!important;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+/* cards + KPIs + type */
+.aph-card,.aph-kpi{border-radius:20px!important;border:1px solid var(--border)!important;box-shadow:var(--shadow-sm)!important;background:#fafaf6!important}
+.aph-card:hover{box-shadow:var(--shadow-md)!important}
+.aph-kpi{position:relative!important;overflow:hidden!important;transition:transform .25s,box-shadow .25s!important}
+.aph-kpi:hover{box-shadow:var(--shadow-md)!important;transform:translateY(-3px)}
+.aph-kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ka,var(--accent))}
+.aph-kpi .v{color:#0a0a0a!important}
+.aph-page-hd .ttl,.aph-topbar h1,.aph-card-hd .ttl{font-family:'Fraunces',Georgia,serif!important;letter-spacing:-.4px!important;font-weight:600!important}
+.aph-topbar .presets .p.active,.aph-topbar .presets .p.on{background:#0a0a0a!important;color:#fafaf6!important}
+</style>
+
+<style>
+/* ═══════════ Upande UFD :: "Mona" overlay — exact match to ufd-modern-1-mona ═══════════ */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600;700&display=swap');
+:root{
+  --ink:#0a0a0a;--ink-1:#1a1a18;--ink-2:#2a2a26;--ink-3:#3a3a34;--ink-4:#5a5a52;--ink-mute:#8a8780;--ink-faint:#b8b6ae;
+  --bg:#f4f3ef;--bg-card:#ffffff;--surface:#fafaf6;--bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.06);--border-2:rgba(10,10,10,0.12);--hairline:rgba(10,10,10,0.06);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;--signal:#228883;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--display:'Fraunces',Georgia,serif;
+}
+body{background:var(--bg)!important}
+.aph{background:var(--bg)!important;display:block!important;grid-template-columns:none!important;overflow-y:auto!important;color:var(--text-2);font-family:var(--f)}
+.aph-side{display:none!important}
+.aph-main{height:auto!important;min-height:0!important;width:100%!important;overflow:visible!important}
+
+/* TOPBAR — light, borderless, prominent brand + pill nav */
+.uqtop{position:sticky!important;top:0;z-index:50;display:flex;align-items:center;gap:14px;background:#ffffff!important;padding:14px 40px!important;border-bottom:1px solid var(--hairline)!important;box-shadow:none!important}
+.uqmark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 14px var(--f)!important;color:#0a0a0a;line-height:1.1;letter-spacing:-.2px}
+.uqp small{display:block;font:500 10px var(--f);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute);margin-top:1px}
+.uqnav{display:flex;gap:4px;margin-left:24px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav a{padding:8px 14px!important;font:500 13px var(--f)!important;color:var(--ink-4)!important;text-decoration:none;border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04)!important;color:#0a0a0a!important}
+.uqnav a.on{background:#0a0a0a!important;color:#fafaf6!important}
+.uqsep{width:1px;height:22px;background:var(--hairline);margin:0 8px;flex-shrink:0;align-self:center}
+
+/* page chrome / filter bar → clean white */
+.aph-topbar,.aph-filter-bar{position:static!important;background:#ffffff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-bottom:1px solid var(--hairline)!important}
+.aph-topbar h1{font-family:var(--f)!important;font-weight:600!important;letter-spacing:-.3px!important;color:var(--ink)!important;font-size:18px!important}
+.aph-topbar .btn,.aph .live-badge{border-radius:999px!important;border:1px solid var(--border-2)!important;background:#fff!important;box-shadow:var(--shadow-sm)!important;color:var(--ink-3)!important}
+.aph-topbar .btn:hover,.aph .live-badge:hover{background:var(--bg-hover)!important;color:var(--ink)!important}
+
+/* CONTENT */
+.aph-content{padding:40px!important}
+.aph-page-hd{margin-bottom:32px!important}
+.aph-page-hd .ttl{font-family:var(--f)!important;font-weight:600!important;font-size:40px!important;letter-spacing:-1.2px!important;color:var(--ink)!important;line-height:1.05}
+.aph-page-hd .sub{font-size:15px!important;color:var(--ink-4)!important}
+
+/* KPI CARDS — white, borderless, large Poppins value, no icon/accent bar */
+.aph-kpis{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))!important;gap:18px!important;margin-bottom:32px!important}
+.aph-kpi{background:#ffffff!important;border:0!important;border-radius:20px!important;padding:26px 28px!important;box-shadow:var(--shadow-sm)!important;min-height:0!important;overflow:hidden!important;transition:transform .25s,box-shadow .25s!important}
+.aph-kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)!important}
+.aph-kpi::after{display:none!important}
+.aph-kpi .ic-wrap{display:none!important}
+.aph-kpi .lbl{font-size:11px!important;letter-spacing:1.8px!important;text-transform:uppercase;color:var(--ink-mute)!important;font-weight:500!important;margin-bottom:16px!important}
+.aph-kpi .v{font-family:var(--f)!important;font-size:42px!important;font-weight:600!important;letter-spacing:-1.4px!important;color:var(--ink)!important;line-height:1!important;margin-top:0!important}
+.aph-kpi .sub{color:var(--ink-mute)!important;margin-top:10px!important}
+
+/* CARDS — white, borderless, 24px radius */
+.aph-card{background:#ffffff!important;border:0!important;border-radius:24px!important;box-shadow:var(--shadow-sm)!important}
+.aph-card:hover{box-shadow:var(--shadow-md)!important}
+.aph-card-hd{border-bottom:1px solid var(--hairline)!important;padding:22px 28px!important}
+.aph-card-hd .ttl{font-family:var(--f)!important;font-weight:600!important;font-size:17px!important;letter-spacing:-.4px!important;color:var(--ink)!important}
+.aph-card-hd .sub{color:var(--ink-mute)!important}
+.aph-card-body{padding:24px 28px!important}
+.aph-grid{gap:18px!important;margin-bottom:18px!important}
+
+/* TABLE */
+.aph-tbl th{background:#fff!important;color:var(--ink-mute)!important;border-bottom:1px solid var(--hairline)!important}
+.aph-tbl td{border-bottom:1px solid var(--hairline)!important;color:var(--ink-3)!important}
+.aph-tbl tr:hover td{background:var(--bg-hover)!important}
+.aph .totals-row td{color:var(--ink)!important}
+.aph .ftr-high{background:var(--signal)!important}
+.aph .ftr-medium{background:var(--ink-4)!important}
+.aph .ftr-low{background:var(--ink-faint)!important}
+
+/* FILTERS — pill controls, ink chips */
+.aph .filter-group{border:1px solid var(--border-2)!important;border-radius:999px!important;background:#fff!important}
+.aph-filter-bar .date-block{border:1px solid var(--border-2)!important;border-radius:10px!important;background:#fff!important}
+.aph .ms-chip{background:#0a0a0a!important;color:#fafaf6!important}
+.aph .ms-count{background:var(--bg-muted)!important;color:var(--ink)!important}
+.aph-topbar .presets{border-radius:999px!important;overflow:hidden}
+.aph-topbar .presets .p.active,.aph-topbar .presets .p.on{background:#0a0a0a!important;color:#fafaf6!important}
+.aph .active-filter-badge{background:var(--bg-muted)!important;color:var(--ink-3)!important;border-radius:999px!important}
+@media(max-width:900px){.aph-content{padding:16px!important}.aph-page-hd .ttl{font-size:28px!important}.uqtop{padding:12px 16px!important}}
+</style>
+
+<div class="aph">
+<div class="uqtop"><div class="uqbrand"><div class="uqmark">UQ</div><div class="uqp">Upande Quality<small>Intake FTR</small></div></div><div class="uqnav"><a href="app/upande-quality">Home</a><span class="uqsep"></span><a href="intake-ftr-overview" class="on">Intake FTR</a><a href="packhouse-overview">Packhouse</a><a href="rejects">Rejects</a><a href="solution-mixing-overview">Solution Mixing</a><a href="coldroom-overview">Coldroom</a><span class="uqsep"></span><a href="quality-trends">Trends</a><a href="quality-raw-data">Raw Data</a><a href="transit-time">Transit Time</a><a href="shelving-report">Shelving</a></div></div>
+  
+
+  <div class="aph-main">
+    <div class="aph-topbar">
+      <h1>Intake FTR Overview</h1>
+      <span class="crumb">Quality</span>
+      <div class="right">
+        <button class="btn reset-filters-btn" id="resetFiltersBtn">↺ Reset</button>
+        <button class="live-badge refresh-btn" onclick="loadData()">⟳ Refresh</button>
+      </div>
+    </div>
+
+    <!-- ── Filter bar ── -->
+    <div class="aph-filter-bar">
+      <!-- Single row: Period (Year+Week merged) · Date Range · dimensions -->
+      <div class="fb-row">
+        <div class="filter-group"><span class="filter-label">Period</span><div id="filterPeriod"></div></div>
+        <div class="fb-sep"></div>
+        <div class="date-block">
+          <span class="dl">Dates</span>
+          <input type="date" id="filterFrom" placeholder="From">
+          <span class="dsep">→</span>
+          <input type="date" id="filterTo" placeholder="To">
+          <button class="dclr" id="clearDatesBtn" title="Clear dates">✕</button>
+        </div>
+        <div class="fb-sep"></div>
+        <div class="filter-group"><span class="filter-label">Farm</span><div id="filterFarm"></div></div>
+        <div class="filter-group"><span class="filter-label">Variety</span><div id="filterVariety"></div></div>
+        <div class="filter-group"><span class="filter-label">GH</span><div id="filterGH"></div></div>
+        <div class="filter-group"><span class="filter-label">Issue</span><div id="filterIssue"></div></div>
+      </div>
+    </div>
+
+    <div class="aph-content">
+
+      <div class="aph-page-hd">
+        <div class="ttl">Intake FTR Overview</div>
+        <div class="sub">First Time Right intake quality, quarantine drivers &amp; pest/disease trends</div>
+        <div id="activeFilters" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- KPI Row -->
+      <div class="aph-kpis">
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <div><div class="lbl">Total Reports</div><div class="v" id="kpiReports">--</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+          <div><div class="lbl">Stems Received</div><div class="v" id="kpiReceived">--</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+          <div><div class="lbl">Stems Checked</div><div class="v" id="kpiChecked">--</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+          <div><div class="lbl">Quarantined</div><div class="v" id="kpiQuarantined">--</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div><div class="lbl">Overall FTR %</div><div class="v" id="kpiFTR">--</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+          <div><div class="lbl">Sampled %</div><div class="v" id="kpiSampled">--</div></div>
+        </div>
+      </div>
+
+      <!-- FTR per farm table + Quarantined by issue -->
+      <div class="aph-grid">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">FTR Score per Farm</div>
+            <div class="sub" style="margin-left:auto">First Time Right percentage by farm</div>
+          </div>
+          <div class="aph-card-body padless">
+            <div class="ftr-scroll">
+              <table class="aph-tbl">
+                <thead><tr><th>Farm</th><th class="num">Intake FTR Score</th></tr></thead>
+                <tbody id="ftrTableBody"><tr><td colspan="2" class="loading-state">Loading...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Quarantined Buckets per Issue</div>
+            <div class="sub" style="margin-left:auto">Click on any bar to filter · scroll horizontally</div>
+          </div>
+          <div class="aph-card-body">
+            <div class="chart-scroll"><canvas id="chartIssue" style="cursor:pointer;min-width:600px;"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quarantined by variety + GH -->
+      <div class="aph-grid">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Quarantined Buckets per Variety</div>
+            <div class="sub" style="margin-left:auto">Click on any bar to filter · scroll horizontally</div>
+          </div>
+          <div class="aph-card-body">
+            <div class="chart-scroll"><canvas id="chartVariety" style="min-width:600px;"></canvas></div>
+          </div>
+        </div>
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Quarantined Buckets per GH</div>
+            <div class="sub" style="margin-left:auto">Click on any bar to filter · scroll horizontally</div>
+          </div>
+          <div class="aph-card-body">
+            <div class="chart-scroll"><canvas id="chartGH" style="min-width:600px;"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FTR trends -->
+      <div class="aph-grid">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">FTR Score per Unit (Farm)</div>
+            <div class="sub" style="margin-left:auto">Weekly FTR percentage trend by farm</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box"><canvas id="chartFTRUnit"></canvas></div></div>
+        </div>
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">FTR per Year</div>
+            <div class="sub" style="margin-left:auto">Weekly FTR percentage trend by year</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box"><canvas id="chartFTRYear"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Pest / disease -->
+      <div class="aph-grid">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Pest Trend by Farm</div>
+            <div class="sub" style="margin-left:auto">Pest counts across farms</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box tall"><canvas id="pestTrendChart"></canvas></div></div>
+        </div>
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Diseases by Farm</div>
+            <div class="sub" style="margin-left:auto">Stacked by disease · Pareto cumulative %</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box tall"><canvas id="diseasesChart"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Major pests full width -->
+      <div class="aph-grid col-1">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Major Pests — Last 4 Weeks</div>
+            <div class="sub" style="margin-left:auto">Top pests by weekly count · colour-coded by pest</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box" style="height:340px"><canvas id="majorPestsChart"></canvas></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+    "use strict";
+
+    if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+
+    let chartInstances = {};
+    let selectedIssue = null;
+    let periodMS = null, farmMS = null, varietyMS = null, ghMS = null, issueMS = null;
+
+    Chart.defaults.font.family = "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    Chart.defaults.font.size = 10;
+    Chart.defaults.color = "#8a8780";
+    Chart.defaults.borderColor = "rgba(10,10,10,0.06)";   // faint ink gridlines (Mona)
+
+    // Mona palette — monochrome ink ramp, teal as the single accent for selection
+    const COLORS = {
+        veryHigh: "#0a0a0a", high: "#3a3a34", medium: "#5a5a52", low: "#8a8780", veryLow: "#b8b6ae", selected: "#228883"
+    };
+    // Shared categorical palette — varied but Mona-harmonized (muted, earthy) so each
+    // bar/series is easy to identify without going neon.
+    const UFD_PALETTE = ["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+    const BAR_PALETTE = UFD_PALETTE;   // single-series bars colour per-category
+    const LINE_COLORS = ["#0a0a0a","#228883","#b45309","#5d8230","#3d54b0","#8466c7","#a16207"];
+
+    function todayStr() {
+        let d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function getISOWeek(d) {
+        var dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
+        var y1 = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+        return Math.ceil((((dt - y1) / 86400000) + 1) / 7);
+    }
+    var defaultWeek = getISOWeek(new Date());
+
+    function initFilters() {
+        let filterFrom = document.getElementById("filterFrom");
+        let filterTo = document.getElementById("filterTo");
+        /* Leave dates empty on init so the week filter works without interference */
+
+        let filterIds = ["filterFrom", "filterTo"];
+        filterIds.forEach(id => {
+            let el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener("change", () => {
+                selectedIssue = null;
+                if ((id === "filterFrom" || id === "filterTo") && el.value) {
+                    /* Date range set → clear week selection */
+                    if (periodMS) periodMS.setWeek("");
+                }
+                loadData();
+            });
+        });
+
+        periodMS = createPeriodSelect("filterPeriod", { placeholder: "All" });
+        if (periodMS) periodMS.onChange(() => {
+            selectedIssue = null;
+            /* Week selected → clear date range so it doesn't conflict */
+            if (periodMS.getWeek()) {
+                if (filterFrom) filterFrom.value = "";
+                if (filterTo)   filterTo.value   = "";
+            }
+            loadData();
+        });
+
+        farmMS = createMultiSelect("filterFarm", { placeholder: "All" });
+        if (farmMS) farmMS.onChange(() => { selectedIssue = null; loadData(); });
+        varietyMS = createMultiSelect("filterVariety", { placeholder: "All" });
+        if (varietyMS) varietyMS.onChange(() => { loadData(); });
+        ghMS = createMultiSelect("filterGH", { placeholder: "All" });
+        if (ghMS) ghMS.onChange(() => { loadData(); });
+        issueMS = createMultiSelect("filterIssue", { placeholder: "All" });
+        if (issueMS) issueMS.onChange(() => { selectedIssue = null; loadData(); });
+
+        let clearDatesBtn = document.getElementById("clearDatesBtn");
+        if (clearDatesBtn) {
+            clearDatesBtn.addEventListener("click", () => {
+                if (filterFrom) filterFrom.value = "";
+                if (filterTo) filterTo.value = "";
+                selectedIssue = null;
+                loadData();
+            });
+        }
+
+        let resetBtn = document.getElementById("resetFiltersBtn");
+        if (resetBtn) {
+            resetBtn.addEventListener("click", () => {
+                if (periodMS) { periodMS.setYear(""); periodMS.setWeek(""); }
+                if (farmMS) farmMS.setValue("");
+                if (varietyMS) varietyMS.setValue("");
+                if (ghMS) ghMS.setValue("");
+                if (issueMS) issueMS.setValue("");
+                if (filterFrom) filterFrom.value = "";
+                if (filterTo)   filterTo.value   = "";
+                selectedIssue = null;
+                loadData();
+            });
+        }
+    }
+
+/* ── shared multiselect factory (chips + search + select-all) ── */
+    function createMultiSelect(mountId, opts) {
+        opts = opts || {};
+        var root = document.getElementById(mountId);
+        if (!root) return null;
+        root.classList.add('ms');
+        var ph = opts.placeholder || 'All';
+        var items = [];        // [{value,label}]
+        var selected = {};     // value -> true
+        var changeCb = null;
+        function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+        root.innerHTML =
+            '<div class="ms-control"><span class="ms-body"></span></div>' +
+            '<div class="ms-panel">' +
+              '<input class="ms-search" type="text" placeholder="Search…">' +
+              '<div class="ms-actions"><a class="ms-all">Select all</a><a class="ms-clear">Clear</a></div>' +
+              '<div class="ms-list"></div>' +
+            '</div>';
+        var control = root.querySelector('.ms-control');
+        var body = root.querySelector('.ms-body');
+        var search = root.querySelector('.ms-search');
+        var list = root.querySelector('.ms-list');
+        function renderBody(){
+            var keys = Object.keys(selected);
+            if(!keys.length){ body.innerHTML = '<span class="ms-ph">'+esc(ph)+'</span>'; return; }
+            if(keys.length <= 2){
+                body.innerHTML = keys.map(function(v){
+                    var it = items.find(function(i){return i.value===v;});
+                    return '<span class="ms-chip"><span>'+esc(it?it.label:v)+'</span><b data-v="'+esc(v)+'">×</b></span>';
+                }).join('');
+            } else {
+                body.innerHTML = '<span class="ms-count">'+keys.length+' selected</span>';
+            }
+        }
+        function renderList(){
+            var q = (search.value||'').toLowerCase();
+            if(!items.length){ list.innerHTML = '<div class="ms-empty">No options</div>'; return; }
+            list.innerHTML = items.map(function(it){
+                var hide = q && it.label.toLowerCase().indexOf(q)===-1;
+                return '<label class="ms-opt'+(hide?' hidden':'')+'"><input type="checkbox" data-v="'+esc(it.value)+'"'+(selected[it.value]?' checked':'')+'><span>'+esc(it.label)+'</span></label>';
+            }).join('');
+        }
+        function fire(){ renderBody(); if(changeCb) changeCb(); }
+        control.addEventListener('click', function(e){
+            if(e.target.tagName==='B' && e.target.dataset.v){ delete selected[e.target.dataset.v]; renderList(); fire(); e.stopPropagation(); return; }
+            root.classList.toggle('open'); if(root.classList.contains('open')) search.focus();
+        });
+        list.addEventListener('change', function(e){
+            var v = e.target.dataset.v; if(v===undefined) return;
+            if(e.target.checked) selected[v]=true; else delete selected[v];
+            fire();
+        });
+        search.addEventListener('input', renderList);
+        search.addEventListener('click', function(e){ e.stopPropagation(); });
+        root.querySelector('.ms-all').addEventListener('click', function(e){ e.stopPropagation(); var q=(search.value||'').toLowerCase(); items.forEach(function(it){ if(!q||it.label.toLowerCase().indexOf(q)!==-1) selected[it.value]=true; }); renderList(); fire(); });
+        root.querySelector('.ms-clear').addEventListener('click', function(e){ e.stopPropagation(); selected={}; renderList(); fire(); });
+        document.addEventListener('click', function(e){ if(!root.contains(e.target)) root.classList.remove('open'); });
+        var api = {
+            setOptions: function(arr){ items=(arr||[]).map(function(x){ return (x&&typeof x==='object')?{value:String(x.value),label:String(x.label)}:{value:String(x),label:String(x)}; }); var valid={}; items.forEach(function(i){valid[i.value]=1;}); Object.keys(selected).forEach(function(v){ if(!valid[v]) delete selected[v]; }); renderList(); renderBody(); },
+            getValue: function(){ return Object.keys(selected).join(','); },
+            setValue: function(csv){ selected={}; String(csv||'').split(',').forEach(function(v){ v=v.trim(); if(v) selected[v]=true; }); renderList(); renderBody(); },
+            onChange: function(cb){ changeCb = cb; }
+        };
+        renderBody(); renderList();
+        return api;
+    }
+
+/* ── combined Period control: Year + Week in one dropdown (two sections) ── */
+    function createPeriodSelect(mountId, opts) {
+        opts = opts || {};
+        var root = document.getElementById(mountId);
+        if (!root) return null;
+        root.classList.add('ms');
+        var ph = opts.placeholder || 'All periods';
+        var years = [], weeks = [];
+        var selYear = {}, selWeek = {};
+        var changeCb = null;
+        function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+        root.innerHTML =
+            '<div class="ms-control"><span class="ms-body"></span></div>' +
+            '<div class="ms-panel ms-period">' +
+              '<div class="ms-col">' +
+                '<div class="ms-col-hd">Year</div>' +
+                '<div class="ms-actions"><a class="ms-yall">All</a><a class="ms-yclr">Clear</a></div>' +
+                '<div class="ms-list ms-ylist"></div>' +
+              '</div>' +
+              '<div class="ms-col">' +
+                '<div class="ms-col-hd">Week</div>' +
+                '<div class="ms-actions"><a class="ms-wall">All</a><a class="ms-wclr">Clear</a></div>' +
+                '<div class="ms-list ms-wlist"></div>' +
+              '</div>' +
+            '</div>';
+        var control = root.querySelector('.ms-control');
+        var body = root.querySelector('.ms-body');
+        var ylist = root.querySelector('.ms-ylist');
+        var wlist = root.querySelector('.ms-wlist');
+        function renderBody(){
+            var yk = Object.keys(selYear), wk = Object.keys(selWeek);
+            if(!yk.length && !wk.length){ body.innerHTML = '<span class="ms-ph">'+esc(ph)+'</span>'; return; }
+            var parts = [];
+            if(yk.length) parts.push(yk.length<=1 ? esc(yk[0]) : yk.length+' yrs');
+            if(wk.length) parts.push(wk.length<=1 ? ('W'+esc(wk[0])) : wk.length+' wks');
+            body.innerHTML = '<span class="ms-count">'+parts.join(' · ')+'</span>';
+        }
+        function renderOne(listEl, items, sel, prefix){
+            if(!items.length){ listEl.innerHTML = '<div class="ms-empty">None</div>'; return; }
+            listEl.innerHTML = items.map(function(it){
+                return '<label class="ms-opt"><input type="checkbox" data-v="'+esc(it)+'"'+(sel[it]?' checked':'')+'><span>'+esc(prefix?prefix+it:it)+'</span></label>';
+            }).join('');
+        }
+        function renderLists(){ renderOne(ylist, years, selYear, ''); renderOne(wlist, weeks, selWeek, 'W'); }
+        function fire(){ renderBody(); if(changeCb) changeCb(); }
+        control.addEventListener('click', function(){ root.classList.toggle('open'); });
+        ylist.addEventListener('change', function(e){ var v=e.target.dataset.v; if(v===undefined) return; if(e.target.checked) selYear[v]=true; else delete selYear[v]; fire(); });
+        wlist.addEventListener('change', function(e){ var v=e.target.dataset.v; if(v===undefined) return; if(e.target.checked) selWeek[v]=true; else delete selWeek[v]; fire(); });
+        root.querySelector('.ms-yall').addEventListener('click', function(e){ e.stopPropagation(); years.forEach(function(y){selYear[y]=true;}); renderLists(); fire(); });
+        root.querySelector('.ms-yclr').addEventListener('click', function(e){ e.stopPropagation(); selYear={}; renderLists(); fire(); });
+        root.querySelector('.ms-wall').addEventListener('click', function(e){ e.stopPropagation(); weeks.forEach(function(w){selWeek[w]=true;}); renderLists(); fire(); });
+        root.querySelector('.ms-wclr').addEventListener('click', function(e){ e.stopPropagation(); selWeek={}; renderLists(); fire(); });
+        document.addEventListener('click', function(e){ if(!root.contains(e.target)) root.classList.remove('open'); });
+        function prune(sel, valid){ Object.keys(sel).forEach(function(v){ if(!valid[v]) delete sel[v]; }); }
+        var api = {
+            setYears: function(arr){ years=(arr||[]).map(String); var valid={}; years.forEach(function(y){valid[y]=1;}); prune(selYear, valid); renderLists(); renderBody(); },
+            setWeeks: function(arr){ weeks=(arr||[]).map(String); var valid={}; weeks.forEach(function(w){valid[w]=1;}); prune(selWeek, valid); renderLists(); renderBody(); },
+            getYear: function(){ return Object.keys(selYear).join(','); },
+            getWeek: function(){ return Object.keys(selWeek).join(','); },
+            setYear: function(csv){ selYear={}; String(csv||'').split(',').forEach(function(v){ v=v.trim(); if(v) selYear[v]=true; }); renderLists(); renderBody(); },
+            setWeek: function(csv){ selWeek={}; String(csv||'').split(',').forEach(function(v){ v=v.trim(); if(v) selWeek[v]=true; }); renderLists(); renderBody(); },
+            onChange: function(cb){ changeCb = cb; }
+        };
+        renderBody(); renderLists();
+        return api;
+    }
+    /* Format an adaptive-period key for axis labels: YYYY-MM-DD -> "Sun 08", YYYY-MM -> "Jun", MM -> "Jun", YYYY-Www kept. */
+    function formatPeriodLabel(k){
+        k = String(k);
+        var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var m;
+        if((m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(k))){ var dt=new Date(+m[1],+m[2]-1,+m[3]); return DOW[dt.getDay()]+' '+m[3]; }
+        if((m=/^(\d{4})-(\d{2})$/.exec(k))){ return MON[+m[2]-1]+' '+m[1]; }
+        if((m=/^(\d{1,2})$/.exec(k))){ var i=+m[1]; if(i>=1&&i<=12) return MON[i-1]; }
+        return k;
+    }
+
+
+    function getFilters() {
+        let getVal = (id) => { let el = document.getElementById(id); return el ? el.value : ""; };
+        return {
+            year: periodMS ? periodMS.getYear() : "",
+            farm: farmMS ? farmMS.getValue() : "",
+            week: periodMS ? periodMS.getWeek() : "",
+            variety: varietyMS ? varietyMS.getValue() : "",
+            greenhouse: ghMS ? ghMS.getValue() : "",
+            from_date: getVal("filterFrom"),
+            to_date: getVal("filterTo"),
+            selected_issue: selectedIssue || (issueMS ? issueMS.getValue() : "") || ""
+        };
+    }
+
+    function displayActiveFilters(active) {
+        let container = document.getElementById("activeFilters");
+        if (!container) return;
+        if (!active) active = {};
+        let activeList = [];
+        if (active.year) activeList.push(`Year: ${active.year}`);
+        if (active.farm) activeList.push(`Farm: ${active.farm}`);
+        if (active.week) activeList.push(`Week: ${active.week}`);
+        if (active.variety) activeList.push(`Variety: ${active.variety}`);
+        if (active.greenhouse) activeList.push(`GH: ${active.greenhouse}`);
+        if (active.selected_issue) activeList.push(`Issue: ${active.selected_issue}`);
+        if (active.from_date) activeList.push(`From: ${active.from_date}`);
+        if (active.to_date) activeList.push(`To: ${active.to_date}`);
+        if (selectedIssue) activeList.push(`🔍 ${selectedIssue} <span class="clear-badge" onclick="clearIssueFilter()">✕</span>`);
+
+        container.innerHTML = activeList.length ? activeList.map(f => `<span class="active-filter-badge">${f}</span>`).join('') : '<span class="active-filter-badge">No active filters</span>';
+    }
+
+    window.clearIssueFilter = function() { selectedIssue = null; loadData(); };
+
+    var _loadGen = 0;
+    window.loadData = function() {
+        var myGen = ++_loadGen;
+        let ftrTable = document.getElementById("ftrTableBody");
+        if (ftrTable) ftrTable.innerHTML = '<tr><td colspan="2" class="loading-state"><div class="spinner"></div>Loading...</td></tr>';
+
+        let params = getFilters();
+        let qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]||''); }).join('&');
+
+        fetch('/api/method/fetchIntakeFtrOverview?' + qs, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(function(resp){ return resp.json(); })
+        .then(function(data){
+            if (myGen !== _loadGen) return;
+            let msg = data.message || {};
+            if (!msg.success) {
+                if (ftrTable) ftrTable.innerHTML = '<tr><td colspan="2"><div class="error-state">Error: ' + (msg.error || 'Unknown') + '</div></td></tr>';
+                return;
+            }
+            displayActiveFilters(msg.active_filters || {});
+            renderKPIs(msg.kpi || {});
+            renderFTRTable(msg.ftr_by_farm || []);
+            renderBarChart("chartIssue", msg.quarantined_by_issue || [], "reason", "total_count", "Total Stems");
+            renderBarChart("chartVariety", msg.quarantined_by_variety || [], "variety", "total_quarantined", "Quarantined Stems");
+            renderBarChart("chartGH", msg.quarantined_by_gh || [], "greenhouse", "total_quarantined", "Quarantined Stems");
+            renderLineChart("chartFTRUnit", msg.ftr_unit_by_farm || {}, "Farm");
+            renderLineChart("chartFTRYear", msg.ftr_by_year || {}, "Year");
+            renderPestTrendTable(msg.pest_trend || {});
+            renderDiseaseStackedPareto(msg.disease_by_farm || {});
+            renderPestWeekly(msg.major_pests_trend || {}, msg.major_pests_weeks || []);
+            populateFilters(msg.filter_options || {});
+        })
+        .catch(function(err){
+            console.error('FTR Overview load error:', err);
+            if (ftrTable) ftrTable.innerHTML = '<tr><td colspan="2"><div class="error-state">Load failed: ' + err.message + '</div></td></tr>';
+        });
+    };
+
+    function populateFilters(opts) {
+        if (farmMS) farmMS.setOptions(opts.farms || []);
+        if (periodMS) {
+            periodMS.setYears(opts.years || []);
+            periodMS.setWeeks(opts.weeks || []);
+            /* Pre-select current ISO week if user hasn't picked something else */
+            var _from = document.getElementById("filterFrom"), _to = document.getElementById("filterTo");
+            var _hasDateRange = (_from && _from.value) || (_to && _to.value);
+            if (!periodMS.getWeek() && !_hasDateRange && (opts.weeks || []).length) periodMS.setWeek(String(Math.max(...(opts.weeks || []))));
+        }
+        if (varietyMS) varietyMS.setOptions(opts.varieties || []);
+        if (ghMS) ghMS.setOptions(opts.greenhouses || []);
+        if (issueMS) issueMS.setOptions(opts.control_actions || []);
+    }
+
+    function fillSelect(id, items, defaultVal, defaultLabel) {
+        let sel = document.getElementById(id);
+        if (!sel) return;
+        let curVals = Array.from(sel.selectedOptions).map(o => o.value);
+        sel.innerHTML = `<option value="${defaultVal}">${defaultLabel}</option>`;
+        for (let item of items) {
+            let o = document.createElement("option");
+            o.value = item;
+            o.textContent = item;
+            if (curVals.indexOf(String(item)) !== -1) o.selected = true;
+            sel.appendChild(o);
+        }
+    }
+
+    function renderKPIs(kpi) {
+        let map = { "kpiReports": "total_reports", "kpiReceived": "total_stems_received", "kpiChecked": "total_stems_checked", "kpiQuarantined": "total_quarantined" };
+        for (let [id, key] of Object.entries(map)) {
+            let el = document.getElementById(id);
+            if (el) el.textContent = formatNumber(kpi[key]);
+        }
+        let ftrEl = document.getElementById("kpiFTR");
+        if (ftrEl) ftrEl.textContent = (kpi.overall_ftr || 0).toFixed(2) + "%";
+        let sampledEl = document.getElementById("kpiSampled");
+        if (sampledEl) sampledEl.textContent = (kpi.overall_sampled || 0).toFixed(2) + "%";
+    }
+
+    function renderFTRTable(rows) {
+        let tbody = document.getElementById("ftrTableBody");
+        if (!tbody) return;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No data available</td></tr>';
+            return;
+        }
+        // Totals: weighted by stems_received (same formula: (Received-Quarantined)/Received*100)
+        let totalReceived = rows.reduce((sum, r) => sum + (r.stems_received || 0), 0);
+        let totalQuarantined = rows.reduce((sum, r) => sum + (r.quarantined || 0), 0);
+        let totalFTR = totalReceived > 0 ? ((totalReceived - totalQuarantined) / totalReceived * 100) : 0;
+        let html = `<tr class="totals-row"><td><strong>Totals</strong></td><td class="num"><strong>${totalFTR.toFixed(2)}%</strong></td></tr>`;
+        for (let row of rows) {
+            let ftr = row.ftr || 0;
+            let barColor = ftr >= 80 ? "ftr-high" : (ftr >= 60 ? "ftr-medium" : "ftr-low");
+            html += `<tr><td>${escapeHtml(row.farm)}</td><td class="num">${ftr.toFixed(2)}%<span class="ftr-bar ${barColor}" style="width:${Math.min(ftr,100)}px"></span></td></tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    function renderBarChart(canvasId, data, labelKey, valueKey, valueLabel) {
+        // Pareto: bars (stems) sorted high->low + cumulative % line on the right axis.
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (!data || !data.length) return;
+
+        let rows = data.map(d => ({ label: truncate(d[labelKey] || "--", 30), value: Number(d[valueKey] || 0) }));
+        rows.sort((a, b) => b.value - a.value);
+        let labels = rows.map(r => r.label);
+        let values = rows.map(r => r.value);
+        let maxVal = Math.max(...values, 1);
+        let total = values.reduce((s, v) => s + v, 0) || 1;
+        let run = 0;
+        let cumPct = values.map(v => { run += v; return Math.round((run / total) * 1000) / 10; });
+        // Each category gets its own colour for easy identification; when an issue is
+        // selected, non-selected bars dim to 25% alpha so the pick still stands out.
+        let bgColors = labels.map((lb, i) => {
+            let base = BAR_PALETTE[i % BAR_PALETTE.length];
+            return (selectedIssue && lb !== selectedIssue) ? base + "40" : base;
+        });
+
+        let ctx = canvas.getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [
+                    { type: "bar", label: valueLabel, data: values, backgroundColor: bgColors, borderRadius: 3, maxBarThickness: 35, yAxisID: "y", order: 2 },
+                    { type: "line", label: "Cumulative %", data: cumPct, borderColor: "#0a0a0a", backgroundColor: "transparent", borderWidth: 2, pointRadius: 2, tension: 0.2, yAxisID: "yPct", order: 1 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                onClick: (e, active) => {
+                    let bar = active.find(a => a.datasetIndex === 0);
+                    if (bar) {
+                        let idx = bar.index;
+                        selectedIssue = (selectedIssue === labels[idx]) ? null : labels[idx];
+                        loadData();
+                    }
+                },
+                plugins: {
+                    tooltip: { callbacks: { label: (ctx) => ctx.dataset.type === "line" ? `Cumulative ${ctx.parsed.y}%` : `${formatNumber(ctx.parsed.y)} ${valueLabel}` } },
+                    legend: { display: true, position: "top", labels: { boxWidth: 10, font: { size: 9 } } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 0, font: { size: 8 } } },
+                    y: { beginAtZero: true, position: "left", ticks: { callback: (v) => shortNum(v), font: { size: 8 } }, title: { display: true, text: valueLabel, font: { size: 9 } } },
+                    yPct: { beginAtZero: true, max: 100, position: "right", grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%", font: { size: 8 } } }
+                }
+            }
+        });
+    }
+
+    function renderLineChart(canvasId, data, labelPrefix) {
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (!data || Object.keys(data).length === 0) return;
+
+        let allWeeks = new Set();
+        for (let key in data) {
+            for (let week in data[key]) allWeeks.add(week);
+        }
+        let weeksSorted = Array.from(allWeeks).sort();
+        let datasets = [];
+        let idx = 0;
+        for (let key in data) {
+            let seriesData = weeksSorted.map(w => data[key][w] || 100);
+            datasets.push({ label: `${labelPrefix} ${key}`, data: seriesData, borderColor: LINE_COLORS[idx % LINE_COLORS.length], backgroundColor: "transparent", borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false });
+            idx++;
+        }
+
+        let ctx = canvas.getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "line",
+            data: { labels: weeksSorted.map(formatPeriodLabel), datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } },
+                    legend: { position: "top", labels: { boxWidth: 10, font: { size: 9 } } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 45, font: { size: 8 } } },
+                    y: { min: 0, max: 100, ticks: { callback: (v) => v + "%", font: { size: 8 } } }
+                }
+            }
+        });
+    }
+
+    // Pest Trend by Farm - stacked bar (one stack segment per pest type)
+    function renderPestTrendTable(pestTrend) {
+        let canvasId = "pestTrendChart";
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        let farms = pestTrend.farms || [];
+        let data = pestTrend.data || {};
+        let pestTypes = Object.keys(data).sort();
+        if (!farms.length || !pestTypes.length) return;
+        let palette = UFD_PALETTE;
+        let datasets = pestTypes.map((pest, i) => ({
+            label: pest,
+            data: farms.map(f => (data[pest] && data[pest][f]) || 0),
+            backgroundColor: palette[i % palette.length],
+            stack: "pests",
+            maxBarThickness: 48
+        }));
+        let ctx = canvas.getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "bar",
+            data: { labels: farms, datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 8 } } },
+                    tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + formatNumber(c.parsed.y) } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    x: { stacked: true, ticks: { maxRotation: 45, font: { size: 8 } } },
+                    y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => shortNum(v), font: { size: 8 } } }
+                }
+            }
+        });
+    }
+
+    function renderPestWeekly(trend, weeks) {
+        const id = "majorPestsChart";
+        if (chartInstances[id]) chartInstances[id].destroy();
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const pests = Object.keys(trend || {});
+        let wk = (weeks && weeks.length) ? weeks.slice() : [];
+        if (!wk.length) { const set = new Set(); pests.forEach(p => Object.keys(trend[p] || {}).forEach(w => set.add(w))); wk = Array.from(set).sort(); }
+        if (!pests.length || !wk.length) return;
+        const labels = wk.map(w => { const m = /W(\d+)/.exec(w); return m ? "W" + m[1] : w; });
+        const palette = UFD_PALETTE;
+        const datasets = pests.map((pn, i) => ({
+            label: pn,
+            data: wk.map(w => (trend[pn] && trend[pn][w] != null) ? trend[pn][w] : 0),
+            borderColor: palette[i % palette.length], backgroundColor: "transparent",
+            borderWidth: 2, pointRadius: 3, tension: 0.3, spanGaps: true,
+        }));
+        chartInstances[id] = new Chart(canvas.getContext("2d"), {
+            type: "line",
+            data: { labels, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 9 } } },
+                    datalabels: { display: false },
+                    tooltip: { callbacks: { label: c => c.dataset.label + ": " + formatNumber(c.parsed.y) } }
+                },
+                scales: {
+                    x: { title: { display: true, text: "Week" }, ticks: { font: { size: 9 } } },
+                    y: { beginAtZero: true, title: { display: true, text: "Count" }, ticks: { callback: v => shortNum(v), font: { size: 9 } } }
+                }
+            }
+        });
+    }
+
+    function renderDiseaseStackedPareto(matrix) {
+        const id = "diseasesChart";
+        if (chartInstances[id]) chartInstances[id].destroy();
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const farms = (matrix && matrix.farms) || [];
+        const data = (matrix && matrix.data) || {};
+        const diseases = Object.keys(data).sort();
+        if (!farms.length || !diseases.length) return;
+        const farmTotal = {};
+        farms.forEach(f => { farmTotal[f] = diseases.reduce((sum, d) => sum + ((data[d] && data[d][f]) || 0), 0); });
+        const sortedFarms = farms.slice().sort((a, b) => farmTotal[b] - farmTotal[a]);
+        const grand = sortedFarms.reduce((sum, f) => sum + farmTotal[f], 0) || 1;
+        let cum = 0;
+        const cumPct = sortedFarms.map(f => { cum += farmTotal[f]; return Math.round(cum / grand * 1000) / 10; });
+        const palette = UFD_PALETTE;
+        const barDs = diseases.map((d, i) => ({
+            label: d, data: sortedFarms.map(f => (data[d] && data[d][f]) || 0),
+            backgroundColor: palette[i % palette.length], stack: "diseases", maxBarThickness: 48, yAxisID: "y",
+        }));
+        const lineDs = {
+            label: "Cumulative %", type: "line", data: cumPct, yAxisID: "yPct",
+            borderColor: "#0a0a0a", backgroundColor: "transparent", borderWidth: 2, pointRadius: 3, tension: 0.2,
+            datalabels: { display: false }
+        };
+        chartInstances[id] = new Chart(canvas.getContext("2d"), {
+            type: "bar",
+            data: { labels: sortedFarms, datasets: barDs.concat([lineDs]) },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 8 } } },
+                    datalabels: { display: false },
+                    tooltip: { callbacks: { label: c => c.dataset.label === "Cumulative %" ? ("Cumulative: " + c.parsed.y + "%") : (c.dataset.label + ": " + formatNumber(c.parsed.y)) } }
+                },
+                scales: {
+                    x: { stacked: true, ticks: { maxRotation: 45, font: { size: 8 } } },
+                    y: { stacked: true, beginAtZero: true, position: "left", ticks: { callback: v => shortNum(v), font: { size: 8 } }, title: { display: true, text: "Stems", font: { size: 9 } } },
+                    yPct: { beginAtZero: true, max: 100, position: "right", grid: { drawOnChartArea: false }, ticks: { callback: v => v + "%", font: { size: 8 } } }
+                }
+            }
+        });
+    }
+
+    function renderDiseasesTable(diseases) {
+        let tbody = document.getElementById("diseasesTableBody");
+        if (!tbody) return;
+        if (!diseases.length) {
+            tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No disease data available</td></tr>';
+            return;
+        }
+        let html = '';
+        for (let d of diseases) {
+            html += `<tr><td><strong>${escapeHtml(d.disease_name)}</strong></td><td class="num">${formatNumber(d.sum_of_stems)}</td><td class="num">${formatNumber(d.occurrence_count)}</td></tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    function formatNumber(n) { return (n === null || n === undefined) ? "0" : Number(n).toLocaleString(); }
+    function shortNum(v) { if (v >= 1000000) return (v/1000000).toFixed(1)+"M"; if (v >= 1000) return (v/1000).toFixed(1)+"k"; return v; }
+    function truncate(s, maxLen) { s = String(s || ""); return s.length > maxLen ? s.substring(0, maxLen) + "..." : s; }
+    function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    document.addEventListener("DOMContentLoaded", () => { initFilters(); setTimeout(loadData, 200); });
+})();
+</script>
+
+<script>
+/* -- Sidebar footer (user identity) -- */
+(function fillFooter(){
+    function tryFill(attempt){
+        var u = '', fullName = '';
+        if (window.frappe && frappe.session && frappe.session.user && frappe.session.user !== 'Guest') {
+            u = frappe.session.user;
+            fullName = (frappe.session.user_fullname || (frappe.boot && frappe.boot.user && frappe.boot.user.full_name)) || u.split('@')[0];
+        }
+        var av = document.getElementById('aph-foot-av'), nm = document.getElementById('aph-foot-nm'), em = document.getElementById('aph-foot-em');
+        if (u) {
+            if (av) av.textContent = (fullName||u).substring(0,1).toUpperCase();
+            if (nm) nm.textContent = fullName || u;
+            if (em) em.textContent = u;
+        } else if (attempt < 15) {
+            setTimeout(function(){ tryFill(attempt+1); }, 300);
+        } else {
+            if (nm) nm.textContent = 'Quality Dashboard';
+            if (em) em.textContent = 'kaitet.local';
+        }
+    }
+    tryFill(0);
+})();
+</script>
+

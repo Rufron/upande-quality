@@ -1,0 +1,690 @@
+<style>
+.navbar.navbar-light {
+  display: none !important;
+}
+
+.navbar.navbar-primary {
+  display: none !important;
+}
+
+.web-footer {
+  display: none !important;
+}
+</style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Coldroom Operations | Quality Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="/assets/frappe/js/frappe-web.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-page: #f4f5f6;
+            --bg-surface: #ffffff;
+            --bg-input: #f4f5f6;
+            --bg-hover: #f8f9fa;
+            --text-primary: #1a1a1a;
+            --text-secondary: #6c7178;
+            --text-muted: #98a1a9;
+            --border-default: #e2e4e7;
+            --border-light: #f0f0f0;
+            --accent-blue: #2490ef;
+            --accent-blue-light: #e8f0fe;
+            --accent-green: #29cd42;
+            --accent-red: #e63757;
+            --accent-orange: #fc9c30;
+            --accent-purple: #7c5cfc;
+            --accent-teal: #2d9ea0;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.5; background: var(--bg-page); color: var(--text-primary); min-height: 100vh; width: 100%; }
+        .top-nav { background: var(--bg-surface); border-bottom: 1px solid var(--border-default); padding: 0 16px; display: flex; align-items: center; position: sticky; top: 0; z-index: 200; height: 44px; }
+        .nav-brand { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 0 14px 0 0; margin-right: 6px; border-right: 1px solid var(--border-default); white-space: nowrap; }
+        .nav-link { padding: 12px 14px; font-size: 12px; font-weight: 500; color: var(--text-secondary); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 150ms ease; }
+        .nav-link:hover { color: var(--text-primary); border-bottom-color: var(--border-default); }
+        .nav-link.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); font-weight: 600; }
+        @media (max-width: 640px) { .top-nav { overflow-x: auto; padding: 0 12px; } .nav-link { padding: 12px 12px; font-size: 11px; } }
+        .page-head { background: var(--bg-surface); border-bottom: 1px solid var(--border-default); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; position: sticky; top: 44px; z-index: 100; flex-wrap: wrap; }
+        .page-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+        .refresh-btn, .reset-filters-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-primary); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: inherit; }
+        .refresh-btn:hover, .reset-filters-btn:hover { background: var(--bg-input); }
+        .active-filter-badge { background: var(--accent-blue-light); color: var(--accent-blue); padding: 3px 8px; border-radius: 16px; font-size: 10px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; }
+        .clear-badge { cursor: pointer; font-size: 11px; opacity: 0.7; }
+        .clear-badge:hover { opacity: 1; }
+        .filter-bar { background: var(--bg-surface); border-bottom: 1px solid var(--border-default); padding: 8px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; position: sticky; top: 78px; z-index: 99; }
+        .filter-group { display: flex; align-items: center; gap: 5px; background: var(--bg-input); padding: 3px 10px 3px 8px; border-radius: 20px; border: 1px solid var(--border-default); }
+        .filter-label { font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-control { height: 28px; padding: 3px 8px; font-size: 11px; font-family: inherit; background: transparent; border: none; color: var(--text-primary); min-width: 90px; }
+        .form-control:focus { outline: none; }
+        select.form-control { cursor: pointer; }
+        .clear-dates-btn { font-size: 10px; font-weight: 600; color: var(--accent-blue); background: none; border: none; cursor: pointer; padding: 5px 10px; }
+        .container { padding: 16px 20px; width: 100%; max-width: 100%; margin: 0; }
+        .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+        .kpi-card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+        .kpi-icon { width: 32px; height: 32px; min-width: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+        .kpi-icon svg { width: 16px; height: 16px; }
+        .kpi-content { flex: 1; }
+        .kpi-label { font-size: 9px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .kpi-value { font-size: 18px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+        @media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 640px)  { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+        .panel-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
+        .panel { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; width: 100%; }
+        .panel-heading { padding: 12px 16px 10px; border-bottom: 1px solid var(--border-light); }
+        .panel-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+        .panel-subtitle { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        .panel-body { padding: 12px 16px 16px; min-height: 260px; overflow-x: auto; }
+        .panel-body canvas { max-height: 620px; width: auto; min-width: 100%; }
+        .panel-body canvas { max-height: 620px; width: auto; min-width: 100%; }
+        .ftr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .ftr-table thead th { padding: 8px 10px; text-align: left; font-size: 9px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border-default); text-transform: uppercase; letter-spacing: 0.5px; }
+        .ftr-table thead th.num { text-align: right; }
+        .ftr-table tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border-light); }
+        .ftr-table tbody td.num { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .ftr-table tbody tr:hover td { background: var(--bg-hover); }
+        .table-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+        .pill { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; }
+        .pill-ok { background: rgba(41,205,66,0.12); color: var(--accent-green); }
+        .pill-warn { background: rgba(252,156,48,0.12); color: var(--accent-orange); }
+        .pill-bad { background: rgba(230,55,87,0.12); color: var(--accent-red); }
+        .empty-state { text-align: center; padding: 30px 16px; color: var(--text-muted); }
+    /* ── shared multiselect (farm etc.) ── */
+.ms{position:relative;display:inline-block;min-width:172px;font-size:12px;vertical-align:middle}
+.ms-control{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:30px;padding:3px 24px 3px 6px;border:1px solid var(--border-default,#d8dde3);border-radius:5px;background:var(--bg-input,#fff);cursor:pointer;position:relative}
+.ms-control:after{content:"\25BE";position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#8895a7;font-size:10px;pointer-events:none}
+.ms.open .ms-control{border-color:var(--accent-blue,#2490ef);box-shadow:0 0 0 2px rgba(36,144,239,.15)}
+.ms-ph{color:#8895a7}
+.ms-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent-blue,#2490ef);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;line-height:1.6;max-width:130px}
+.ms-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-chip b{cursor:pointer;font-weight:700;opacity:.85}
+.ms-chip b:hover{opacity:1}
+.ms-count{background:rgba(36,144,239,.12);color:var(--accent-blue,#2490ef);border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600}
+.ms-panel{position:absolute;z-index:200;top:calc(100% + 4px);left:0;min-width:210px;background:var(--bg-surface,#fff);border:1px solid var(--border-default,#d8dde3);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.16);display:none;flex-direction:column;max-height:300px}
+.ms.open .ms-panel{display:flex}
+.ms-search{margin:7px;padding:5px 8px;border:1px solid var(--border-default,#d8dde3);border-radius:5px;font-size:12px;outline:none}
+.ms-actions{display:flex;gap:12px;padding:0 10px 6px;border-bottom:1px solid var(--border-default,#eef2f7)}
+.ms-actions a{color:var(--accent-blue,#2490ef);cursor:pointer;font-size:11px;font-weight:500}
+.ms-list{overflow-y:auto;padding:4px 0}
+.ms-opt{display:flex;align-items:center;gap:7px;padding:5px 11px;cursor:pointer}
+.ms-opt:hover{background:rgba(36,144,239,.07)}
+.ms-opt input{margin:0;cursor:pointer}
+.ms-opt.hidden{display:none}
+.ms-empty{padding:9px 11px;color:#8895a7}
+
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+    <span class="nav-brand">QC DASHBOARD</span>
+    <a href="app/upande-quality" class="nav-link">Home</a>
+    <a href="intake-ftr-overview" class="nav-link">Intake FTR</a>
+    <a href="packhouse-overview" class="nav-link">Packhouse</a>
+    <a href="rejects" class="nav-link">Rejects</a>
+    <a href="solution-mixing-overview" class="nav-link">Solution Mixing</a>
+    <a href="coldroom-overview" class="nav-link active">Coldroom Ops</a>
+    <a href="quality-trends" class="nav-link">Trends</a>
+    <a href="quality-raw-data" class="nav-link">Raw Data</a>
+    <a href="transit-time" class="nav-link">Transit Time</a>
+    <a href="shelving-report" class="nav-link">Shelving</a>
+</nav>
+
+<style>
+/* Upande UFD overlay (ufd-modern design system) — coldroom variant */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600&display=swap');
+:root{
+  --bg-page:#f4f3ef;--bg-surface:#fafaf6;
+  --text-primary:#0a0a0a;--text-secondary:#5a5a52;--text-muted:#8a8780;
+  --border-default:rgba(10,10,10,0.07);--border-light:rgba(10,10,10,0.05);
+  --accent-blue:#0a0a0a;--accent-green:#1a8a3a;--accent-red:#c4302b;--accent-orange:#f59e0b;--accent-purple:#228883;
+}
+body{background:#f4f3ef!important;font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;color:#5a5a52!important}
+.top-nav,.page-head,.filter-bar{background:rgba(250,250,246,.9)!important;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.nav-link.active{color:#0a0a0a!important;border-bottom-color:#0a0a0a!important}
+.kpi-card,.panel{background:#fafaf6!important;border:1px solid rgba(10,10,10,0.07)!important;border-radius:18px!important;box-shadow:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10)!important}
+.panel-title,.page-head h1,.page-head .page-title,.kpi-value{font-family:'Fraunces',Georgia,serif!important;color:#0a0a0a!important}
+.kpi-label{color:#8a8780!important}
+</style>
+
+<div class="page-head">
+    <div>
+        <span class="page-title">Coldroom Operations</span>
+        <div id="activeFilters" style="margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap;"></div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <button class="reset-filters-btn" id="resetFiltersBtn">↺ Reset</button>
+        <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
+    </div>
+</div>
+
+<div class="filter-bar">
+    <div class="filter-group"><span class="filter-label">Year</span><select class="form-control" id="filterYear"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">Farm</span><div id="filterFarm"></div></div>
+    <div class="filter-group"><span class="filter-label">Week</span><select class="form-control" id="filterWeek"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">Cold Store</span><select class="form-control" id="filterCold"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">From</span><input type="date" class="form-control" id="filterFrom"></div>
+    <div class="filter-group"><span class="filter-label">To</span><input type="date" class="form-control" id="filterTo"></div>
+    <button class="clear-dates-btn" id="clearDatesBtn">Clear dates</button>
+</div>
+
+<div class="container">
+    <div class="kpi-row">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: var(--accent-blue-light); color: var(--accent-blue);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v14"/><path d="M7 12l5 5 5-5"/></svg></div>
+            <div class="kpi-content"><div class="kpi-label">Min Temp (°C)</div><div class="kpi-value" id="kpiMinTemp">—</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(230,55,87,0.12); color: var(--accent-red);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V7"/><path d="M7 12l5-5 5 5"/></svg></div>
+            <div class="kpi-content"><div class="kpi-label">Max Temp (°C)</div><div class="kpi-value" id="kpiMaxTemp">—</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(45,158,160,0.12); color: var(--accent-teal);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v8m0 0l4-4m-4 4L8 6"/><path d="M3 18h18M3 12h18"/></svg></div>
+            <div class="kpi-content"><div class="kpi-label">Avg Temp (°C)</div><div class="kpi-value" id="kpiAvgTemp">—</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(124,92,252,0.12); color: var(--accent-purple);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8l-8 8M8 8l8 8"/></svg></div>
+            <div class="kpi-content"><div class="kpi-label">Cleanings</div><div class="kpi-value" id="kpiCleanings">—</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(41,205,66,0.12); color: var(--accent-green);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="kpi-content"><div class="kpi-label">Inspections</div><div class="kpi-value" id="kpiInspections">—</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(230,55,87,0.12); color: var(--accent-red);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+            <div class="kpi-content"><div class="kpi-label">Insp. with Issues</div><div class="kpi-value" id="kpiIssues">—</div></div>
+        </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+            <div class="panel" style="flex:2 1 440px;min-width:320px;margin:0;">
+                <div class="panel-heading"><div class="panel-title">Cold Room Monitoring</div><div class="panel-subtitle">Temperature over time · Karen Roses · today · shaded = outside 0–8°C</div></div>
+                <div class="panel-body"><div style="position:relative;width:100%;min-height:300px;"><canvas id="sensorChart"></canvas></div></div>
+            </div>
+            <div class="panel" style="flex:1 1 260px;min-width:240px;margin:0;display:flex;flex-direction:column;">
+                <div class="panel-heading"><div class="panel-title">Cold Room Temperatures</div><div class="panel-subtitle">Live · Karen Roses · <span id="sensorAsOf"></span></div></div>
+                <div class="panel-body" style="flex:1;"><div id="sensorColdRooms" class="sensor-grid" style="grid-template-columns:1fr;gap:8px;max-height:560px;overflow-y:auto;"><div class="empty-state">Loading…</div></div></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-heading" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;"><div><div class="panel-title">Sensor Readings</div><div class="panel-subtitle">Cold rooms · Karen Roses · today (use From/To to change)</div></div><button id="sensorExportBtn" type="button" style="cursor:pointer;border:1px solid #218838;background:#218838;color:#fff;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;white-space:nowrap;">⤓ Export to Excel</button></div>
+            <div class="panel-body" style="padding:0;"><div class="table-scroll"><table class="ftr-table"><thead><tr><th>Time</th><th>Farm</th><th>Type</th><th>Sensor</th><th class="num">°C</th><th>Status</th></tr></thead><tbody id="sensorLogRows"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table></div></div>
+        </div>
+    <div class="panel-grid" style="margin-top:16px;">
+        <div class="panel">
+            <div class="panel-heading"><div class="panel-title">Recent Cleanings</div><div class="panel-subtitle">Latest 50</div></div>
+            <div class="panel-body" style="padding:0;">
+                <div class="table-scroll">
+                    <table class="ftr-table">
+                        <thead><tr>
+                            <th>Date</th><th>Farm</th><th>Cold Store</th><th>Mode</th>
+                            <th>Detergent</th><th class="num">Detergent Rate</th><th class="num">Detergent Vol (L)</th>
+                            <th>Disinfectant · Rate · Vol</th>
+                            <th class="num">Room Vol (m³)</th>
+                            <th class="num">Stems in Stock</th>
+                            <th>Equipment</th>
+                            <th>Disinfected By</th><th>Supervised By</th>
+                        </tr></thead>
+                        <tbody id="cleanRows"><tr><td colspan="11" class="empty-state">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-heading"><div class="panel-title">Recent Inspections</div><div class="panel-subtitle">Latest 50 — issues highlighted</div></div>
+            <div class="panel-body" style="padding:0;">
+                <div class="table-scroll">
+                    <table class="ftr-table">
+                        <thead><tr>
+                            <th>Date</th><th>Farm</th><th>Cold Store</th>
+                            <th>Floor</th><th>Roof</th><th>Walls</th><th>Lights</th>
+                            <th>Doors</th><th>Shelves</th><th>Drainage</th><th>Evaporators</th>
+                            <th>Inspector</th>
+                        </tr></thead>
+                        <tbody id="inspectRows"><tr><td colspan="12" class="empty-state">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+
+<script>
+let chartTemp = null;
+let sensorChart = null;
+let lastSensorData = null;
+
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function num(v, d=0) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+function tempCell(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n) || n === 0) return '—';
+    return n.toFixed(1);
+}
+function conditionPill(v) {
+    if (!v) return '<span style="color:var(--text-muted)">—</span>';
+    if (v === 'Good condition' || v === 'Clean') return '<span class="pill pill-ok">' + v + '</span>';
+    return '<span class="pill pill-bad">' + v + '</span>';
+}
+function condPills(cond, area) {
+    const vals = (cond && cond[area]) || [];
+    if (!vals.length) return '<span style="color:var(--text-muted)">—</span>';
+    return vals.map(conditionPill).join(' ');
+}
+
+/* ── shared multiselect factory (chips + search + select-all) ── */
+function createMultiSelect(mountId, opts) {
+    opts = opts || {};
+    var root = document.getElementById(mountId);
+    if (!root) return null;
+    root.classList.add('ms');
+    var ph = opts.placeholder || 'All';
+    var items = [];        // [{value,label}]
+    var selected = {};     // value -> true
+    var changeCb = null;
+    function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+    root.innerHTML =
+        '<div class="ms-control"><span class="ms-body"></span></div>' +
+        '<div class="ms-panel">' +
+          '<input class="ms-search" type="text" placeholder="Search…">' +
+          '<div class="ms-actions"><a class="ms-all">Select all</a><a class="ms-clear">Clear</a></div>' +
+          '<div class="ms-list"></div>' +
+        '</div>';
+    var control = root.querySelector('.ms-control');
+    var body = root.querySelector('.ms-body');
+    var search = root.querySelector('.ms-search');
+    var list = root.querySelector('.ms-list');
+    function renderBody(){
+        var keys = Object.keys(selected);
+        if(!keys.length){ body.innerHTML = '<span class="ms-ph">'+esc(ph)+'</span>'; return; }
+        if(keys.length <= 2){
+            body.innerHTML = keys.map(function(v){
+                var it = items.find(function(i){return i.value===v;});
+                return '<span class="ms-chip"><span>'+esc(it?it.label:v)+'</span><b data-v="'+esc(v)+'">×</b></span>';
+            }).join('');
+        } else {
+            body.innerHTML = '<span class="ms-count">'+keys.length+' selected</span>';
+        }
+    }
+    function renderList(){
+        var q = (search.value||'').toLowerCase();
+        if(!items.length){ list.innerHTML = '<div class="ms-empty">No options</div>'; return; }
+        list.innerHTML = items.map(function(it){
+            var hide = q && it.label.toLowerCase().indexOf(q)===-1;
+            return '<label class="ms-opt'+(hide?' hidden':'')+'"><input type="checkbox" data-v="'+esc(it.value)+'"'+(selected[it.value]?' checked':'')+'><span>'+esc(it.label)+'</span></label>';
+        }).join('');
+    }
+    function fire(){ renderBody(); if(changeCb) changeCb(); }
+    control.addEventListener('click', function(e){
+        if(e.target.tagName==='B' && e.target.dataset.v){ delete selected[e.target.dataset.v]; renderList(); fire(); e.stopPropagation(); return; }
+        root.classList.toggle('open'); if(root.classList.contains('open')) search.focus();
+    });
+    list.addEventListener('change', function(e){
+        var v = e.target.dataset.v; if(v===undefined) return;
+        if(e.target.checked) selected[v]=true; else delete selected[v];
+        fire();
+    });
+    search.addEventListener('input', renderList);
+    search.addEventListener('click', function(e){ e.stopPropagation(); });
+    root.querySelector('.ms-all').addEventListener('click', function(e){ e.stopPropagation(); var q=(search.value||'').toLowerCase(); items.forEach(function(it){ if(!q||it.label.toLowerCase().indexOf(q)!==-1) selected[it.value]=true; }); renderList(); fire(); });
+    root.querySelector('.ms-clear').addEventListener('click', function(e){ e.stopPropagation(); selected={}; renderList(); fire(); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) root.classList.remove('open'); });
+    var api = {
+        setOptions: function(arr){ items=(arr||[]).map(function(x){ return (x&&typeof x==='object')?{value:String(x.value),label:String(x.label)}:{value:String(x),label:String(x)}; }); var valid={}; items.forEach(function(i){valid[i.value]=1;}); Object.keys(selected).forEach(function(v){ if(!valid[v]) delete selected[v]; }); renderList(); renderBody(); },
+        getValue: function(){ return Object.keys(selected).join(','); },
+        setValue: function(csv){ selected={}; String(csv||'').split(',').forEach(function(v){ v=v.trim(); if(v) selected[v]=true; }); renderList(); renderBody(); },
+        onChange: function(cb){ changeCb = cb; }
+    };
+    renderBody(); renderList();
+    return api;
+}
+/* Format an adaptive-period key for axis labels: YYYY-MM-DD -> "Sun 08", YYYY-MM -> "Jun", MM -> "Jun", YYYY-Www kept. */
+function formatPeriodLabel(k){
+    k = String(k);
+    var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var m;
+    if((m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(k))){ var dt=new Date(+m[1],+m[2]-1,+m[3]); return DOW[dt.getDay()]+' '+m[3]; }
+    if((m=/^(\d{4})-(\d{2})$/.exec(k))){ return MON[+m[2]-1]+' '+m[1]; }
+    if((m=/^(\d{1,2})$/.exec(k))){ var i=+m[1]; if(i>=1&&i<=12) return MON[i-1]; }
+    return k;
+}
+
+let farmMS = null;
+
+function setBadges(filters) {
+    const wrap = el('activeFilters'); wrap.innerHTML = '';
+    Object.entries(filters || {}).forEach(([k, v]) => {
+        if (!v) return;
+        const span = document.createElement('span');
+        span.className = 'active-filter-badge';
+        span.innerHTML = k + ': ' + v + ' <span class="clear-badge" data-k="' + k + '">×</span>';
+        wrap.appendChild(span);
+    });
+    wrap.querySelectorAll('.clear-badge').forEach(c => {
+        c.onclick = () => {
+            const k = c.dataset.k;
+            const id = { year:'filterYear', week:'filterWeek', farm:'filterFarm', coldstore:'filterCold',
+                         from_date:'filterFrom', to_date:'filterTo' }[k];
+            if (k === 'farm') { if (farmMS) farmMS.setValue(''); }
+            else if (id) el(id).value = '';
+            loadData();
+        };
+    });
+}
+
+function fillSelect(sel, items, current) {
+    const def = sel.querySelector('option[value=""]');
+    sel.innerHTML = ''; if (def) sel.appendChild(def);
+    items.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        if (current && String(current) === String(v)) o.selected = true;
+        sel.appendChild(o);
+    });
+}
+
+const TEMP_SLOTS = [['s_8am','8am'],['s_10am','10am'],['s_12pm','12pm'],['s_2pm','2pm'],['s_4pm','4pm'],['s_6pm','6pm'],['s_8pm','8pm']];
+function renderTempChart(profile) {
+    if (chartTemp) { chartTemp.destroy(); chartTemp = null; }
+    if (!profile || !profile.length) return;
+    const palette = ['#2490ef','#2d9ea0','#7c5cfc','#fc9c30','#29cd42','#e63757','#1098ad','#ae3ec9','#f59f00','#1c7ed6'];
+    const labels = TEMP_SLOTS.map(sl => sl[1]);
+    const datasets = profile.map((row, i) => ({
+        label: row.farm || '—',
+        data: TEMP_SLOTS.map(sl => row[sl[0]] != null ? Math.round(Number(row[sl[0]]) * 10) / 10 : null),
+        borderColor: palette[i % palette.length],
+        backgroundColor: 'transparent',
+        tension: 0.3, pointRadius: 3, borderWidth: 2, spanGaps: true,
+    }));
+    chartTemp = new Chart(el('chartTemp'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { title: { display: true, text: 'Time of day' } },
+                y: { title: { display: true, text: '\u00b0C' } }
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y == null ? '\u2014' : c.parsed.y.toFixed(1) + ' \u00b0C') } }
+            }
+        }
+    });
+}
+
+function renderTempTable(rows) {
+    const tbody = el('tempRows');
+    if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No temperature logs.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => '<tr>' +
+        '<td>' + (r.farm || '\u2014') + '</td>' +
+        '<td>' + (((r.created || '').slice(0, 16).replace('T', ' ')) || r.log_date || '\u2014') + '</td>' +
+        '<td class="num">' + tempCell(r.s_8am) + '</td>' +
+        '<td class="num">' + tempCell(r.s_10am) + '</td>' +
+        '<td class="num">' + tempCell(r.s_12pm) + '</td>' +
+        '<td class="num">' + tempCell(r.s_2pm) + '</td>' +
+        '<td class="num">' + tempCell(r.s_4pm) + '</td>' +
+        '<td class="num">' + tempCell(r.s_6pm) + '</td>' +
+        '<td class="num">' + tempCell(r.s_8pm) + '</td>' +
+        '<td class="num"><strong>' + tempCell(r.max_temp) + '</strong></td>' +
+        '</tr>').join('');
+}
+
+// Format amounts in friendly units: ml >= 1000 -> L; g >= 1000 -> kg.
+function fmtAmount(value, unit) {
+    if (value == null || value === '') return '—';
+    const v = Number(value);
+    if (!isFinite(v)) return '—';
+    const u = (unit || '').toLowerCase();
+    if (u === 'ml/l') return num(v, v < 10 ? 1 : 0) + ' ml/L';
+    if (u === 'g/l')  return num(v, v < 10 ? 1 : 0) + ' g/L';
+    if (u === 'ml')   return v >= 1000 ? num(v / 1000, 2) + ' L'  : num(v, 0) + ' ml';
+    if (u === 'g')    return v >= 1000 ? num(v / 1000, 2) + ' kg' : num(v, 0) + ' g';
+    if (u === 'l')    return num(v, v < 10 ? 1 : 0) + ' L';
+    if (u === 'kg')   return num(v, v < 10 ? 2 : 0) + ' kg';
+    return num(v, 1) + (u ? ' ' + u : '');
+}
+
+function chemCell(name, rate, rateUnit, volumeL) {
+    if (!name && !rate && !volumeL) return '<span style="color:var(--text-muted)">—</span>';
+    const parts = [];
+    if (name) parts.push('<strong>' + name + '</strong>');
+    if (rate) parts.push(fmtAmount(rate, rateUnit));
+    if (volumeL) parts.push('<span style="color:var(--text-secondary)">' + fmtAmount(volumeL, 'L') + ' sol\u2019n</span>');
+    return parts.join(' · ');
+}
+
+function renderCleanings(rows) {
+    const tbody = el('cleanRows');
+    if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No cleaning records.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => '<tr>' +
+        '<td>' + (r.cleaning_date || '—') + '</td>' +
+        '<td>' + (r.farm || '—') + '</td>' +
+        '<td>' + (r.coldstore || '—') + '</td>' +
+        '<td>' + (r.mode_of_cleaning || '—') + '</td>' +
+        '<td>' + (r.detergent_used || '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td class="num">' + (r.detergent_rate ? fmtAmount(r.detergent_rate, r.detergent_rate_unit) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td class="num">' + (r.detergent_solution_volume_l ? fmtAmount(r.detergent_solution_volume_l, 'L') : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td>' + chemCell(r.disinfectant_used, r.disinfectant_rate, r.disinfectant_rate_unit, r.disinfectant_solution_volume_l) + '</td>' +
+        '<td class="num">' + (r.coldroom_volume_disinfected_m3 ? num(r.coldroom_volume_disinfected_m3, 0) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td class="num" id="stockStems_' + r.name + '">' + (r.stock_quantity_stems ? num(r.stock_quantity_stems, 0) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td>' + (r.equipment_used || '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        '<td>' + (r.disinfected_by || '—') + '</td>' +
+        '<td>' + (r.supervised_by || '—') + '</td>' +
+        '</tr>').join('');
+}
+
+function renderInspections(rows) {
+    const tbody = el('inspectRows');
+    if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No inspections.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => '<tr>' +
+        '<td>' + (r.inspection_date || '—') + '</td>' +
+        '<td>' + (r.farm || '—') + '</td>' +
+        '<td>' + (r.coldstore || '—') + '</td>' +
+        '<td>' + condPills(r.cond, 'floor') + '</td>' +
+        '<td>' + condPills(r.cond, 'roof') + '</td>' +
+        '<td>' + condPills(r.cond, 'walls') + '</td>' +
+        '<td>' + condPills(r.cond, 'lights') + '</td>' +
+        '<td>' + condPills(r.cond, 'doors') + '</td>' +
+        '<td>' + condPills(r.cond, 'shelves') + '</td>' +
+        '<td>' + condPills(r.cond, 'drainage') + '</td>' +
+        '<td>' + condPills(r.cond, 'evaporators') + '</td>' +
+        '<td>' + (r.inspected_by || '—') + '</td>' +
+        '</tr>').join('');
+}
+
+function sensorStatusColor(st){return st==='high'?'#E03636':st==='low'?'#007BE0':st==='na'?'#8A8A8A':'#1BA964';}
+function sensorStatusStyle(st){return st==='high'?{c:'#E03636',bg:'#FCEBEB'}:st==='low'?{c:'#007BE0',bg:'#E9F3FE'}:st==='na'?{c:'#8A8A8A',bg:'#F1F1F1'}:{c:'#1BA964',bg:'#EAF7F0'};}
+function sensorCard(r){var s=sensorStatusStyle(r.status);var st=(r.status||'').toUpperCase()||'\u2014';var val=(r.value==null?'\u2014':r.value.toFixed(1));var unit=(r.value==null?'':'<span style="font-size:11px;font-weight:600;color:#B0B0B0;margin-left:1px">\u00b0C</span>');var ts=r.timestamp?String(r.timestamp).slice(5,16):'';return '<div class="sensor-card"><div style="min-width:0;flex:1"><div class="sc-name">'+esc(r.sensor)+'</div><div class="sc-meta"><span class="sc-pill" style="color:'+s.c+';background:'+s.bg+'">'+esc(st)+'</span>'+(ts?'<span class="sc-ts">'+esc(ts)+'</span>':'')+'</div></div><div class="sc-val" style="color:'+s.c+'">'+val+unit+'</div></div>';}
+function renderSensorChart(d){
+  if(sensorChart){sensorChart.destroy();sensorChart=null;}
+  var host=el('sensorChart'); if(!host)return;
+  var logs=(d&&d.logs)||[];
+  if(!logs.length)return;
+  var palette=['#007BE0','#1BA964','#E37D00','#6846E3','#3BBDE5','#E34AA6','#DB7706','#0FB5AE'];
+  var rows=logs.slice().sort(function(a,b){return String(a.timestamp).localeCompare(String(b.timestamp));});
+  var labels=[]; var seen={};
+  rows.forEach(function(r){var t=String(r.timestamp||'').slice(0,16); if(!(t in seen)){seen[t]=labels.length;labels.push(t);}});
+  var bySensor={};
+  rows.forEach(function(r){var s=r.sensor||'—'; if(!bySensor[s]){bySensor[s]=[];for(var i=0;i<labels.length;i++)bySensor[s].push(null);} bySensor[s][seen[String(r.timestamp||'').slice(0,16)]]=(r.value==null?null:r.value);});
+  var names=Object.keys(bySensor).sort();
+  var lohi=(d.thresholds&&d.thresholds['Cold Room'])||[0,8];
+  var lo=lohi[0], hi=lohi[1];
+  var basePr=labels.length>140?0:(labels.length>70?1.8:2.8);
+  function oor(v){return v!=null&&((hi!=null&&v>hi)||(lo!=null&&v<lo));}
+  var datasets=names.map(function(nm,i){var col=palette[i%palette.length];return {label:nm,data:bySensor[nm],borderColor:col,backgroundColor:col,pointBorderColor:'#fff',pointBorderWidth:1,pointBackgroundColor:function(ctx){var v=ctx.raw;if(v==null)return col;if(hi!=null&&v>hi)return '#E03636';if(lo!=null&&v<lo)return '#007BE0';return col;},pointRadius:function(ctx){var v=ctx.raw;if(v==null)return 0;return oor(v)?5:basePr;},pointHoverRadius:6,tension:0.35,borderWidth:2,spanGaps:true,fill:false};});
+  var dset={};labels.forEach(function(l){dset[l.slice(0,10)]=1;});var multiDay=Object.keys(dset).length>1;
+  // y-axis range snug to the data (plus a little headroom to show the target bands)
+  var allv=[];names.forEach(function(nm){bySensor[nm].forEach(function(v){if(v!=null)allv.push(v);});});
+  var dmin=allv.length?Math.min.apply(null,allv):(lo!=null?lo:0), dmax=allv.length?Math.max.apply(null,allv):(hi!=null?hi:8);
+  var yMin=Math.floor(Math.min(dmin,lo!=null?lo:dmin)-1);
+  var yMax=Math.ceil(Math.max(dmax,hi!=null?hi:dmax)+1);
+  var zonePlugin={id:'coldroomZones',beforeDatasetsDraw:function(chart){var ctx=chart.ctx,ca=chart.chartArea,ys=chart.scales.y;if(!ca||!ys)return;ctx.save();if(hi!=null){var yh=ys.getPixelForValue(hi);if(yh>ca.top){ctx.fillStyle='rgba(224,54,54,0.07)';ctx.fillRect(ca.left,ca.top,ca.right-ca.left,yh-ca.top);}ctx.strokeStyle='rgba(224,54,54,0.55)';ctx.lineWidth=1;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(ca.left,yh);ctx.lineTo(ca.right,yh);ctx.stroke();}if(lo!=null){var yl=ys.getPixelForValue(lo);if(yl<ca.bottom){ctx.fillStyle='rgba(0,123,224,0.07)';ctx.fillRect(ca.left,yl,ca.right-ca.left,ca.bottom-yl);}ctx.strokeStyle='rgba(0,123,224,0.5)';ctx.lineWidth=1;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(ca.left,yl);ctx.lineTo(ca.right,yl);ctx.stroke();}ctx.setLineDash([]);ctx.restore();}};
+  sensorChart=new Chart(host,{type:'line',data:{labels:labels,datasets:datasets},plugins:[zonePlugin],options:{responsive:true,maintainAspectRatio:true,aspectRatio:1.6,layout:{padding:{top:10,right:14,bottom:4,left:4}},interaction:{mode:'index',intersect:false},elements:{line:{borderCapStyle:'round',borderJoinStyle:'round'}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:'#717171',font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:8,callback:function(val){var l=this.getLabelForValue(val)||'';return multiDay?l.slice(5):l.slice(11);}}},y:{min:yMin,max:yMax,grid:{color:'#EDEDED',drawTicks:false},border:{display:false},ticks:{color:'#717171',font:{size:11},padding:6,stepSize:1,callback:function(v){return v+'°';}}}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',boxWidth:8,boxHeight:8,padding:14,color:'#525252',font:{size:11}}},tooltip:{backgroundColor:'#fff',titleColor:'#171717',bodyColor:'#525252',borderColor:'#E2E2E2',borderWidth:1,padding:10,cornerRadius:8,usePointStyle:true,titleFont:{size:11,weight:'600'},bodyFont:{size:11},boxPadding:4,callbacks:{label:function(c){var v=c.parsed.y;var f=oor(v)?'  ⚠':'';return '  '+c.dataset.label+': '+(v==null?'—':v.toFixed(1)+' °C')+f;}}}}}});
+}
+function csvCell(v){v=(v==null?'':String(v));if(/[",\n\r]/.test(v)){v='"'+v.replace(/"/g,'""')+'"';}return v;}
+function exportSensorCsv(){
+  var d=lastSensorData; var logs=(d&&d.logs)||[];
+  if(!logs.length){alert('No sensor readings to export yet.');return;}
+  var lines=[['Time','Farm','Type','Sensor','Temperature (°C)','Status'].join(',')];
+  logs.forEach(function(r){lines.push([String(r.timestamp||'').slice(0,19),r.farm||'',r.monitoring||'',r.sensor||'',(r.value==null?'':r.value),(r.status||'').toUpperCase()].map(csvCell).join(','));});
+  var csv='﻿'+lines.join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  var now=new Date(); var stamp=now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2);
+  a.href=url; a.download='coldroom-sensor-readings-'+stamp+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1500);
+}
+function renderSensorTemps(d){lastSensorData=d;renderSensorChart(d);var _lg=(d.logs||[]);var _vals=_lg.map(function(r){return r.value;}).filter(function(v){return v!=null;});var _avg=_vals.length?(_vals.reduce(function(a,b){return a+b;},0)/_vals.length):null;var _min=_vals.length?Math.min.apply(null,_vals):null;var _max=_vals.length?Math.max.apply(null,_vals):null;if(el('kpiMinTemp'))el('kpiMinTemp').textContent=(_min==null?'—':_min.toFixed(1));if(el('kpiMaxTemp'))el('kpiMaxTemp').textContent=(_max==null?'—':_max.toFixed(1));if(el('kpiAvgTemp'))el('kpiAvgTemp').textContent=(_avg==null?'—':_avg.toFixed(1));var cr=el('sensorColdRooms');if(cr)cr.innerHTML=(d.cold_rooms&&d.cold_rooms.length)?d.cold_rooms.map(sensorCard).join(''):'<div class="empty-state" style="padding:14px">No cold room sensors.</div>';var gh=d.greenhouses||{};var farms=Object.keys(gh).sort();var host=el('sensorGreenhouses');if(host)host.innerHTML=farms.length?farms.map(function(f){return '<div class="sensor-farm-group"><div class="sfg-title">'+esc(f)+' <span class="sfg-count">'+gh[f].length+'</span></div><div class="sensor-grid">'+gh[f].map(sensorCard).join('')+'</div></div>';}).join(''):'<div class="empty-state" style="padding:14px">No greenhouse sensors.</div>';var lb=el('sensorLogRows');if(lb)lb.innerHTML=(d.logs&&d.logs.length)?d.logs.map(function(r){var c=sensorStatusColor(r.status);return '<tr><td>'+esc(String(r.timestamp||'').slice(0,19))+'</td><td>'+esc(r.farm)+'</td><td>'+esc(r.monitoring)+'</td><td>'+esc(r.sensor)+'</td><td class="num">'+(r.value==null?'\u2014':r.value.toFixed(1))+'</td><td><span style="color:'+c+';font-weight:600">'+esc((r.status||'').toUpperCase())+'</span></td></tr>';}).join(''):'<tr><td colspan="6" class="empty-state">No readings for the selected range.</td></tr>';var ao=el('sensorAsOf');if(ao)ao.textContent=d.as_of?('as of '+String(d.as_of).slice(0,16)):'';}
+var _sensorGen=0;
+function loadSensorTemps(){var sGen=++_sensorGen;var setErr=function(m){if(el('sensorColdRooms'))el('sensorColdRooms').innerHTML='<div class="empty-state" style="padding:14px">'+esc(m)+'</div>';if(el('sensorGreenhouses'))el('sensorGreenhouses').innerHTML='<div class="empty-state" style="padding:14px">'+esc(m)+'</div>';if(el('sensorLogRows'))el('sensorLogRows').innerHTML='<tr><td colspan="6" class="empty-state">'+esc(m)+'</td></tr>';};var params=new URLSearchParams({farm:farmMS?farmMS.getValue():'',from_date:el('filterFrom').value,to_date:el('filterTo').value});var ctrl=(window.AbortController?new AbortController():null);var to=ctrl?setTimeout(function(){ctrl.abort();},28000):null;fetch('/api/method/fetchColdroomSensorTemps?'+params.toString(),{headers:{'X-Frappe-CSRF-Token':frappe.csrf_token||'token'},credentials:'include',signal:ctrl?ctrl.signal:undefined}).then(function(r){if(to)clearTimeout(to);if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(j){if(sGen!==_sensorGen)return;var d=(j&&j.message)||{};if(d.success){renderSensorTemps(d);}else{setErr('Failed: '+(d.error||'no data'));}}).catch(function(e){if(to)clearTimeout(to);setErr('Could not load sensor data ('+((e&&e.message)||'error')+')');});}
+var _loadGen = 0;
+function loadData() {
+    var myGen = ++_loadGen;
+    const params = new URLSearchParams({
+        year: el('filterYear').value,
+        week: el('filterWeek').value,
+        farm: farmMS ? farmMS.getValue() : '',
+        coldstore: el('filterCold').value,
+        from_date: el('filterFrom').value,
+        to_date: el('filterTo').value,
+    });
+    fetch('/api/method/fetchColdroomOverview?' + params.toString(),
+          { headers: { 'X-Frappe-CSRF-Token': frappe.csrf_token || 'token' }, credentials: 'include' })
+        .then(r => r.json()).then(j => {
+            if (myGen !== _loadGen) return;
+            const d = (j && j.message) || {};
+            if (!d.success) {
+                console.error('Coldroom overview failed to load:', d.error || 'unknown error');
+                return;
+            }
+            const k = d.kpi || {};
+            // kpiTempLogs & kpiAvgTemp are driven by sensor data in renderSensorTemps().
+            el('kpiCleanings').textContent  = num(k.cleanings, 0);
+            el('kpiInspections').textContent = num(k.inspections, 0);
+            el('kpiIssues').textContent     = num(k.inspections_with_issues, 0);
+
+            const opts = d.filter_options || {};
+            fillSelect(el('filterYear'), (opts.years || []).map(String), el('filterYear').value);
+            fillSelect(el('filterWeek'), (opts.weeks || []).map(String), el('filterWeek').value);
+            if (farmMS) farmMS.setOptions(opts.farms || []);
+            fillSelect(el('filterCold'), opts.coldstores || [],          el('filterCold').value);
+
+            setBadges(d.active_filters || {});
+            renderCleanings(d.cleanings || []);
+            renderInspections(d.inspections || []);
+        }).catch(err => {
+            console.error('Coldroom overview error:', err && err.message);
+        });
+    loadSensorTemps();
+}
+
+['filterYear','filterWeek','filterCold','filterFrom','filterTo']
+    .forEach(id => el(id).addEventListener('change', loadData));
+farmMS = createMultiSelect('filterFarm', { placeholder: 'All farms' });
+if (farmMS) farmMS.onChange(loadData);
+el('clearDatesBtn').addEventListener('click', () => { el('filterFrom').value = ''; el('filterTo').value = ''; loadData(); });
+el('resetFiltersBtn').addEventListener('click', () => {
+    ['filterYear','filterWeek','filterCold','filterFrom','filterTo'].forEach(id => el(id).value = '');
+    if (farmMS) farmMS.setValue('');
+    loadData();
+});
+
+if (el('sensorExportBtn')) el('sensorExportBtn').addEventListener('click', exportSensorCsv);
+
+loadData();
+</script>
+<style>
+.sensor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:14px;}
+.sensor-card{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #ECECEC;border-radius:12px;padding:11px 14px;overflow:hidden;transition:border-color .15s,box-shadow .15s;}
+.sensor-card:hover{border-color:#DCDCDC;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.sc-name{font-size:12px;color:#383838;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-meta{display:flex;align-items:center;gap:6px;margin-top:5px}
+.sc-pill{font-size:9px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:1px 6px;line-height:1.5}
+.sc-val{font-size:20px;font-weight:700;line-height:1;white-space:nowrap;flex:none}
+.sc-ts{font-size:10px;color:#9a9a9a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sensor-farm-group{padding:4px 14px 8px}
+.sfg-title{font-weight:600;font-size:13px;color:#0a0a0a;margin:8px 0 2px}
+.sfg-count{background:rgba(10,10,10,.06);border-radius:999px;padding:1px 8px;font-size:11px;color:#5a5a52;font-weight:500}
+/* Upande UFD :: Mona overlay (coldroom variant) — remaps bespoke classes to Mona */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Poppins:wght@400;500;600;700&display=swap');
+:root{
+  --bg-page:#f4f3ef!important;--bg-surface:#ffffff!important;--bg-input:#f4f3ef!important;--bg-hover:rgba(10,10,10,.03)!important;
+  --text-primary:#0a0a0a!important;--text-secondary:#3a3a34!important;--text-muted:#8a8780!important;
+  --border-default:rgba(10,10,10,.06)!important;--border-light:rgba(10,10,10,.05)!important;
+  --accent-blue:#228883!important;--accent-blue-light:rgba(34,136,131,.10)!important;--accent-teal:#228883!important;
+}
+body{font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;background:#f4f3ef!important;color:#0a0a0a!important}
+.top-nav{background:#fff!important;border-bottom:1px solid rgba(10,10,10,.06)!important;height:auto!important;padding:10px 24px!important;gap:4px}
+.nav-brand{color:#8a8780!important;border-right:1px solid rgba(10,10,10,.08)!important;font-weight:600!important}
+.nav-link{padding:8px 14px!important;border-radius:999px!important;border-bottom:0!important;margin-bottom:0!important;color:#5a5a52!important;font-weight:500!important;transition:all .2s}
+.nav-link:hover{background:rgba(10,10,10,.04)!important;border-bottom:0!important;color:#0a0a0a!important}
+.nav-link.active{background:#0a0a0a!important;color:#fafaf6!important;border-bottom:0!important;border-radius:999px!important}
+.page-head{background:#fff!important;border-bottom:1px solid rgba(10,10,10,.06)!important}
+.page-title{font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;font-weight:600!important;font-size:22px!important;letter-spacing:-.5px!important;color:#0a0a0a!important}
+.refresh-btn,.reset-filters-btn,.clear-dates-btn{border-radius:999px!important;border:1px solid rgba(10,10,10,.12)!important;background:#fff!important;color:#3a3a34!important;box-shadow:0 1px 0 rgba(10,10,10,.04),0 8px 32px -16px rgba(10,10,10,.10)!important}
+.refresh-btn:hover,.reset-filters-btn:hover{background:rgba(10,10,10,.03)!important}
+.filter-bar{background:#fff!important;border-bottom:1px solid rgba(10,10,10,.06)!important}
+.filter-group{border-radius:999px!important;border:1px solid rgba(10,10,10,.12)!important;background:#fff!important}
+.active-filter-badge{background:rgba(10,10,10,.05)!important;color:#3a3a34!important;border-radius:999px!important}
+.kpi-card{background:#fff!important;border:0!important;border-radius:20px!important;box-shadow:0 1px 0 rgba(10,10,10,.04),0 8px 32px -16px rgba(10,10,10,.10)!important;transition:transform .25s,box-shadow .25s!important}
+.kpi-card:hover{transform:translateY(-3px);box-shadow:0 1px 0 rgba(10,10,10,.06),0 24px 48px -24px rgba(10,10,10,.18)!important}
+.kpi-icon{display:none!important}
+.kpi-label{color:#8a8780!important;text-transform:uppercase;letter-spacing:1.8px!important;font-weight:500!important;font-size:11px!important}
+.kpi-value{font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;font-weight:600!important;font-size:38px!important;letter-spacing:-1.2px!important;color:#0a0a0a!important}
+.panel{background:#fff!important;border:0!important;border-radius:24px!important;box-shadow:0 1px 0 rgba(10,10,10,.04),0 8px 32px -16px rgba(10,10,10,.10)!important}
+.panel:hover{box-shadow:0 1px 0 rgba(10,10,10,.06),0 24px 48px -24px rgba(10,10,10,.18)!important}
+.panel-heading{border-bottom:1px solid rgba(10,10,10,.06)!important;background:#fff!important}
+.panel-title{font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;font-weight:600!important;letter-spacing:-.4px!important;color:#0a0a0a!important;font-size:16px!important}
+.panel-subtitle{color:#8a8780!important}
+.ftr-table th{background:#fff!important;color:#8a8780!important;border-bottom:1px solid rgba(10,10,10,.06)!important}
+.ftr-table td{border-bottom:1px solid rgba(10,10,10,.06)!important}
+.pill-ok{background:rgba(34,136,131,.10)!important;color:#228883!important}
+.pill-bad{background:rgba(196,48,43,.10)!important;color:#c4302b!important}
+.ms-chip{background:#0a0a0a!important;color:#fafaf6!important}
+</style>
+<script>
+(function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){window.__ufdMonaReg=1;Chart.register({id:"ufdMonaColors",beforeUpdate:function(chart){
+        var t=chart.config.type;var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+        if(bars.length===1){var d=bars[0];d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});}
+        else if(bars.length>1){bars.forEach(function(d,i){if(typeof d.backgroundColor!=="function"){d.backgroundColor=PAL[i%PAL.length];}});}
+      }});}
+    }catch(e){}
+  }
+  go();
+})();
+</script>
+</body>
+</html>
+

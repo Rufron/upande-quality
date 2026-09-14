@@ -5,5 +5,5 @@
 from frappe.model.document import Document
 
 
-class ShelfLocations(Document):
+class VaselifeObservation(Document):
 	pass

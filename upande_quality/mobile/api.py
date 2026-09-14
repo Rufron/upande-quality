@@ -6792,6 +6792,9 @@ def savePackhouseQC():
             or data.get("order_spec", "")
             or data.get("order_spec_id", "")
         )
+        # custom_order_pick_list is now a Link on Quality Reporting -- keep only valid ids
+        if order_pick_list and not frappe.db.exists("Order Pick List", order_pick_list):
+            order_pick_list = ""
 
         variety   = data.get("variety", "")
         greenhouse = data.get("greenhouse", "")
@@ -6813,6 +6816,9 @@ def savePackhouseQC():
                 {"parent": order_pick_list, "item_code": variety},
                 "stem_length"
             ) or ""
+        # custom_length is now a Link to Stem Length -- keep only valid values
+        if length and not frappe.db.exists("Stem Length", length):
+            length = ""
 
         stems_affected   = int(data.get("stems_affected",   0) or 0)
         bunches_affected = int(data.get("bunches_affected",  0) or 0)
@@ -6854,6 +6860,9 @@ def savePackhouseQC():
             team     = team     or opl_data.get("team", "")
             if not farm:
                 farm = opl_data.get("farm", "")
+        # custom_customer is now a Link to Customer -- keep only valid values
+        if customer and not frappe.db.exists("Customer", customer):
+            customer = ""
 
         def true_greenhouse_warehouse(bucket_id, fallback_wh):
             if bucket_id:
@@ -9633,14 +9642,38 @@ def saveVaselifeObservation():
             if not isinstance(reasons_raw, list):
                 reasons_raw = []
 
+            cut_stage = (str(data.get("cut_stage")).strip() if data.get("cut_stage") not in (None, "") else None)
+
+            # Build the child-table rows from the reasons payload. Each entry is
+            # either a plain reason name or a dict; only reasons that exist as a
+            # Vaselife Parameter are linked (unknowns stay in the JSON audit blob).
+            reason_rows = []
+            for it in reasons_raw:
+                if isinstance(it, str):
+                    nm, st = it.strip(), 0
+                elif isinstance(it, dict):
+                    nm = (it.get("name") or it.get("reason") or it.get("parameter") or it.get("label") or "").strip()
+                    st = it.get("count") or it.get("qty") or it.get("stems") or 0
+                else:
+                    continue
+                if not nm or not frappe.db.exists("Vaselife Parameter", nm):
+                    continue
+                try:
+                    st = int(st)
+                except (ValueError, TypeError):
+                    st = 0
+                reason_rows.append({"reason": nm, "stems": st})
+
             obs_doc = frappe.get_doc({
-                "doctype":         "Vaselife Observation",
-                "sample":          sample_code,
-                "date":            obs_date,
-                "stems_failed":    stems_failed,
-                "failure_reasons": json.dumps(reasons_raw),
-                "notes":           data.get("notes") or "",
-                "prepared_by":     frappe.session.user,
+                "doctype":                "Vaselife Observation",
+                "sample":                 sample_code,
+                "date":                   obs_date,
+                "stems_failed":           stems_failed,
+                "cut_stage":              cut_stage,
+                "failure_reasons_detail": reason_rows,
+                "failure_reasons":        json.dumps(reasons_raw),  # kept as audit/raw
+                "notes":                  data.get("notes") or "",
+                "prepared_by":            frappe.session.user,
             })
 
             obs_doc.insert(ignore_permissions=True)

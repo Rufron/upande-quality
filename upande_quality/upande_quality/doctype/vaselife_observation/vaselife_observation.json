@@ -1,0 +1,111 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "VO-.YYYY.-.####",
+ "creation": "2026-09-14 09:10:39.071878",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sample",
+  "date",
+  "col_b1",
+  "stems_failed",
+  "cut_stage",
+  "prepared_by",
+  "sec_reasons",
+  "failure_reasons_detail",
+  "failure_reasons",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "sample",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sample",
+   "options": "Vaselife Sample",
+   "reqd": 1
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Observation Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "col_b1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stems_failed",
+   "fieldtype": "Int",
+   "label": "Stems Failed"
+  },
+  {
+   "description": "Cut stage observed on this day (flower openness).",
+   "fieldname": "cut_stage",
+   "fieldtype": "Select",
+   "label": "Cut Stage",
+   "options": "\n<1.5\n1.5\n2.0\n2.5\n3.0\n3.5\n4.0\n4.5\n5.0\n5.0>"
+  },
+  {
+   "fieldname": "prepared_by",
+   "fieldtype": "Data",
+   "label": "Prepared By"
+  },
+  {
+   "fieldname": "sec_reasons",
+   "fieldtype": "Section Break",
+   "label": "Failure Reasons"
+  },
+  {
+   "fieldname": "failure_reasons",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Failure Reasons (JSON)"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notes / Remarks"
+  },
+  {
+   "fieldname": "failure_reasons_detail",
+   "fieldtype": "Table",
+   "label": "Failure Reasons",
+   "options": "Vaselife Failure Reason"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-14 19:29:42.458664",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Vaselife Observation",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

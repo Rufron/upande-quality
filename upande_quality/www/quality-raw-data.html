@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quality Raw Data | Quality Dashboard</title>
+<!-- PivotTable.js CSS (preserved CDNs) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/themes/base/jquery-ui.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pivottable/2.23.0/pivot.min.css">
+<script src="/assets/frappe/js/frappe-web.min.js"></script>
+<style>
+:root{
+  --bg:#fff;--bg-card:#fff;--bg-hover:#fafafa;--bg-muted:#f5f5f5;
+  --border:#ececec;--border-2:#d0d0d0;
+  --text:#000;--text-2:#6b6b6b;--text-3:#9a9a9a;--text-4:#cfcfcf;
+  --accent:#000;
+  --good:#16a34a;--warn:#d97706;--bad:#dc2626;--plan:#d4d4d4;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+  --f:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
+}
+/* Take dashboard out of Frappe layout entirely — fill viewport */
+html,body{margin:0!important;padding:0!important;overflow:hidden!important;height:100vh!important}
+.navbar,header,.page-breadcrumbs,.page-header,.page-header-wrapper,.web-footer,footer,
+.website-edit-button,.btn-edit-page,.edit-page-btn,.scroll-to-top,.back-to-top,
+.website-banner,.call-to-action,.frappe-chat,#frappe-chat,.telegram-share,.share-buttons,
+.web-page-edit,.published-edit{display:none!important}
+.aph *{box-sizing:border-box;margin:0;padding:0}
+.aph{position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;z-index:2147483000;
+  font-family:var(--f);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:grid;grid-template-columns:240px 1fr;font-feature-settings:'cv11','ss01','ss03'}
+
+.aph svg.ic{width:16px;height:16px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.aph .aph-side svg.ic{width:15px;height:15px;stroke-width:1.6;color:var(--text-3)}
+.aph .aph-side .nav-item.active svg.ic{color:#fff}
+.aph .aph-kpi svg.ic{width:18px;height:18px;color:var(--text-3);stroke-width:1.5}
+
+/* SIDEBAR */
+.aph-side{background:var(--bg-card);border-right:1px solid var(--border);height:100vh;position:sticky;top:0;display:flex;flex-direction:column;overflow:hidden}
+.aph-side .brand{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.aph-side .brand .mark{width:36px;height:36px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;letter-spacing:-0.02em;border-radius:7px}
+.aph-side .brand .name{font-weight:600;font-size:14px;line-height:1.15;letter-spacing:-0.015em}
+.aph-side .brand .name small{display:block;font-size:11px;color:var(--text-3);font-weight:400;margin-top:2px}
+/* Note: "nav" collides with Bootstrap's .nav (flex-wrap:wrap) loaded by Frappe —
+   force nowrap + column here or items wrap into a phantom second column */
+.aph-side .nav{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 0 16px;margin:0;list-style:none;display:flex;flex-direction:column;flex-wrap:nowrap!important}
+.aph-side .group-lbl{padding:14px 20px 4px;font-size:10px;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase;font-weight:600;display:block}
+.aph-side .group-lbl:first-child{padding-top:10px}
+.aph-side .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text-2);font-weight:500;user-select:none;transition:background .12s ease,color .12s ease;margin:1px 8px;border-radius:6px;box-sizing:border-box;text-decoration:none}
+.aph-side .nav-item:hover{background:var(--bg-hover);color:var(--text);text-decoration:none}
+.aph-side .nav-item.active{background:var(--accent);color:#fff;font-weight:500}
+.aph-side .nav-item .badge{margin-left:auto;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text-2);background:var(--bg-muted);padding:1px 7px;border-radius:9px;line-height:1.4}
+.aph-side .nav-item.active .badge{color:#fff;background:rgba(255,255,255,.18)}
+.aph-side .nav-item.stub{color:var(--text-3)}
+.aph-side .nav-item.stub svg.ic{opacity:.55}
+.aph-side .footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-2)}
+.aph-side .footer .av{width:24px;height:24px;border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:10px;color:var(--text)}
+.aph-side .footer .who{flex:1;line-height:1.2;overflow:hidden}
+.aph-side .footer .who .nm{font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aph-side .footer .who .em{font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aph-side .home-link{display:flex;align-items:center;gap:11px;margin:8px 8px 0;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:500;color:var(--text-2);text-decoration:none;transition:background .12s ease,color .12s ease}
+.aph-side .home-link:hover{background:var(--bg-hover);color:var(--text);text-decoration:none}
+.aph-side .home-link svg.ic{width:15px;height:15px;stroke-width:1.6;color:var(--text-3)}
+
+/* MAIN */
+.aph-main{min-width:0;height:100vh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.aph-content{flex:1}
+.aph-topbar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10}
+.aph-topbar h1{font-size:18px;font-weight:600;letter-spacing:-0.02em}
+.aph-topbar .crumb{color:var(--text-3);font-size:11px;font-weight:500;padding-left:14px;border-left:1px solid var(--border);height:18px;line-height:18px;letter-spacing:.02em}
+.aph-topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+/* date-pill moved to aph-filter-bar .date-block */
+.aph-topbar .presets{display:flex;border:1px solid var(--border-2);border-radius:7px;overflow:hidden;height:32px}
+.aph-topbar .presets .p{padding:0 12px;font-size:11px;font-weight:500;cursor:pointer;color:var(--text-2);background:var(--bg-card);border-right:1px solid var(--border);display:flex;align-items:center}
+.aph-topbar .presets .p:last-child{border-right:0}
+.aph-topbar .presets .p:hover{background:var(--bg-hover);color:var(--text)}
+.aph-topbar .presets .p.active{background:var(--accent);color:#fff}
+.aph-topbar .btn{padding:0 14px;height:32px;border:1px solid var(--border-2);background:var(--bg-card);color:var(--text);border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--f);display:flex;align-items:center;gap:6px}
+.aph-topbar .btn:hover{background:var(--bg-hover)}
+.aph-topbar .btn svg{width:14px;height:14px}
+
+.aph-content{padding:28px}
+.aph-page-hd{margin-bottom:24px}
+.aph-page-hd .ttl{font-size:24px;font-weight:600;letter-spacing:-0.025em;line-height:1.15}
+.aph-page-hd .sub{font-size:13px;color:var(--text-2);margin-top:4px}
+
+.aph-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:28px}
+.aph-kpi{background:var(--bg-card);border:1px solid var(--border);padding:20px 22px;border-radius:10px;position:relative;min-height:118px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color .12s ease,box-shadow .12s ease}
+.aph-kpi:hover{border-color:var(--border-2);box-shadow:var(--shadow-sm)}
+.aph-kpi .ic-wrap{position:absolute;top:18px;right:20px;width:30px;height:30px;border-radius:7px;background:var(--bg-muted);display:flex;align-items:center;justify-content:center}
+.aph-kpi .lbl{font-size:11px;color:var(--text-2);letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+.aph-kpi .v{font-size:32px;font-weight:600;letter-spacing:-0.035em;font-feature-settings:'tnum';margin-top:10px;line-height:1}
+.aph-kpi .sub{font-size:11px;color:var(--text-3);margin-top:8px;font-weight:500}
+.aph-kpi .sub strong{color:var(--text-2);font-weight:600}
+
+.aph-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;width:100%;box-sizing:border-box}
+/* full-width rows — !important so no theme/global CSS can shrink them */
+.aph-grid.col-1{display:grid!important;grid-template-columns:1fr!important;width:100%!important;max-width:none!important}
+.aph-grid.col-1 > .aph-card{width:100%!important;max-width:none!important;box-sizing:border-box}
+.aph-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-sizing:border-box;width:100%;min-width:0}
+.aph-card-hd{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.aph-card-hd .ttl{font-weight:600;font-size:14px;letter-spacing:-0.01em;white-space:nowrap}
+.aph-card-hd .sub{color:var(--text-3);font-size:11px;font-weight:500}
+.aph-card-body{padding:18px 22px}
+.aph-card-body.padless{padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+table.aph-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.aph-tbl th{text-align:left;padding:11px 16px;background:var(--bg-card);font-size:11px;color:var(--text-3);letter-spacing:.04em;text-transform:uppercase;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+.aph-tbl td{padding:11px 16px;border-bottom:1px solid var(--border);font-feature-settings:'tnum';white-space:nowrap}
+.aph-tbl tr:last-child td{border-bottom:0}
+.aph-tbl tr:hover td{background:var(--bg-hover)}
+.aph-tbl td.num,.aph-tbl th.num{text-align:right}
+.aph-tbl td.mono{font-family:var(--mono);font-size:12px;color:var(--text-2)}
+.aph-tbl td.dim{color:var(--text-3)}
+.aph-tbl td.strong{font-weight:600}
+
+.aph-empty{padding:40px;text-align:center;color:var(--text-3);font-size:13px}
+.aph-loading{padding:60px;text-align:center;color:var(--text-3);font-size:12px}
+.aph-err{background:var(--text);color:#fff;padding:12px 16px;border-radius:7px;font-size:12px;margin:14px 28px;font-family:var(--mono)}
+.aph-stub{padding:56px 28px;text-align:center;background:var(--bg-card);border:1px dashed var(--border-2);border-radius:10px}
+.aph-stub .ttl{font-size:16px;font-weight:600;margin-bottom:6px}
+.aph-stub .sub{font-size:13px;color:var(--text-2)}
+
+.aph-bar-row{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--border)}
+.aph-bar-row:last-child{border-bottom:0}
+.aph-bar-row .lbl{width:54px;font-size:13px;font-weight:600}
+.aph-bar-row .bar{flex:1;height:8px;background:var(--bg-muted);border-radius:4px;overflow:hidden}
+.aph-bar-row .bar .fill{height:100%;background:var(--text);border-radius:4px}
+.aph-bar-row .val{width:170px;text-align:right;font-size:12px;color:var(--text-2);font-feature-settings:'tnum'}
+
+.aph-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:10px;font-size:11px;background:var(--bg-muted);color:var(--text);font-weight:500;line-height:1.5}
+
+/* Chart wrappers: the scroll container always spans the full card; the inner
+   div's width is set in px by JS = max(available width, minimum), so the chart
+   always fills the page on wide screens and scrolls sideways on narrow ones */
+.aph-chart-scroll{display:block;width:100%!important;max-width:none!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 16px;box-sizing:border-box}
+.aph-chart-inner{position:relative;width:100%}
+
+/* Wide table scroll wrapper (proforma / non-export invoice ledgers) */
+.aph-tbl-scroll{display:block;width:100%!important;max-width:none!important;overflow-x:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
+
+/* ── Narrow screens / mobile ─────────────────────────────────────────── */
+@media (max-width: 900px){
+  html,body{overflow:auto!important}
+  .aph{display:flex;flex-direction:column;position:fixed}
+  /* sidebar becomes a compact top bar with a horizontally scrolling nav */
+  .aph-side{width:100%;height:auto;position:relative;flex:0 0 auto;border-right:0;border-bottom:1px solid var(--border);overflow:visible}
+  .aph-side .brand{padding:10px 16px;border-bottom:0}
+  .aph-side .home-link{margin:0 8px 8px;width:max-content}
+  .aph-side .nav{flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;padding:0 8px 8px;-webkit-overflow-scrolling:touch}
+  .aph-side .group-lbl{display:none}
+  .aph-side .nav-item{flex:0 0 auto;margin:0 2px;white-space:nowrap;padding:7px 12px}
+  .aph-side .footer{display:none}
+  .aph-main{flex:1 1 auto;height:auto;min-height:0}
+  .aph-topbar{position:static;flex-wrap:wrap;gap:8px;padding:10px 14px}
+  .aph-topbar .crumb{display:none}
+  .aph-topbar .right{margin-left:0;width:100%;flex-wrap:wrap}
+  .aph-content{padding:14px}
+  .aph-err{margin:14px}
+  /* everything single-column */
+  .aph-grid{grid-template-columns:1fr}
+  .aph-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .aph-kpi{min-height:100px;padding:16px 18px}
+  .aph-kpi .v{font-size:26px}
+  .aph-page-hd .ttl{font-size:20px}
+}
+</style>
+
+<!-- ════════ Page-specific tweaks (appended; reference tokens above are untouched) ════════ -->
+<style>
+/* ── Dedicated filter bar below topbar ── */
+.aph-filter-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;position:sticky;top:57px;z-index:9}
+.aph-filter-bar .fb-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.aph-filter-bar .fb-sep{width:1px;height:22px;background:var(--border-2);flex-shrink:0;margin:0 4px}
+.aph .filter-group{display:flex;align-items:center;gap:5px;background:var(--bg-card);padding:0 8px;border-radius:7px;border:1px solid var(--border-2);height:32px}
+.aph .filter-label{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.aph .form-control{height:28px;padding:0 6px;font-size:12px;font-family:var(--f);font-feature-settings:'tnum';background:transparent;border:none;color:var(--text);min-width:78px;outline:0;font-weight:500}
+.aph select.form-control{cursor:pointer}
+/* ── Date range block ── */
+.aph-filter-bar .date-block{display:flex;align-items:center;background:var(--bg-card);border:1px solid var(--border-2);border-radius:7px;height:32px;overflow:hidden}
+.aph-filter-bar .date-block .dl{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;padding:0 9px;border-right:1px solid var(--border);height:100%;display:flex;align-items:center;background:var(--bg-muted);white-space:nowrap}
+.aph-filter-bar .date-block input{border:0;padding:0 8px;font-size:12px;font-family:var(--f);font-feature-settings:'tnum';background:transparent;outline:0;width:118px;font-weight:500;color:var(--text);height:100%}
+.aph-filter-bar .date-block .dsep{padding:0 4px;color:var(--text-3);font-size:12px;pointer-events:none}
+.aph-filter-bar .date-block .dclr{padding:0 10px;font-size:12px;color:var(--text-3);cursor:pointer;border-left:1px solid var(--border);height:100%;display:flex;align-items:center;background:none;border-top:0;border-right:0;border-bottom:0;font-family:var(--f);line-height:1}
+.aph-filter-bar .date-block .dclr:hover{color:var(--text);background:var(--bg-hover)}
+
+/* ── Loading / error states (render output) ── */
+.aph .loading-state{text-align:center;padding:60px 20px;color:var(--text-3)}
+.aph .spinner{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--text);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.aph .error-state{background:#fde8ec;color:var(--bad);padding:12px 16px;border-radius:8px;margin:20px;border-left:3px solid var(--bad);font-size:11px}
+
+/* ── Pivot area lives inside an aph-card body (padless) and scrolls ── */
+.aph .pivot-inner{padding:0;overflow:auto;max-height:calc(100vh - 280px);width:100%}
+
+/* ── PivotTable.js restyled to aph tokens ── */
+.aph .pvtUi{font-family:var(--f)!important;font-size:12px!important;color:var(--text)!important;width:100%!important}
+.aph .pvtAxisContainer,.aph .pvtVals{border:1px dashed var(--border-2)!important;background:var(--bg-muted)!important;padding:8px!important;border-radius:6px!important;margin:4px!important}
+.aph .pvtAxisContainer li span.pvtAttr,
+.aph .pvtRows li span.pvtAttr,
+.aph .pvtCols li span.pvtAttr{background:var(--bg-card)!important;border:1px solid var(--border-2)!important;border-radius:16px!important;padding:4px 12px!important;font-size:11px!important;font-weight:600!important;color:var(--text)!important;cursor:grab!important;display:inline-block!important;margin:2px 4px!important}
+.aph .pvtAxisContainer li span.pvtAttr:hover,
+.aph .pvtRows li span.pvtAttr:hover,
+.aph .pvtCols li span.pvtAttr:hover{border-color:var(--text)!important;background:var(--bg-hover)!important}
+.aph .pvtRenderer{display:none!important}
+.aph .pvtAggregator{font-family:var(--f)!important;font-size:11px!important;border:1px solid var(--border-2)!important;border-radius:4px!important;padding:4px 8px!important;background:var(--bg-card)!important}
+.aph .pvtTable{font-family:var(--f)!important;font-size:11px!important;border-collapse:collapse!important;width:100%!important}
+.aph .pvtTable thead tr th,
+.aph .pvtTable tbody tr th{background:var(--bg-muted)!important;border:1px solid var(--border)!important;padding:8px 12px!important;font-weight:600!important;color:var(--text-2)!important;white-space:nowrap!important}
+.aph .pvtTable tbody tr td{border:1px solid var(--border)!important;padding:6px 10px!important;text-align:right!important;font-variant-numeric:tabular-nums!important}
+.aph .pvtTable tbody tr td:hover{background:var(--bg-hover)!important}
+.aph .pvtGrandTotal,.aph .pvtTotal{background:var(--bg-muted)!important;font-weight:700!important}
+.aph .pvtFilterBox{font-family:var(--f)!important;font-size:12px!important;border:1px solid var(--border-2)!important;border-radius:8px!important;box-shadow:var(--shadow-sm)!important;background:var(--bg-card)!important;z-index:1000!important}
+.aph .pvtFilterBox input{font-family:var(--f)!important;font-size:11px!important;border:1px solid var(--border-2)!important;border-radius:4px!important;padding:4px 8px!important}
+.aph .pvtFilterBox button{font-size:11px!important;border-radius:4px!important;padding:4px 12px!important;cursor:pointer!important}
+
+@media(max-width:900px){
+  .aph-filter-bar{top:0;position:static;padding:10px 14px}
+  .aph-filter-bar .fb-sep{display:none}
+  .aph .filter-group{height:auto;min-height:32px}
+  .aph .pivot-inner{max-height:none}
+  .aph-filter-bar .date-block input{width:100px}
+}
+
+/* ── Multiselect widget ── */
+.aph .ms{position:relative;display:inline-block;min-width:150px;font-size:12px;vertical-align:middle}
+.aph .ms-control{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:28px;padding:2px 22px 2px 4px;border:none;border-radius:5px;background:transparent;cursor:pointer;position:relative}
+.aph .ms-control:after{content:"\25BE";position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:10px;pointer-events:none}
+.aph .ms-ph{color:var(--text-3)}
+.aph .ms-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;line-height:1.6;max-width:120px}
+.aph .ms-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aph .ms-chip b{cursor:pointer;font-weight:700;opacity:.85}
+.aph .ms-chip b:hover{opacity:1}
+.aph .ms-count{background:var(--bg-muted);color:var(--text);border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600}
+.aph .ms-panel{position:absolute;z-index:9999;top:calc(100% + 6px);left:0;min-width:210px;background:var(--bg-card);border:1px solid var(--border-2);border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.16);display:none;flex-direction:column;max-height:300px}
+.aph .ms.open .ms-panel{display:flex}
+.aph .ms-search{margin:7px;padding:5px 8px;border:1px solid var(--border-2);border-radius:5px;font-size:12px;outline:none;font-family:var(--f)}
+.aph .ms-actions{display:flex;gap:12px;padding:0 10px 6px;border-bottom:1px solid var(--border)}
+.aph .ms-actions a{color:var(--text-2);cursor:pointer;font-size:11px;font-weight:500}
+.aph .ms-actions a:hover{color:var(--text)}
+.aph .ms-list{overflow-y:auto;padding:4px 0}
+.aph .ms-opt{display:flex;align-items:center;gap:7px;padding:5px 11px;cursor:pointer}
+.aph .ms-opt:hover{background:var(--bg-hover)}
+.aph .ms-opt input{margin:0;cursor:pointer}
+.aph .ms-opt.hidden{display:none}
+.aph .ms-empty{padding:9px 11px;color:var(--text-3)}
+.aph .filter-group{height:auto!important;min-height:32px}
+</style>
+
+<style>
+/* Upande UFD overlay :: coffee topbar layout (real topbar, sidebar removed) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600&display=swap');
+:root{
+  --bg:#f4f3ef;--bg-card:#fafaf6;--bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.07);--border-2:rgba(10,10,10,0.13);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --signal:#228883;--f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+/* kill the grid + sidebar; single column with our topbar on top */
+.aph{background:#f4f3ef!important;display:block!important;grid-template-columns:none!important;overflow-y:auto!important}
+.aph-side{display:none!important}
+.aph-main{height:auto!important;min-height:0!important;width:100%!important;overflow:visible!important}
+/* real topbar */
+.uqtop{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;background:#fafaf6;padding:10px 28px;border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(10,10,10,.03),0 4px 16px -8px rgba(10,10,10,.05)}
+.uqbrand{display:flex;align-items:center;gap:11px;flex-shrink:0}
+.uqmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 13.5px var(--f);color:#0a0a0a;line-height:1.1}
+.uqp small{display:block;font:500 9.5px var(--f);text-transform:uppercase;letter-spacing:1.5px;color:#8a8780;margin-top:1px}
+.uqnav{display:flex;gap:2px;margin-left:8px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav::-webkit-scrollbar{display:none}
+.uqnav a{padding:8px 12px;font:500 12.5px var(--f);color:#5a5a52;text-decoration:none;border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04);color:#0a0a0a}
+.uqnav a.on{background:#0a0a0a;color:#fafaf6}
+.uqsep{width:1px;height:18px;background:rgba(10,10,10,.08);margin:0 6px;flex-shrink:0;align-self:center}
+/* page chrome under the topbar */
+.aph-topbar,.aph-filter-bar{position:static!important;background:rgba(250,250,246,.9)!important;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+/* cards + KPIs + type */
+.aph-card,.aph-kpi{border-radius:20px!important;border:1px solid var(--border)!important;box-shadow:var(--shadow-sm)!important;background:#fafaf6!important}
+.aph-card:hover{box-shadow:var(--shadow-md)!important}
+.aph-kpi{position:relative!important;overflow:hidden!important;transition:transform .25s,box-shadow .25s!important}
+.aph-kpi:hover{box-shadow:var(--shadow-md)!important;transform:translateY(-3px)}
+.aph-kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ka,var(--accent))}
+.aph-kpi .v{color:#0a0a0a!important}
+.aph-page-hd .ttl,.aph-topbar h1,.aph-card-hd .ttl{font-family:'Fraunces',Georgia,serif!important;letter-spacing:-.4px!important;font-weight:600!important}
+.aph-topbar .presets .p.active,.aph-topbar .presets .p.on{background:#0a0a0a!important;color:#fafaf6!important}
+</style>
+
+
+<style>
+/* ═══════════ Upande UFD :: "Mona" overlay — exact match to ufd-modern-1-mona ═══════════ */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600;700&display=swap');
+:root{
+  --ink:#0a0a0a;--ink-1:#1a1a18;--ink-2:#2a2a26;--ink-3:#3a3a34;--ink-4:#5a5a52;--ink-mute:#8a8780;--ink-faint:#b8b6ae;
+  --bg:#f4f3ef;--bg-card:#ffffff;--surface:#fafaf6;--bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.06);--border-2:rgba(10,10,10,0.12);--hairline:rgba(10,10,10,0.06);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;--signal:#228883;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--display:'Fraunces',Georgia,serif;
+}
+body{background:var(--bg)!important}
+.aph{background:var(--bg)!important;display:block!important;grid-template-columns:none!important;overflow-y:auto!important;color:var(--text-2);font-family:var(--f)}
+.aph-side{display:none!important}
+.aph-main{height:auto!important;min-height:0!important;width:100%!important;overflow:visible!important}
+
+/* TOPBAR — light, borderless, prominent brand + pill nav */
+.uqtop{position:sticky!important;top:0;z-index:50;display:flex;align-items:center;gap:14px;background:#ffffff!important;padding:14px 40px!important;border-bottom:1px solid var(--hairline)!important;box-shadow:none!important}
+.uqmark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 14px var(--f)!important;color:#0a0a0a;line-height:1.1;letter-spacing:-.2px}
+.uqp small{display:block;font:500 10px var(--f);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute);margin-top:1px}
+.uqnav{display:flex;gap:4px;margin-left:24px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav a{padding:8px 14px!important;font:500 13px var(--f)!important;color:var(--ink-4)!important;text-decoration:none;border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04)!important;color:#0a0a0a!important}
+.uqnav a.on{background:#0a0a0a!important;color:#fafaf6!important}
+.uqsep{width:1px;height:22px;background:var(--hairline);margin:0 8px;flex-shrink:0;align-self:center}
+
+/* page chrome / filter bar → clean white */
+.aph-topbar,.aph-filter-bar{position:static!important;background:#ffffff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-bottom:1px solid var(--hairline)!important}
+.aph-topbar h1{font-family:var(--f)!important;font-weight:600!important;letter-spacing:-.3px!important;color:var(--ink)!important;font-size:18px!important}
+.aph-topbar .btn,.aph .live-badge{border-radius:999px!important;border:1px solid var(--border-2)!important;background:#fff!important;box-shadow:var(--shadow-sm)!important;color:var(--ink-3)!important}
+.aph-topbar .btn:hover,.aph .live-badge:hover{background:var(--bg-hover)!important;color:var(--ink)!important}
+
+/* CONTENT */
+.aph-content{padding:40px!important}
+.aph-page-hd{margin-bottom:32px!important}
+.aph-page-hd .ttl{font-family:var(--f)!important;font-weight:600!important;font-size:40px!important;letter-spacing:-1.2px!important;color:var(--ink)!important;line-height:1.05}
+.aph-page-hd .sub{font-size:15px!important;color:var(--ink-4)!important}
+
+/* KPI CARDS — white, borderless, large Poppins value, no icon/accent bar */
+.aph-kpis{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))!important;gap:18px!important;margin-bottom:32px!important}
+.aph-kpi{background:#ffffff!important;border:0!important;border-radius:20px!important;padding:26px 28px!important;box-shadow:var(--shadow-sm)!important;min-height:0!important;overflow:hidden!important;transition:transform .25s,box-shadow .25s!important}
+.aph-kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)!important}
+.aph-kpi::after{display:none!important}
+.aph-kpi .ic-wrap{display:none!important}
+.aph-kpi .lbl{font-size:11px!important;letter-spacing:1.8px!important;text-transform:uppercase;color:var(--ink-mute)!important;font-weight:500!important;margin-bottom:16px!important}
+.aph-kpi .v{font-family:var(--f)!important;font-size:42px!important;font-weight:600!important;letter-spacing:-1.4px!important;color:var(--ink)!important;line-height:1!important;margin-top:0!important}
+.aph-kpi .sub{color:var(--ink-mute)!important;margin-top:10px!important}
+
+/* CARDS — white, borderless, 24px radius */
+.aph-card{background:#ffffff!important;border:0!important;border-radius:24px!important;box-shadow:var(--shadow-sm)!important}
+.aph-card:hover{box-shadow:var(--shadow-md)!important}
+.aph-card-hd{border-bottom:1px solid var(--hairline)!important;padding:22px 28px!important}
+.aph-card-hd .ttl{font-family:var(--f)!important;font-weight:600!important;font-size:17px!important;letter-spacing:-.4px!important;color:var(--ink)!important}
+.aph-card-hd .sub{color:var(--ink-mute)!important}
+.aph-card-body{padding:24px 28px!important}
+.aph-grid{gap:18px!important;margin-bottom:18px!important}
+
+/* TABLE */
+.aph-tbl th{background:#fff!important;color:var(--ink-mute)!important;border-bottom:1px solid var(--hairline)!important}
+.aph-tbl td{border-bottom:1px solid var(--hairline)!important;color:var(--ink-3)!important}
+.aph-tbl tr:hover td{background:var(--bg-hover)!important}
+.aph .totals-row td{color:var(--ink)!important}
+.aph .ftr-high{background:var(--signal)!important}
+.aph .ftr-medium{background:var(--ink-4)!important}
+.aph .ftr-low{background:var(--ink-faint)!important}
+
+/* FILTERS — pill controls, ink chips */
+.aph .filter-group{border:1px solid var(--border-2)!important;border-radius:999px!important;background:#fff!important}
+.aph-filter-bar .date-block{border:1px solid var(--border-2)!important;border-radius:10px!important;background:#fff!important}
+.aph .ms-chip{background:#0a0a0a!important;color:#fafaf6!important}
+.aph .ms-count{background:var(--bg-muted)!important;color:var(--ink)!important}
+.aph-topbar .presets{border-radius:999px!important;overflow:hidden}
+.aph-topbar .presets .p.active,.aph-topbar .presets .p.on{background:#0a0a0a!important;color:#fafaf6!important}
+.aph .active-filter-badge{background:var(--bg-muted)!important;color:var(--ink-3)!important;border-radius:999px!important}
+@media(max-width:900px){.aph-content{padding:16px!important}.aph-page-hd .ttl{font-size:28px!important}.uqtop{padding:12px 16px!important}}
+</style>
+<script>
+/* Upande UFD :: Mona chart theming — global Chart.js defaults + identifiable bar colours */
+(function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";
+      Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){
+        window.__ufdMonaReg=1;
+        Chart.register({
+          id:"ufdMonaColors",
+          beforeUpdate:function(chart){
+            var t=chart.config.type;
+            var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+            if(bars.length===1){
+              var d=bars[0];
+              d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});
+            }else if(bars.length>1){
+              bars.forEach(function(d,i){ if(typeof d.backgroundColor!=="function"){ d.backgroundColor=PAL[i%PAL.length]; }});
+            }
+          }
+        });
+      }
+    }catch(e){}
+  }
+  go();
+})();
+</script>
+<div class="aph">
+<div class="uqtop"><div class="uqbrand"><div class="uqmark">UQ</div><div class="uqp">Upande Quality<small>Raw Data</small></div></div><div class="uqnav"><a href="app/upande-quality">Home</a><span class="uqsep"></span><a href="intake-ftr-overview">Intake FTR</a><a href="packhouse-overview">Packhouse</a><a href="rejects">Rejects</a><a href="solution-mixing-overview">Solution Mixing</a><a href="coldroom-overview">Coldroom</a><span class="uqsep"></span><a href="quality-trends">Trends</a><a href="quality-raw-data" class="on">Raw Data</a><a href="transit-time">Transit Time</a><a href="shelving-report">Shelving</a></div></div>
+  
+
+  <div class="aph-main">
+    <div class="aph-topbar">
+      <h1>Quality Raw Data</h1>
+      <span class="crumb">Analytics</span>
+      <div class="right">
+        <button class="btn reset-btn" id="resetPivotBtn">↺ Reset Layout</button>
+        <button class="live-badge refresh-btn btn" onclick="loadPivotData()">⟳ Refresh</button>
+      </div>
+    </div>
+
+    <!-- ── Filter bar ── -->
+    <div class="aph-filter-bar">
+      <div class="fb-group">
+        <div class="filter-group"><span class="filter-label">Year</span><select class="form-control" id="filterYear"><option value="">All</option></select></div>
+        <div class="filter-group"><span class="filter-label">Week</span><select class="form-control" id="filterWeek"><option value="">All</option></select></div>
+      </div>
+      <div class="fb-sep"></div>
+      <div class="fb-group">
+        <div class="filter-group"><span class="filter-label">Farm</span><div id="filterFarm"></div></div>
+        <div class="filter-group"><span class="filter-label">Variety</span><div id="filterVariety"></div></div>
+        <div class="filter-group"><span class="filter-label">GH</span><div id="filterGH"></div></div>
+      </div>
+      <div class="fb-sep"></div>
+      <div class="date-block">
+        <span class="dl">Date Range</span>
+        <input type="date" id="filterFrom" placeholder="From">
+        <span class="dsep">→</span>
+        <input type="date" id="filterTo" placeholder="To">
+        <button class="dclr" id="clearDatesBtn" title="Clear dates">✕</button>
+      </div>
+    </div>
+
+    <div class="aph-content">
+
+      <div class="aph-page-hd">
+        <div class="ttl">Quality Raw Data</div>
+        <div class="sub">Interactive pivot of raw intake quality records — drag fields to pivot, filter &amp; aggregate</div>
+      </div>
+
+      <!-- KPI Row -->
+      <div class="aph-kpis">
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg></div>
+          <div><div class="lbl">Records</div><div class="v" id="recordCount">--</div></div>
+        </div>
+      </div>
+
+      <!-- Pivot table (table-heavy → aph-card with padless body) -->
+      <div class="aph-grid col-1">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Pivot Explorer</div>
+            <div class="sub" style="margin-left:auto">Drag fields between rows/columns/values · use field filters to slice</div>
+          </div>
+          <div class="aph-card-body padless">
+            <div class="pivot-inner" id="pivotArea">
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <div>Loading quality data...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+    "use strict";
+
+    let currentData = [];
+    let currentParamNames = [];
+    let currentPivotConfig = null;
+    let farmMS = null, varietyMS = null, ghMS = null;
+
+    function createMultiSelect(mountId, opts) {
+        opts = opts || {};
+        var root = document.getElementById(mountId);
+        if (!root) return null;
+        root.classList.add('ms');
+        var ph = opts.placeholder || 'All';
+        var items = [];        // [{value,label}]
+        var selected = {};     // value -> true
+        var changeCb = null;
+        function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+        root.innerHTML =
+            '<div class="ms-control"><span class="ms-body"></span></div>' +
+            '<div class="ms-panel">' +
+              '<input class="ms-search" type="text" placeholder="Search…">' +
+              '<div class="ms-actions"><a class="ms-all">Select all</a><a class="ms-clear">Clear</a></div>' +
+              '<div class="ms-list"></div>' +
+            '</div>';
+        var control = root.querySelector('.ms-control');
+        var body = root.querySelector('.ms-body');
+        var search = root.querySelector('.ms-search');
+        var list = root.querySelector('.ms-list');
+        function renderBody(){
+            var keys = Object.keys(selected);
+            if(!keys.length){ body.innerHTML = '<span class="ms-ph">'+esc(ph)+'</span>'; return; }
+            if(keys.length <= 2){
+                body.innerHTML = keys.map(function(v){
+                    var it = items.find(function(i){return i.value===v;});
+                    return '<span class="ms-chip"><span>'+esc(it?it.label:v)+'</span><b data-v="'+esc(v)+'">×</b></span>';
+                }).join('');
+            } else {
+                body.innerHTML = '<span class="ms-count">'+keys.length+' selected</span>';
+            }
+        }
+        function renderList(){
+            var q = (search.value||'').toLowerCase();
+            if(!items.length){ list.innerHTML = '<div class="ms-empty">No options</div>'; return; }
+            list.innerHTML = items.map(function(it){
+                var hide = q && it.label.toLowerCase().indexOf(q)===-1;
+                return '<label class="ms-opt'+(hide?' hidden':'')+'"><input type="checkbox" data-v="'+esc(it.value)+'"'+(selected[it.value]?' checked':'')+'><span>'+esc(it.label)+'</span></label>';
+            }).join('');
+        }
+        function fire(){ renderBody(); if(changeCb) changeCb(); }
+        control.addEventListener('click', function(e){
+            if(e.target.tagName==='B' && e.target.dataset.v){ delete selected[e.target.dataset.v]; renderList(); fire(); e.stopPropagation(); return; }
+            root.classList.toggle('open'); if(root.classList.contains('open')) search.focus();
+        });
+        list.addEventListener('change', function(e){
+            var v = e.target.dataset.v; if(v===undefined) return;
+            if(e.target.checked) selected[v]=true; else delete selected[v];
+            fire();
+        });
+        search.addEventListener('input', renderList);
+        search.addEventListener('click', function(e){ e.stopPropagation(); });
+        root.querySelector('.ms-all').addEventListener('click', function(e){ e.stopPropagation(); var q=(search.value||'').toLowerCase(); items.forEach(function(it){ if(!q||it.label.toLowerCase().indexOf(q)!==-1) selected[it.value]=true; }); renderList(); fire(); });
+        root.querySelector('.ms-clear').addEventListener('click', function(e){ e.stopPropagation(); selected={}; renderList(); fire(); });
+        document.addEventListener('click', function(e){ if(!root.contains(e.target)) root.classList.remove('open'); });
+        var api = {
+            setOptions: function(arr){ items=(arr||[]).map(function(x){ return (x&&typeof x==='object')?{value:String(x.value),label:String(x.label)}:{value:String(x),label:String(x)}; }); var valid={}; items.forEach(function(i){valid[i.value]=1;}); Object.keys(selected).forEach(function(v){ if(!valid[v]) delete selected[v]; }); renderList(); renderBody(); },
+            getValue: function(){ return Object.keys(selected).join(','); },
+            setValue: function(csv){ selected={}; String(csv||'').split(',').forEach(function(v){ v=v.trim(); if(v) selected[v]=true; }); renderList(); renderBody(); },
+            onChange: function(cb){ changeCb = cb; }
+        };
+        renderBody(); renderList();
+        return api;
+    }
+
+
+    function todayStr() {
+        let d = new Date();
+        let mm = String(d.getMonth() + 1).padStart(2, '0');
+        let dd = String(d.getDate()).padStart(2, '0');
+        return `${d.getFullYear()}-${mm}-${dd}`;
+    }
+
+    function loadScript(url, callback) {
+        let s = document.createElement("script");
+        s.src = url;
+        s.onload = callback;
+        s.onerror = function() { console.error("Failed to load: " + url); };
+        document.head.appendChild(s);
+    }
+
+    function initWhenReady() {
+        if (typeof jQuery === "undefined") {
+            setTimeout(initWhenReady, 100);
+            return;
+        }
+        if (typeof frappe === "undefined") {
+            window.frappe = {};
+        }
+        if (!frappe.call) {
+            frappe.call = function(opts) {
+                let qs = [];
+                for (let k in opts.args) {
+                    if (opts.args[k]) qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(opts.args[k]));
+                }
+                let url = "/api/method/" + opts.method + (qs.length ? "?" + qs.join("&") : "");
+                jQuery.ajax({
+                    url: url,
+                    type: "GET",
+                    dataType: "json",
+                    success: function(r) { if (opts.callback) opts.callback(r); },
+                    error: function(e) { if (opts.error) opts.error(e); }
+                });
+            };
+        }
+
+        loadScript("https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/jquery-ui.min.js", function() {
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/pivottable/2.23.0/pivot.min.js", function() {
+                jQuery(document).ready(function() { bootApp(); });
+            });
+        });
+    }
+
+    function bootApp() {
+        let today = todayStr();
+        let filterFrom = document.getElementById("filterFrom");
+        let filterTo = document.getElementById("filterTo");
+        if (filterFrom) filterFrom.value = today;
+        if (filterTo) filterTo.value = today;
+
+        let filterIds = ["filterYear", "filterWeek", "filterFrom", "filterTo"];
+        filterIds.forEach(function(id) {
+            let el = document.getElementById(id);
+            if (el) el.addEventListener("change", function() { loadPivotData(); });
+        });
+        farmMS = createMultiSelect("filterFarm", { placeholder: "All Farms" });
+        if (farmMS) farmMS.onChange(function() { loadPivotData(); });
+        varietyMS = createMultiSelect("filterVariety", { placeholder: "All Varieties" });
+        if (varietyMS) varietyMS.onChange(function() { loadPivotData(); });
+        ghMS = createMultiSelect("filterGH", { placeholder: "All GH" });
+        if (ghMS) ghMS.onChange(function() { loadPivotData(); });
+
+        let clearDatesBtn = document.getElementById("clearDatesBtn");
+        if (clearDatesBtn) {
+            clearDatesBtn.addEventListener("click", function() {
+                if (filterFrom) filterFrom.value = "";
+                if (filterTo) filterTo.value = "";
+                loadPivotData();
+            });
+        }
+
+        let resetBtn = document.getElementById("resetPivotBtn");
+        if (resetBtn) {
+            resetBtn.addEventListener("click", function() {
+                currentPivotConfig = null;
+                renderPivot(currentData, currentParamNames);
+            });
+        }
+
+        setTimeout(function() { loadPivotData(); }, 200);
+    }
+
+    function getFilters() {
+        let getVal = function(id) { let el = document.getElementById(id); return el ? el.value : ""; };
+        return {
+            year: getVal("filterYear"),
+            farm: farmMS ? farmMS.getValue() : "",
+            week: getVal("filterWeek"),
+            variety: varietyMS ? varietyMS.getValue() : "",
+            greenhouse: ghMS ? ghMS.getValue() : "",
+            from_date: getVal("filterFrom"),
+            to_date: getVal("filterTo")
+        };
+    }
+
+    var _loadGen = 0;
+    window.loadPivotData = function() {
+        var myGen = ++_loadGen;
+        let pivotArea = document.getElementById("pivotArea");
+        if (pivotArea) {
+            pivotArea.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading quality data...</div></div>';
+        }
+        document.getElementById("recordCount").textContent = "--";
+
+        frappe.call({
+            method: "fetchQualityRawData",
+            args: getFilters(),
+            callback: function(r) {
+                if (myGen !== _loadGen) return;
+                let msg = r.message || {};
+                if (!msg.success) {
+                    if (pivotArea) {
+                        pivotArea.innerHTML = '<div class="error-state">Error: ' + (msg.error || "Unknown") + '</div>';
+                    }
+                    return;
+                }
+
+                currentData = msg.data || [];
+                currentParamNames = msg.param_names || [];
+                document.getElementById("recordCount").textContent = (msg.record_count || 0).toLocaleString();
+
+                renderPivot(currentData, currentParamNames);
+                populateFilters(msg.filter_options || {});
+            },
+            error: function(e) {
+                if (myGen !== _loadGen) return;
+                console.error(e);
+                if (pivotArea) {
+                    pivotArea.innerHTML = '<div class="error-state">Failed to load data — check console</div>';
+                }
+            }
+        });
+    };
+
+    function renderPivot(data, paramNames) {
+        if (!data || !data.length) {
+            document.getElementById("pivotArea").innerHTML = '<div class="loading-state" style="color:var(--text-2);">No data for the selected filters.</div>';
+            return;
+        }
+
+        // Default config: Rows = Year, Week, Farm, GH, Variety
+        // No "Period" - removed as requested
+        let defaultConfig = {
+            rows: ["Year", "Week", "Farm", "GH", "Variety"],
+            cols: [],
+            vals: ["Stems Received", "Stems Checked", "Quarantined Stems"],
+            aggregatorName: "Sum",
+            rendererName: "Table"
+        };
+
+        // Add top 15 quality parameters to default values (so user sees them initially)
+        for (let i = 0; i < Math.min(15, paramNames.length); i++) {
+            defaultConfig.vals.push(paramNames[i]);
+        }
+
+        let config = currentPivotConfig || defaultConfig;
+        let pivotEl = jQuery("#pivotArea");
+        pivotEl.empty();
+
+        pivotEl.pivotUI(data, {
+            rows: config.rows || ["Year", "Week", "Farm", "GH", "Variety"],
+            cols: config.cols || [],
+            vals: config.vals || defaultConfig.vals,
+            aggregatorName: config.aggregatorName || "Sum",
+            rendererName: "Table",
+            unusedAttrsVertical: false,
+            menuLimit: 500,
+            renderers: { "Table": jQuery.pivotUtilities.renderers["Table"] },
+            aggregators: {
+                "Sum": jQuery.pivotUtilities.aggregators["Sum"],
+                "Count": jQuery.pivotUtilities.aggregators["Count"],
+                "Average": jQuery.pivotUtilities.aggregators["Average"]
+            },
+            onRefresh: function(cfg) {
+                let cfgCopy = JSON.parse(JSON.stringify(cfg));
+                delete cfgCopy.aggregators;
+                delete cfgCopy.renderers;
+                delete cfgCopy.rendererOptions;
+                delete cfgCopy.localeStrings;
+                currentPivotConfig = cfgCopy;
+            }
+        }, false);
+    }
+
+    function populateFilters(opts) {
+        fillSelect("filterYear", opts.years || [], "", "All");
+        if (farmMS) farmMS.setOptions(opts.farms || [])
+        fillSelect("filterWeek", opts.weeks || [], "", "All");
+        if (varietyMS) varietyMS.setOptions(opts.varieties || [])
+        if (ghMS) ghMS.setOptions(opts.greenhouses || [])
+    }
+
+    function fillSelect(id, items, defaultVal, defaultLabel) {
+        let sel = document.getElementById(id);
+        if (!sel) return;
+        let cur = sel.value;
+        sel.innerHTML = '<option value="' + (defaultVal || "") + '">' + (defaultLabel || "All") + '</option>';
+        for (var i = 0; i < items.length; i++) {
+            let o = document.createElement("option");
+            o.value = items[i];
+            o.textContent = items[i];
+            if (String(items[i]) === cur) o.selected = true;
+            sel.appendChild(o);
+        }
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initWhenReady);
+    } else {
+        initWhenReady();
+    }
+})();
+</script>
+
+<script>
+/* -- Sidebar footer (user identity) -- */
+(function fillFooter(){
+    function tryFill(){
+        if (!window.frappe || !frappe.session || !frappe.session.user){ setTimeout(tryFill, 100); return; }
+        var u = frappe.session.user || '';
+        var fullName = (frappe.session.user_fullname || (frappe.boot && frappe.boot.user && frappe.boot.user.full_name)) || u.split('@')[0];
+        var av = document.getElementById('aph-foot-av'), nm = document.getElementById('aph-foot-nm'), em = document.getElementById('aph-foot-em');
+        if (av) av.textContent = (fullName || u || '?').substring(0,1).toUpperCase();
+        if (nm) nm.textContent = fullName;
+        if (em) em.textContent = u;
+    }
+    tryFill();
+})();
+</script>

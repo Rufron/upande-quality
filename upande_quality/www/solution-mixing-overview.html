@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solution Mixing Overview | Quality Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="/assets/frappe/js/frappe-web.min.js"></script>
+<style>
+:root{
+  --bg:#fff;--bg-card:#fff;--bg-hover:#fafafa;--bg-muted:#f5f5f5;
+  --border:#ececec;--border-2:#d0d0d0;
+  --text:#000;--text-2:#6b6b6b;--text-3:#9a9a9a;--text-4:#cfcfcf;
+  --accent:#000;
+  --good:#16a34a;--warn:#d97706;--bad:#dc2626;--plan:#d4d4d4;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+  --f:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
+}
+/* Take dashboard out of Frappe layout entirely — fill viewport */
+html,body{margin:0!important;padding:0!important;overflow:hidden!important;height:100vh!important}
+.navbar,header,.page-breadcrumbs,.page-header,.page-header-wrapper,.web-footer,footer,
+.website-edit-button,.btn-edit-page,.edit-page-btn,.scroll-to-top,.back-to-top,
+.website-banner,.call-to-action,.frappe-chat,#frappe-chat,.telegram-share,.share-buttons,
+.web-page-edit,.published-edit{display:none!important}
+.aph *{box-sizing:border-box;margin:0;padding:0}
+.aph{position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;z-index:2147483000;
+  font-family:var(--f);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:grid;grid-template-columns:240px 1fr;font-feature-settings:'cv11','ss01','ss03'}
+
+.aph svg.ic{width:16px;height:16px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.aph .aph-side svg.ic{width:15px;height:15px;stroke-width:1.6;color:var(--text-3)}
+.aph .aph-side .nav-item.active svg.ic{color:#fff}
+.aph .aph-kpi svg.ic{width:18px;height:18px;color:var(--text-3);stroke-width:1.5}
+
+/* SIDEBAR */
+.aph-side{background:var(--bg-card);border-right:1px solid var(--border);height:100vh;position:sticky;top:0;display:flex;flex-direction:column;overflow:hidden}
+.aph-side .brand{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.aph-side .brand .mark{width:36px;height:36px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;letter-spacing:-0.02em;border-radius:7px}
+.aph-side .brand .name{font-weight:600;font-size:14px;line-height:1.15;letter-spacing:-0.015em}
+.aph-side .brand .name small{display:block;font-size:11px;color:var(--text-3);font-weight:400;margin-top:2px}
+/* Note: "nav" collides with Bootstrap's .nav (flex-wrap:wrap) loaded by Frappe —
+   force nowrap + column here or items wrap into a phantom second column */
+.aph-side .nav{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 0 16px;margin:0;list-style:none;display:flex;flex-direction:column;flex-wrap:nowrap!important}
+.aph-side .group-lbl{padding:14px 20px 4px;font-size:10px;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase;font-weight:600;display:block}
+.aph-side .group-lbl:first-child{padding-top:10px}
+.aph-side .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text-2);font-weight:500;user-select:none;transition:background .12s ease,color .12s ease;margin:1px 8px;border-radius:6px;box-sizing:border-box;text-decoration:none}
+.aph-side .nav-item:hover{background:var(--bg-hover);color:var(--text);text-decoration:none}
+.aph-side .nav-item.active{background:var(--accent);color:#fff;font-weight:500}
+.aph-side .nav-item .badge{margin-left:auto;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text-2);background:var(--bg-muted);padding:1px 7px;border-radius:9px;line-height:1.4}
+.aph-side .nav-item.active .badge{color:#fff;background:rgba(255,255,255,.18)}
+.aph-side .nav-item.stub{color:var(--text-3)}
+.aph-side .nav-item.stub svg.ic{opacity:.55}
+.aph-side .footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-2)}
+.aph-side .footer .av{width:24px;height:24px;border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:10px;color:var(--text)}
+.aph-side .footer .who{flex:1;line-height:1.2;overflow:hidden}
+.aph-side .footer .who .nm{font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aph-side .footer .who .em{font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aph-side .home-link{display:flex;align-items:center;gap:11px;margin:8px 8px 0;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:500;color:var(--text-2);text-decoration:none;transition:background .12s ease,color .12s ease}
+.aph-side .home-link:hover{background:var(--bg-hover);color:var(--text);text-decoration:none}
+.aph-side .home-link svg.ic{width:15px;height:15px;stroke-width:1.6;color:var(--text-3)}
+
+/* MAIN */
+.aph-main{min-width:0;height:100vh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.aph-content{flex:1}
+.aph-topbar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10;flex-wrap:wrap}
+.aph-topbar .date-row{flex-basis:100%;display:flex;align-items:center;gap:8px;padding-top:8px;border-top:1px solid var(--border);margin-top:2px}
+.aph-topbar .date-row .dl{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.aph-topbar h1{font-size:18px;font-weight:600;letter-spacing:-0.02em}
+.aph-topbar .crumb{color:var(--text-3);font-size:11px;font-weight:500;padding-left:14px;border-left:1px solid var(--border);height:18px;line-height:18px;letter-spacing:.02em}
+.aph-topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.aph-topbar .date-pill{display:inline-flex;align-items:center;border:1px solid var(--border-2);border-radius:7px;background:var(--bg-card);overflow:hidden;height:32px}
+.aph-topbar .date-pill input{border:0;padding:0 10px;font-size:12px;font-family:var(--f);font-feature-settings:'tnum';background:transparent;outline:0;width:118px;font-weight:500}
+.aph-topbar .date-pill .sep{padding:0 4px;color:var(--text-3);font-size:12px}
+.aph-topbar .date-pill .clear{padding:0 10px;color:var(--text-3);font-size:15px;cursor:pointer;border-left:1px solid var(--border);height:100%;display:flex;align-items:center}
+.aph-topbar .presets{display:flex;border:1px solid var(--border-2);border-radius:7px;overflow:hidden;height:32px}
+.aph-topbar .presets .p{padding:0 12px;font-size:11px;font-weight:500;cursor:pointer;color:var(--text-2);background:var(--bg-card);border-right:1px solid var(--border);display:flex;align-items:center}
+.aph-topbar .presets .p:last-child{border-right:0}
+.aph-topbar .presets .p:hover{background:var(--bg-hover);color:var(--text)}
+.aph-topbar .presets .p.active{background:var(--accent);color:#fff}
+.aph-topbar .btn{padding:0 14px;height:32px;border:1px solid var(--border-2);background:var(--bg-card);color:var(--text);border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--f);display:flex;align-items:center;gap:6px}
+.aph-topbar .btn:hover{background:var(--bg-hover)}
+.aph-topbar .btn svg{width:14px;height:14px}
+
+.aph-content{padding:28px}
+.aph-page-hd{margin-bottom:24px}
+.aph-page-hd .ttl{font-size:24px;font-weight:600;letter-spacing:-0.025em;line-height:1.15}
+.aph-page-hd .sub{font-size:13px;color:var(--text-2);margin-top:4px}
+
+.aph-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:28px}
+.aph-kpi{background:var(--bg-card);border:1px solid var(--border);padding:20px 22px;border-radius:10px;position:relative;min-height:118px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color .12s ease,box-shadow .12s ease}
+.aph-kpi:hover{border-color:var(--border-2);box-shadow:var(--shadow-sm)}
+.aph-kpi .ic-wrap{position:absolute;top:18px;right:20px;width:30px;height:30px;border-radius:7px;background:var(--bg-muted);display:flex;align-items:center;justify-content:center}
+.aph-kpi .lbl{font-size:11px;color:var(--text-2);letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+.aph-kpi .v{font-size:32px;font-weight:600;letter-spacing:-0.035em;font-feature-settings:'tnum';margin-top:10px;line-height:1}
+.aph-kpi .sub{font-size:11px;color:var(--text-3);margin-top:8px;font-weight:500}
+.aph-kpi .sub strong{color:var(--text-2);font-weight:600}
+
+.aph-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;width:100%;box-sizing:border-box}
+/* full-width rows — !important so no theme/global CSS can shrink them */
+.aph-grid.col-1{display:grid!important;grid-template-columns:1fr!important;width:100%!important;max-width:none!important}
+.aph-grid.col-1 > .aph-card{width:100%!important;max-width:none!important;box-sizing:border-box}
+.aph-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-sizing:border-box;width:100%;min-width:0}
+.aph-card-hd{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.aph-card-hd .ttl{font-weight:600;font-size:14px;letter-spacing:-0.01em;white-space:nowrap}
+.aph-card-hd .sub{color:var(--text-3);font-size:11px;font-weight:500}
+.aph-card-body{padding:18px 22px}
+.aph-card-body.padless{padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+table.aph-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.aph-tbl th{text-align:left;padding:11px 16px;background:var(--bg-card);font-size:11px;color:var(--text-3);letter-spacing:.04em;text-transform:uppercase;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+.aph-tbl td{padding:11px 16px;border-bottom:1px solid var(--border);font-feature-settings:'tnum';white-space:nowrap}
+.aph-tbl tr:last-child td{border-bottom:0}
+.aph-tbl tr:hover td{background:var(--bg-hover)}
+.aph-tbl td.num,.aph-tbl th.num{text-align:right}
+.aph-tbl td.mono{font-family:var(--mono);font-size:12px;color:var(--text-2)}
+.aph-tbl td.dim{color:var(--text-3)}
+.aph-tbl td.strong{font-weight:600}
+
+.aph-empty{padding:40px;text-align:center;color:var(--text-3);font-size:13px}
+.aph-loading{padding:60px;text-align:center;color:var(--text-3);font-size:12px}
+.aph-err{background:var(--text);color:#fff;padding:12px 16px;border-radius:7px;font-size:12px;margin:14px 28px;font-family:var(--mono)}
+.aph-stub{padding:56px 28px;text-align:center;background:var(--bg-card);border:1px dashed var(--border-2);border-radius:10px}
+.aph-stub .ttl{font-size:16px;font-weight:600;margin-bottom:6px}
+.aph-stub .sub{font-size:13px;color:var(--text-2)}
+
+.aph-bar-row{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--border)}
+.aph-bar-row:last-child{border-bottom:0}
+.aph-bar-row .lbl{width:54px;font-size:13px;font-weight:600}
+.aph-bar-row .bar{flex:1;height:8px;background:var(--bg-muted);border-radius:4px;overflow:hidden}
+.aph-bar-row .bar .fill{height:100%;background:var(--text);border-radius:4px}
+.aph-bar-row .val{width:170px;text-align:right;font-size:12px;color:var(--text-2);font-feature-settings:'tnum'}
+
+.aph-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:10px;font-size:11px;background:var(--bg-muted);color:var(--text);font-weight:500;line-height:1.5}
+
+/* Chart wrappers: the scroll container always spans the full card; the inner
+   div's width is set in px by JS = max(available width, minimum), so the chart
+   always fills the page on wide screens and scrolls sideways on narrow ones */
+.aph-chart-scroll{display:block;width:100%!important;max-width:none!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 16px;box-sizing:border-box}
+.aph-chart-inner{position:relative;width:100%}
+
+/* Wide table scroll wrapper (proforma / non-export invoice ledgers) */
+.aph-tbl-scroll{display:block;width:100%!important;max-width:none!important;overflow-x:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
+
+/* ── Narrow screens / mobile ─────────────────────────────────────────── */
+@media (max-width: 900px){
+  html,body{overflow:auto!important}
+  .aph{display:flex;flex-direction:column;position:fixed}
+  /* sidebar becomes a compact top bar with a horizontally scrolling nav */
+  .aph-side{width:100%;height:auto;position:relative;flex:0 0 auto;border-right:0;border-bottom:1px solid var(--border);overflow:visible}
+  .aph-side .brand{padding:10px 16px;border-bottom:0}
+  .aph-side .home-link{margin:0 8px 8px;width:max-content}
+  .aph-side .nav{flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;padding:0 8px 8px;-webkit-overflow-scrolling:touch}
+  .aph-side .group-lbl{display:none}
+  .aph-side .nav-item{flex:0 0 auto;margin:0 2px;white-space:nowrap;padding:7px 12px}
+  .aph-side .footer{display:none}
+  .aph-main{flex:1 1 auto;height:auto;min-height:0}
+  .aph-topbar{position:static;flex-wrap:wrap;gap:8px;padding:10px 14px}
+  .aph-topbar .crumb{display:none}
+  .aph-topbar .right{margin-left:0;width:100%;flex-wrap:wrap}
+  .aph-content{padding:14px}
+  .aph-err{margin:14px}
+  /* everything single-column */
+  .aph-grid{grid-template-columns:1fr}
+  .aph-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .aph-kpi{min-height:100px;padding:16px 18px}
+  .aph-kpi .v{font-size:26px}
+  .aph-page-hd .ttl{font-size:20px}
+}
+</style>
+
+<!-- ════════ Page-specific tweaks (appended; reference tokens above are untouched) ════════ -->
+<style>
+/* ── Topbar filter bar restyled into aph chrome ── */
+.aph .filter-group{display:flex;align-items:center;gap:5px;background:var(--bg-card);padding:0 8px;border-radius:7px;border:1px solid var(--border-2);height:32px}
+.aph .filter-label{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.aph .form-control{height:28px;padding:0 6px;font-size:12px;font-family:var(--f);font-feature-settings:'tnum';background:transparent;border:none;color:var(--text);min-width:78px;outline:0;font-weight:500}
+.aph select.form-control{cursor:pointer}
+/* ── Period dropdown (Year + Week merged) ── */
+.aph .period-dd{position:relative}
+.aph .period-trigger{display:flex;align-items:center;gap:6px;height:28px;padding:0 20px 0 4px;border:none;background:transparent;font-family:var(--f);font-size:12px;font-weight:500;color:var(--text);cursor:pointer;position:relative;min-width:56px;white-space:nowrap}
+.aph .period-trigger:after{content:"\25BE";position:absolute;right:4px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:10px}
+.aph .period-panel{position:absolute;z-index:200;top:calc(100% + 8px);left:0;background:var(--bg-card);border:1px solid var(--border-2);border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:8px;display:none;flex-direction:column;gap:8px;min-width:180px}
+.aph .period-dd.open .period-panel{display:flex}
+.aph .period-panel .pp-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.aph .period-panel .pp-lb{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
+.aph .period-panel select.form-control{border:1px solid var(--border-2);border-radius:5px;height:28px;min-width:104px}
+.aph .clear-dates-btn{font-size:11px;font-weight:600;color:var(--text-2);background:none;border:none;cursor:pointer;padding:0 8px;height:32px}
+.aph .clear-dates-btn:hover{color:var(--text)}
+
+/* ── Active-filter badges (rendered into the page header sub area) ── */
+.aph .active-filter-badge{background:var(--bg-muted);color:var(--text);padding:3px 9px;border-radius:10px;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:5px;line-height:1.5}
+.aph .clear-badge{cursor:pointer;font-size:11px;opacity:.6}
+.aph .clear-badge:hover{opacity:1}
+
+/* ── Chart wrappers inside aph-card bodies (definite heights for Chart.js) ── */
+.aph .chart-box{position:relative;height:300px}
+.aph .chart-box.tall{height:360px}
+
+/* ── Recent / chem-rates tables: scrolling bodies kept as aph-tbl ── */
+.aph .table-scroll{max-height:480px;overflow:auto}
+.aph .table-scroll.short{max-height:300px}
+
+/* ── Loading / error / empty states (render output) ── */
+.aph .loading-state{text-align:center;padding:40px 20px;color:var(--text-3)}
+.aph .spinner{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--text);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.aph .empty-state{text-align:center;padding:30px 20px;color:var(--text-2);font-size:11px}
+
+/* ── pH pills (recent mixes) ── */
+.aph .pill{display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600}
+.aph .pill-ok{background:rgba(22,163,74,.12);color:var(--good)}
+.aph .pill-warn{background:rgba(217,119,6,.14);color:var(--warn)}
+
+/* ── shared multiselect (farm etc.) ── */
+.aph .ms{position:relative;display:inline-block;min-width:150px;font-size:12px;vertical-align:middle}
+.aph .ms-control{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:28px;padding:2px 22px 2px 4px;border:none;border-radius:5px;background:transparent;cursor:pointer;position:relative}
+.aph .ms-control:after{content:"\25BE";position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:10px;pointer-events:none}
+.aph .ms-ph{color:var(--text-3)}
+.aph .ms-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;line-height:1.6;max-width:120px}
+.aph .ms-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aph .ms-chip b{cursor:pointer;font-weight:700;opacity:.85}
+.aph .ms-chip b:hover{opacity:1}
+.aph .ms-count{background:var(--bg-muted);color:var(--text);border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600}
+.aph .ms-panel{position:absolute;z-index:200;top:calc(100% + 6px);left:0;min-width:210px;background:var(--bg-card);border:1px solid var(--border-2);border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.16);display:none;flex-direction:column;max-height:300px}
+.aph .ms.open .ms-panel{display:flex}
+.aph .ms-search{margin:7px;padding:5px 8px;border:1px solid var(--border-2);border-radius:5px;font-size:12px;outline:none;font-family:var(--f)}
+.aph .ms-actions{display:flex;gap:12px;padding:0 10px 6px;border-bottom:1px solid var(--border)}
+.aph .ms-actions a{color:var(--text-2);cursor:pointer;font-size:11px;font-weight:500}
+.aph .ms-actions a:hover{color:var(--text)}
+.aph .ms-list{overflow-y:auto;padding:4px 0}
+.aph .ms-opt{display:flex;align-items:center;gap:7px;padding:5px 11px;cursor:pointer}
+.aph .ms-opt:hover{background:var(--bg-hover)}
+.aph .ms-opt input{margin:0;cursor:pointer}
+.aph .ms-opt.hidden{display:none}
+.aph .ms-empty{padding:9px 11px;color:var(--text-3)}
+@media(max-width:900px){
+  .aph .filter-group{height:auto;min-height:32px}
+}
+</style>
+
+<style>
+/* Upande UFD overlay :: coffee topbar layout (real topbar, sidebar removed) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600&display=swap');
+:root{
+  --bg:#f4f3ef;--bg-card:#fafaf6;--bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.07);--border-2:rgba(10,10,10,0.13);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --signal:#228883;--f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+/* kill the grid + sidebar; single column with our topbar on top */
+.aph{background:#f4f3ef!important;display:block!important;grid-template-columns:none!important;overflow-y:auto!important}
+.aph-side{display:none!important}
+.aph-main{height:auto!important;min-height:0!important;width:100%!important;overflow:visible!important}
+/* real topbar */
+.uqtop{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;background:#fafaf6;padding:10px 28px;border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(10,10,10,.03),0 4px 16px -8px rgba(10,10,10,.05)}
+.uqbrand{display:flex;align-items:center;gap:11px;flex-shrink:0}
+.uqmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 13.5px var(--f);color:#0a0a0a;line-height:1.1}
+.uqp small{display:block;font:500 9.5px var(--f);text-transform:uppercase;letter-spacing:1.5px;color:#8a8780;margin-top:1px}
+.uqnav{display:flex;gap:2px;margin-left:8px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav::-webkit-scrollbar{display:none}
+.uqnav a{padding:8px 12px;font:500 12.5px var(--f);color:#5a5a52;text-decoration:none;border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04);color:#0a0a0a}
+.uqnav a.on{background:#0a0a0a;color:#fafaf6}
+.uqsep{width:1px;height:18px;background:rgba(10,10,10,.08);margin:0 6px;flex-shrink:0;align-self:center}
+/* page chrome under the topbar */
+.aph-topbar,.aph-filter-bar{position:static!important;background:rgba(250,250,246,.9)!important;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+/* cards + KPIs + type */
+.aph-card,.aph-kpi{border-radius:20px!important;border:1px solid var(--border)!important;box-shadow:var(--shadow-sm)!important;background:#fafaf6!important}
+.aph-card:hover{box-shadow:var(--shadow-md)!important}
+.aph-kpi{position:relative!important;overflow:hidden!important;transition:transform .25s,box-shadow .25s!important}
+.aph-kpi:hover{box-shadow:var(--shadow-md)!important;transform:translateY(-3px)}
+.aph-kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ka,var(--accent))}
+.aph-kpi .v{color:#0a0a0a!important}
+.aph-page-hd .ttl,.aph-topbar h1,.aph-card-hd .ttl{font-family:'Fraunces',Georgia,serif!important;letter-spacing:-.4px!important;font-weight:600!important}
+.aph-topbar .presets .p.active,.aph-topbar .presets .p.on{background:#0a0a0a!important;color:#fafaf6!important}
+</style>
+
+
+<style>
+/* ═══════════ Upande UFD :: "Mona" overlay — exact match to ufd-modern-1-mona ═══════════ */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600;700&display=swap');
+:root{
+  --ink:#0a0a0a;--ink-1:#1a1a18;--ink-2:#2a2a26;--ink-3:#3a3a34;--ink-4:#5a5a52;--ink-mute:#8a8780;--ink-faint:#b8b6ae;
+  --bg:#f4f3ef;--bg-card:#ffffff;--surface:#fafaf6;--bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.06);--border-2:rgba(10,10,10,0.12);--hairline:rgba(10,10,10,0.06);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;--signal:#228883;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--display:'Fraunces',Georgia,serif;
+}
+body{background:var(--bg)!important}
+.aph{background:var(--bg)!important;display:block!important;grid-template-columns:none!important;overflow-y:auto!important;color:var(--text-2);font-family:var(--f)}
+.aph-side{display:none!important}
+.aph-main{height:auto!important;min-height:0!important;width:100%!important;overflow:visible!important}
+
+/* TOPBAR — light, borderless, prominent brand + pill nav */
+.uqtop{position:sticky!important;top:0;z-index:50;display:flex;align-items:center;gap:14px;background:#ffffff!important;padding:14px 40px!important;border-bottom:1px solid var(--hairline)!important;box-shadow:none!important}
+.uqmark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 14px var(--f)!important;color:#0a0a0a;line-height:1.1;letter-spacing:-.2px}
+.uqp small{display:block;font:500 10px var(--f);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute);margin-top:1px}
+.uqnav{display:flex;gap:4px;margin-left:24px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav a{padding:8px 14px!important;font:500 13px var(--f)!important;color:var(--ink-4)!important;text-decoration:none;border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04)!important;color:#0a0a0a!important}
+.uqnav a.on{background:#0a0a0a!important;color:#fafaf6!important}
+.uqsep{width:1px;height:22px;background:var(--hairline);margin:0 8px;flex-shrink:0;align-self:center}
+
+/* page chrome / filter bar → clean white */
+.aph-topbar,.aph-filter-bar{position:static!important;background:#ffffff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-bottom:1px solid var(--hairline)!important}
+.aph-topbar h1{font-family:var(--f)!important;font-weight:600!important;letter-spacing:-.3px!important;color:var(--ink)!important;font-size:18px!important}
+.aph-topbar .btn,.aph .live-badge{border-radius:999px!important;border:1px solid var(--border-2)!important;background:#fff!important;box-shadow:var(--shadow-sm)!important;color:var(--ink-3)!important}
+.aph-topbar .btn:hover,.aph .live-badge:hover{background:var(--bg-hover)!important;color:var(--ink)!important}
+
+/* CONTENT */
+.aph-content{padding:40px!important}
+.aph-page-hd{margin-bottom:32px!important}
+.aph-page-hd .ttl{font-family:var(--f)!important;font-weight:600!important;font-size:40px!important;letter-spacing:-1.2px!important;color:var(--ink)!important;line-height:1.05}
+.aph-page-hd .sub{font-size:15px!important;color:var(--ink-4)!important}
+
+/* KPI CARDS — white, borderless, large Poppins value, no icon/accent bar */
+.aph-kpis{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))!important;gap:18px!important;margin-bottom:32px!important}
+.aph-kpi{background:#ffffff!important;border:0!important;border-radius:20px!important;padding:26px 28px!important;box-shadow:var(--shadow-sm)!important;min-height:0!important;overflow:hidden!important;transition:transform .25s,box-shadow .25s!important}
+.aph-kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)!important}
+.aph-kpi::after{display:none!important}
+.aph-kpi .ic-wrap{display:none!important}
+.aph-kpi .lbl{font-size:11px!important;letter-spacing:1.8px!important;text-transform:uppercase;color:var(--ink-mute)!important;font-weight:500!important;margin-bottom:16px!important}
+.aph-kpi .v{font-family:var(--f)!important;font-size:42px!important;font-weight:600!important;letter-spacing:-1.4px!important;color:var(--ink)!important;line-height:1!important;margin-top:0!important}
+.aph-kpi .sub{color:var(--ink-mute)!important;margin-top:10px!important}
+
+/* CARDS — white, borderless, 24px radius */
+.aph-card{background:#ffffff!important;border:0!important;border-radius:24px!important;box-shadow:var(--shadow-sm)!important}
+.aph-card:hover{box-shadow:var(--shadow-md)!important}
+.aph-card-hd{border-bottom:1px solid var(--hairline)!important;padding:22px 28px!important}
+.aph-card-hd .ttl{font-family:var(--f)!important;font-weight:600!important;font-size:17px!important;letter-spacing:-.4px!important;color:var(--ink)!important}
+.aph-card-hd .sub{color:var(--ink-mute)!important}
+.aph-card-body{padding:24px 28px!important}
+.aph-grid{gap:18px!important;margin-bottom:18px!important}
+
+/* TABLE */
+.aph-tbl th{background:#fff!important;color:var(--ink-mute)!important;border-bottom:1px solid var(--hairline)!important}
+.aph-tbl td{border-bottom:1px solid var(--hairline)!important;color:var(--ink-3)!important}
+.aph-tbl tr:hover td{background:var(--bg-hover)!important}
+.aph .totals-row td{color:var(--ink)!important}
+.aph .ftr-high{background:var(--signal)!important}
+.aph .ftr-medium{background:var(--ink-4)!important}
+.aph .ftr-low{background:var(--ink-faint)!important}
+
+/* FILTERS — pill controls, ink chips */
+.aph .filter-group{border:1px solid var(--border-2)!important;border-radius:999px!important;background:#fff!important}
+.aph-filter-bar .date-block{border:1px solid var(--border-2)!important;border-radius:10px!important;background:#fff!important}
+.aph .ms-chip{background:#0a0a0a!important;color:#fafaf6!important}
+.aph .ms-count{background:var(--bg-muted)!important;color:var(--ink)!important}
+.aph-topbar .presets{border-radius:999px!important;overflow:hidden}
+.aph-topbar .presets .p.active,.aph-topbar .presets .p.on{background:#0a0a0a!important;color:#fafaf6!important}
+.aph .active-filter-badge{background:var(--bg-muted)!important;color:var(--ink-3)!important;border-radius:999px!important}
+@media(max-width:900px){.aph-content{padding:16px!important}.aph-page-hd .ttl{font-size:28px!important}.uqtop{padding:12px 16px!important}}
+</style>
+<script>
+/* Upande UFD :: Mona chart theming — global Chart.js defaults + identifiable bar colours */
+(function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";
+      Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){
+        window.__ufdMonaReg=1;
+        Chart.register({
+          id:"ufdMonaColors",
+          beforeUpdate:function(chart){
+            var t=chart.config.type;
+            var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+            if(bars.length===1){
+              var d=bars[0];
+              d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});
+            }else if(bars.length>1){
+              bars.forEach(function(d,i){ if(typeof d.backgroundColor!=="function"){ d.backgroundColor=PAL[i%PAL.length]; }});
+            }
+          }
+        });
+      }
+    }catch(e){}
+  }
+  go();
+})();
+</script>
+<div class="aph">
+<div class="uqtop"><div class="uqbrand"><div class="uqmark">UQ</div><div class="uqp">Upande Quality<small>Solution Mixing</small></div></div><div class="uqnav"><a href="app/upande-quality">Home</a><span class="uqsep"></span><a href="intake-ftr-overview">Intake FTR</a><a href="packhouse-overview">Packhouse</a><a href="rejects">Rejects</a><a href="solution-mixing-overview" class="on">Solution Mixing</a><a href="coldroom-overview">Coldroom</a><span class="uqsep"></span><a href="quality-trends">Trends</a><a href="quality-raw-data">Raw Data</a><a href="transit-time">Transit Time</a><a href="shelving-report">Shelving</a></div></div>
+  
+
+  <div class="aph-main">
+    <div class="aph-topbar">
+      <h1>Solution Mixing Overview</h1>
+      <span class="crumb">Quality</span>
+      <div class="right">
+        <div class="filter-group period-fg"><span class="filter-label">Period</span>
+          <div class="period-dd" id="periodDD">
+            <button type="button" class="period-trigger" id="periodTrigger"><span id="periodSummary">All</span></button>
+            <div class="period-panel">
+              <label class="pp-row"><span class="pp-lb">Year</span><select class="form-control" id="filterYear"><option value="">All</option></select></label>
+              <label class="pp-row"><span class="pp-lb">Week</span><select class="form-control" id="filterWeek"><option value="">All</option></select></label>
+            </div>
+          </div>
+        </div>
+        <div class="filter-group"><span class="filter-label">Farm</span><div id="filterFarm"></div></div>
+        <div class="filter-group"><span class="filter-label">Tank</span><div id="filterTank"></div></div>
+        <div class="filter-group"><span class="filter-label">Chemical</span><div id="filterChemical"></div></div>
+        <button class="btn reset-filters-btn" id="resetFiltersBtn">↺ Reset</button>
+        <button class="btn refresh-btn" onclick="loadData()">⟳ Refresh</button>
+      </div>
+      <div class="date-row">
+        <span class="dl">Date Range</span>
+        <div class="date-pill">
+          <input type="date" class="form-control" id="filterFrom" style="border:0;width:118px">
+          <span class="sep">→</span>
+          <input type="date" class="form-control" id="filterTo" style="border:0;width:118px">
+          <button class="clear-dates-btn" id="clearDatesBtn">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="aph-content">
+
+      <div class="aph-page-hd">
+        <div class="ttl">Solution Mixing Overview</div>
+        <div class="sub">Chemical rates, usage by farm &amp; recent mixes with pH &amp; PPM</div>
+        <div id="activeFilters" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="aph-kpis">
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><path d="M12 2v6m-6 4h12M5 12a7 7 0 1 0 14 0c0-3.86-5-9-7-9s-7 5.14-7 9z"/></svg></div>
+          <div><div class="lbl">Total Mixes</div><div class="v" id="kpiTotal">—</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><path d="M12 2v6m-6 4h12M5 12a7 7 0 1 0 14 0c0-3.86-5-9-7-9s-7 5.14-7 9z"/></svg></div>
+          <div><div class="lbl">Total Volume Mixed</div><div class="v"><span id="kpiVolume">—</span> <span style="font-size:14px;color:var(--text-3);font-weight:600">L</span></div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8m-4-4v8"/></svg></div>
+          <div><div class="lbl">Distinct Chemicals</div><div class="v" id="kpiChemCount">—</div></div>
+        </div>
+        <div class="aph-kpi">
+          <div class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg></div>
+          <div><div class="lbl">Out of pH Range</div><div class="v" id="kpiOut">—</div></div>
+        </div>
+      </div>
+
+      <!-- Chemical Rates table (full width) -->
+      <div class="aph-grid col-1">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Chemical Rates</div>
+            <div class="sub" style="margin-left:auto">Amount used vs volume of solution, per chemical (rate per 1,000 L)</div>
+          </div>
+          <div class="aph-card-body padless">
+            <div class="table-scroll short">
+              <table class="aph-tbl">
+                <thead>
+                  <tr>
+                    <th>Chemical</th>
+                    <th class="num">Total Amount</th>
+                    <th>Unit</th>
+                    <th class="num">Total Volume (L)</th>
+                    <th class="num">Rate / L</th>
+                    <th class="num">Mixes</th>
+                  </tr>
+                </thead>
+                <tbody id="chemRatesRows">
+                  <tr><td colspan="6" class="empty-state">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts: Chemical vs Volume + Usage per Farm -->
+      <div class="aph-grid">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Chemical vs Volume of Solution</div>
+            <div class="sub" style="margin-left:auto">Total chemical amount vs solution volume, per chemical</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box"><canvas id="chartTrend"></canvas></div></div>
+        </div>
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Chemical Usage per Farm</div>
+            <div class="sub" style="margin-left:auto">Stacked by chemical — totals across selected period</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box"><canvas id="chartChemByFarm"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Chemical Usage vs Stems (full width) -->
+      <div class="aph-grid col-1">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Chemical Usage vs Stems Received (per farm)</div>
+            <div class="sub" style="margin-left:auto">Chemical amount and stems received shown side by side for each farm.</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box tall"><canvas id="chartWeeklyVsStems"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Chemical Usage Trend (full width) -->
+      <div class="aph-grid col-1">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Chemical Usage Trend</div>
+            <div class="sub" style="margin-left:auto">Stacked by chemical (kg / L) · Pareto cumulative %</div>
+          </div>
+          <div class="aph-card-body"><div class="chart-box tall"><canvas id="chartUsageTrend"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Recent Mixes (full width) -->
+      <div class="aph-grid col-1">
+        <div class="aph-card">
+          <div class="aph-card-hd">
+            <div class="ttl">Recent Mixes</div>
+            <div class="sub" style="margin-left:auto">Latest 50</div>
+          </div>
+          <div class="aph-card-body padless">
+            <div class="table-scroll">
+              <table class="aph-tbl">
+                <thead>
+                  <tr>
+                    <th>Mix #</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Farm</th>
+                    <th>Tank</th>
+                    <th class="num">Volume Mixed (L)</th>
+                    <th class="num">pH</th>
+                    <th class="num">PPM</th>
+                    <th>Chemical</th>
+                    <th class="num">Amount</th>
+                    <th class="num">Rate / L</th>
+                    <th>Photo</th>
+                  </tr>
+                </thead>
+                <tbody id="recentRows">
+                  <tr><td colspan="9" class="empty-state">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const ACCENT_BLUE   = '#2490ef';
+const ACCENT_TEAL   = '#2d9ea0';
+const ACCENT_GREEN  = '#29cd42';
+const ACCENT_ORANGE = '#fc9c30';
+const ACCENT_RED    = '#e63757';
+
+let charts = {};
+
+function el(id) { return document.getElementById(id); }
+function num(v, d=0) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+
+/* ── shared multiselect factory (chips + search + select-all) ── */
+function createMultiSelect(mountId, opts) {
+    opts = opts || {};
+    var root = document.getElementById(mountId);
+    if (!root) return null;
+    root.classList.add('ms');
+    var ph = opts.placeholder || 'All';
+    var items = [];        // [{value,label}]
+    var selected = {};     // value -> true
+    var changeCb = null;
+    function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+    root.innerHTML =
+        '<div class="ms-control"><span class="ms-body"></span></div>' +
+        '<div class="ms-panel">' +
+          '<input class="ms-search" type="text" placeholder="Search…">' +
+          '<div class="ms-actions"><a class="ms-all">Select all</a><a class="ms-clear">Clear</a></div>' +
+          '<div class="ms-list"></div>' +
+        '</div>';
+    var control = root.querySelector('.ms-control');
+    var body = root.querySelector('.ms-body');
+    var search = root.querySelector('.ms-search');
+    var list = root.querySelector('.ms-list');
+    function renderBody(){
+        var keys = Object.keys(selected);
+        if(!keys.length){ body.innerHTML = '<span class="ms-ph">'+esc(ph)+'</span>'; return; }
+        if(keys.length <= 2){
+            body.innerHTML = keys.map(function(v){
+                var it = items.find(function(i){return i.value===v;});
+                return '<span class="ms-chip"><span>'+esc(it?it.label:v)+'</span><b data-v="'+esc(v)+'">×</b></span>';
+            }).join('');
+        } else {
+            body.innerHTML = '<span class="ms-count">'+keys.length+' selected</span>';
+        }
+    }
+    function renderList(){
+        var q = (search.value||'').toLowerCase();
+        if(!items.length){ list.innerHTML = '<div class="ms-empty">No options</div>'; return; }
+        list.innerHTML = items.map(function(it){
+            var hide = q && it.label.toLowerCase().indexOf(q)===-1;
+            return '<label class="ms-opt'+(hide?' hidden':'')+'"><input type="checkbox" data-v="'+esc(it.value)+'"'+(selected[it.value]?' checked':'')+'><span>'+esc(it.label)+'</span></label>';
+        }).join('');
+    }
+    function fire(){ renderBody(); if(changeCb) changeCb(); }
+    control.addEventListener('click', function(e){
+        if(e.target.tagName==='B' && e.target.dataset.v){ delete selected[e.target.dataset.v]; renderList(); fire(); e.stopPropagation(); return; }
+        root.classList.toggle('open'); if(root.classList.contains('open')) search.focus();
+    });
+    list.addEventListener('change', function(e){
+        var v = e.target.dataset.v; if(v===undefined) return;
+        if(e.target.checked) selected[v]=true; else delete selected[v];
+        fire();
+    });
+    search.addEventListener('input', renderList);
+    search.addEventListener('click', function(e){ e.stopPropagation(); });
+    root.querySelector('.ms-all').addEventListener('click', function(e){ e.stopPropagation(); var q=(search.value||'').toLowerCase(); items.forEach(function(it){ if(!q||it.label.toLowerCase().indexOf(q)!==-1) selected[it.value]=true; }); renderList(); fire(); });
+    root.querySelector('.ms-clear').addEventListener('click', function(e){ e.stopPropagation(); selected={}; renderList(); fire(); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) root.classList.remove('open'); });
+    var api = {
+        setOptions: function(arr){ items=(arr||[]).map(function(x){ return (x&&typeof x==='object')?{value:String(x.value),label:String(x.label)}:{value:String(x),label:String(x)}; }); var valid={}; items.forEach(function(i){valid[i.value]=1;}); Object.keys(selected).forEach(function(v){ if(!valid[v]) delete selected[v]; }); renderList(); renderBody(); },
+        getValue: function(){ return Object.keys(selected).join(','); },
+        setValue: function(csv){ selected={}; String(csv||'').split(',').forEach(function(v){ v=v.trim(); if(v) selected[v]=true; }); renderList(); renderBody(); },
+        onChange: function(cb){ changeCb = cb; }
+    };
+    renderBody(); renderList();
+    return api;
+}
+/* Format an adaptive-period key for axis labels: YYYY-MM-DD -> "Sun 08", YYYY-MM -> "Jun", MM -> "Jun", YYYY-Www kept. */
+function formatPeriodLabel(k){
+    k = String(k);
+    var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var m;
+    if((m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(k))){ var dt=new Date(+m[1],+m[2]-1,+m[3]); return DOW[dt.getDay()]+' '+m[3]; }
+    if((m=/^(\d{4})-(\d{2})$/.exec(k))){ return MON[+m[2]-1]+' '+m[1]; }
+    if((m=/^(\d{1,2})$/.exec(k))){ var i=+m[1]; if(i>=1&&i<=12) return MON[i-1]; }
+    return k;
+}
+
+let farmMS = null, tankMS = null, chemicalMS = null;
+
+function setBadges(filters) {
+    const wrap = el('activeFilters'); wrap.innerHTML = '';
+    Object.entries(filters || {}).forEach(([k, v]) => {
+        if (!v) return;
+        const span = document.createElement('span');
+        span.className = 'active-filter-badge';
+        span.innerHTML = k + ': ' + v + ' <span class="clear-badge" data-k="' + k + '">×</span>';
+        wrap.appendChild(span);
+    });
+    wrap.querySelectorAll('.clear-badge').forEach(c => {
+        c.onclick = () => {
+            const k = c.dataset.k;
+            const id = { year: 'filterYear', week: 'filterWeek', farm: 'filterFarm', tank: 'filterTank',
+                         chemical: 'filterChemical', from_date: 'filterFrom', to_date: 'filterTo' }[k];
+            if (k === 'farm') { if (farmMS) farmMS.setValue(''); }
+            else if (k === 'tank') { if (tankMS) tankMS.setValue(''); }
+            else if (k === 'chemical') { if (chemicalMS) chemicalMS.setValue(''); }
+            else if (id) el(id).value = '';
+            loadData();
+        };
+    });
+}
+
+function fillSelect(sel, items, current) {
+    const def = sel.querySelector('option[value=""]');
+    sel.innerHTML = '';
+    if (def) sel.appendChild(def);
+    items.forEach(v => {
+        const o = document.createElement('option');
+        const val = (v && typeof v === 'object') ? v.value : v;
+        const lab = (v && typeof v === 'object') ? v.label : v;
+        o.value = val; o.textContent = lab;
+        if (current && String(current) === String(val)) o.selected = true;
+        sel.appendChild(o);
+    });
+}
+
+function destroyCharts() {
+    Object.values(charts).forEach(c => c && c.destroy && c.destroy());
+    charts = {};
+}
+
+function lineTrend(rows) {
+    // Grouped bar: per chemical, total amount (kg/L) vs total solution volume (L). Dual axis.
+    const sorted = (rows || []).slice().sort((a,b) => Number(b.total_volume_l||0) - Number(a.total_volume_l||0));
+    const labels = sorted.map(r => r.chemical_name || r.chemical || '—');
+    const amtUnits = sorted.map(r => normAmt(r.total_amount, r.unit).unit);
+    const amt = sorted.map(r => Math.round(normAmt(r.total_amount, r.unit).value * 100) / 100);
+    const vol = sorted.map(r => Number(r.total_volume_l || 0));
+    return new Chart(el('chartTrend'), {
+        type: 'bar',
+        data: { labels, datasets: [
+            { label: 'Chemical amount', data: amt, backgroundColor: ACCENT_TEAL, yAxisID: 'yAmt', maxBarThickness: 34 },
+            { label: 'Solution volume (L)', data: vol, backgroundColor: ACCENT_BLUE, yAxisID: 'yVol', maxBarThickness: 34 }
+        ] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                tooltip: { callbacks: { label: c => c.datasetIndex === 0
+                    ? ('Amount: ' + num(c.raw, 2) + ' ' + (amtUnits[c.dataIndex] || ''))
+                    : ('Solution: ' + num(c.raw, 0) + ' L') } }
+            },
+            scales: {
+                x: { ticks: { font: { size: 9 }, maxRotation: 45 } },
+                yAmt: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Chemical amount (kg / L)' } },
+                yVol: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Solution volume (L)' } }
+            }
+        }
+    });
+}
+
+// Generate a stable color per chemical so the same chemical keeps the same
+// color across renders (helps the eye track across charts).
+const CHEM_PALETTE = [ACCENT_BLUE, ACCENT_GREEN, ACCENT_ORANGE, ACCENT_TEAL, ACCENT_RED,
+    '#7c5cfc', '#ec4899', '#06b6d4', '#84cc16', '#facc15', '#a855f7', '#f97316'];
+function colorForChem(name, idx) {
+    return CHEM_PALETTE[idx % CHEM_PALETTE.length];
+}
+
+// Normalise a chemical amount to kg (powders) or L (liquids).
+function normAmt(amount, unit) {
+    var u = (unit || '').toLowerCase(); var v = Number(amount || 0);
+    if (u === 'g')  return { value: v / 1000, unit: 'kg' };
+    if (u === 'ml') return { value: v / 1000, unit: 'L' };
+    if (u === 'kg') return { value: v, unit: 'kg' };
+    if (u === 'l')  return { value: v, unit: 'L' };
+    return { value: v, unit: unit || '' };
+}
+
+// Stacked bar (qty per chemical, per period) + Pareto cumulative-% line.
+function usageTrend(data) {
+    const id = 'chartUsageTrend';
+    const series = Object.keys(data || {});
+    if (!series.length) {
+        return new Chart(el(id), { type: 'bar', data: { labels: [], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false } });
+    }
+    const wset = {}; series.forEach(s => Object.keys(data[s]).forEach(w => { wset[w] = 1; }));
+    const periods = Object.keys(wset).sort();
+    const bars = series.map((s, i) => ({
+        type: 'bar', label: s, stack: 'usage',
+        data: periods.map(w => data[s][w] != null ? data[s][w] : 0),
+        backgroundColor: colorForChem(s, i), maxBarThickness: 40, yAxisID: 'y',
+    }));
+    const totals = periods.map(w => series.reduce((sum, s) => sum + (Number(data[s][w]) || 0), 0));
+    const grand = totals.reduce((a, b) => a + b, 0) || 1;
+    let cum = 0;
+    const cumPct = totals.map(v => { cum += v; return Math.round(cum / grand * 1000) / 10; });
+    const lineDs = {
+        type: 'line', label: 'Cumulative %', data: cumPct, yAxisID: 'yPct',
+        borderColor: '#1a1a1a', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.2,
+    };
+    return new Chart(el(id), {
+        type: 'bar',
+        data: { labels: periods.map(formatPeriodLabel), datasets: bars.concat([lineDs]) },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } },
+                tooltip: { callbacks: { label: c => c.dataset.label === 'Cumulative %'
+                    ? ('Cumulative: ' + c.parsed.y + '%')
+                    : (c.dataset.label + ': ' + num(c.raw, 2)) } }
+            },
+            scales: {
+                x: { stacked: true, ticks: { font: { size: 8 }, maxRotation: 45 } },
+                y: { stacked: true, beginAtZero: true, position: 'left', title: { display: true, text: 'Quantity (kg / L)' } },
+                yPct: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%', font: { size: 8 } } }
+            }
+        }
+    });
+}
+
+function chemUsageByFarm(rows) {
+    // rows: [{farm, chemical, unit, total_amount, mix_count}]
+    // Build a stacked bar — one bar per farm, segments per chemical+unit.
+    if (!rows || !rows.length) {
+        return new Chart(el('chartChemByFarm'), {
+            type: 'bar', data: { labels: [], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+    const farms = Array.from(new Set(rows.map(r => r.farm || '—')));
+    // Stack key = chemical (unit collapses into label for tooltip clarity).
+    const chems = Array.from(new Set(rows.map(r => r.chemical_name || r.chemical || '—')));
+    const datasets = chems.map((chem, i) => {
+        // For each farm, find the row matching this chemical (by item name).
+        const data = farms.map(f => {
+            const m = rows.find(r => r.farm === f && (r.chemical_name || r.chemical) === chem);
+            return m ? Math.round(normAmt(m.total_amount, m.unit).value * 100) / 100 : 0;
+        });
+        const unit = normAmt(1, (rows.find(r => (r.chemical_name || r.chemical) === chem) || {}).unit).unit;
+        return {
+            label: chem + (unit ? ' (' + unit + ')' : ''),
+            data, backgroundColor: colorForChem(chem, i), stack: 'a',
+        };
+    });
+    return new Chart(el('chartChemByFarm'), {
+        type: 'bar',
+        data: { labels: farms, datasets },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } },
+                       tooltip: { callbacks: {
+                           label: c => c.dataset.label + ': ' + num(c.raw, 1)
+                       } } },
+            scales: {
+                x: { beginAtZero: true, stacked: true, title: { display: true, text: 'Chemical amount (units shown in legend)' } },
+                y: { stacked: true }
+            }
+        }
+    });
+}
+
+function weeklyVsStems(rows) {
+    // Aggregate per farm: total chemical amount + total stems received,
+    // drawn as two grouped bars side by side per farm (dual axis).
+    if (!rows || !rows.length) {
+        return new Chart(el('chartWeeklyVsStems'), {
+            type: 'bar', data: { labels: ['No data in this scope'], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+    const byFarm = {};
+    rows.forEach(r => {
+        const f = r.farm || '—';
+        if (!byFarm[f]) byFarm[f] = { amount: 0, stems: 0 };
+        byFarm[f].amount += Number(r.amount || 0);
+        byFarm[f].stems  += Number(r.stems_received || 0);
+    });
+    const farms = Object.keys(byFarm).sort();
+    return new Chart(el('chartWeeklyVsStems'), {
+        type: 'bar',
+        data: {
+            labels: farms,
+            datasets: [
+                { label: 'Chemical amount', data: farms.map(f => byFarm[f].amount),
+                  backgroundColor: ACCENT_TEAL, yAxisID: 'yAmount', maxBarThickness: 46 },
+                { label: 'Stems received', data: farms.map(f => byFarm[f].stems),
+                  backgroundColor: ACCENT_BLUE, yAxisID: 'yStems', maxBarThickness: 46 },
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                       tooltip: { callbacks: { label: c => c.dataset.label + ': ' + num(c.raw, 0) } } },
+            scales: {
+                x: { ticks: { font: { size: 10 } } },
+                yAmount: { type: 'linear', position: 'left',  beginAtZero: true,
+                           title: { display: true, text: 'Chemical amount' } },
+                yStems:  { type: 'linear', position: 'right', beginAtZero: true,
+                           grid: { drawOnChartArea: false },
+                           title: { display: true, text: 'Stems received' } },
+            }
+        }
+    });
+}
+
+function renderChemRates(rows) {
+    const tbody = el('chemRatesRows');
+    if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No chemical usage in this scope.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const a = normAmt(r.total_amount, r.unit);
+        const rate = normAmt(r.rate_per_1000L, r.unit);
+        return '<tr>' +
+            '<td>' + (r.chemical_name || r.chemical || '—') + '</td>' +
+            '<td class="num">' + num(a.value, 2) + '</td>' +
+            '<td>' + (a.unit || '—') + '</td>' +
+            '<td class="num">' + num(r.total_volume_l, 0) + '</td>' +
+            '<td class="num"><strong>' + num(rate.value, 2) + ' ' + (rate.unit === 'kg' ? 'g' : 'ml') + '/L</strong></td>' +
+            '<td class="num">' + num(r.mix_count, 0) + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+function renderRecent(rows) {
+    const tbody = el('recentRows');
+    if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No mixes match the current filters.</td></tr>';
+        return;
+    }
+    function mixCells(r, rs) {
+        const ph = Number(r.ph || 0);
+        const phPill = (ph < 3 || ph > 6.5)
+            ? '<span class="pill pill-warn">' + num(r.ph, 1) + '</span>'
+            : '<span class="pill pill-ok">' + num(r.ph, 1) + '</span>';
+        const a = ' rowspan="' + rs + '"';
+        return '<td' + a + '><a href="/app/solution-mix/' + r.name + '" style="color: var(--accent-blue);">' + r.name + '</a></td>' +
+               '<td' + a + '>' + (r.mixing_date || '—') + '</td>' +
+               '<td' + a + '>' + (r.mixing_time ? String(r.mixing_time).slice(0,5) : '—') + '</td>' +
+               '<td' + a + '>' + (r.farm || '—') + '</td>' +
+               '<td' + a + '>' + (r.tank || '—') + '</td>' +
+               '<td class="num"' + a + '>' + num(r.tank_capacity_l, 0) + '</td>' +
+               '<td class="num"' + a + '>' + phPill + '</td>' +
+               '<td class="num"' + a + '>' + num(r.ppm, 0) + '</td>';
+    }
+    let html = '';
+    rows.forEach(r => {
+        const chems = r.chemicals || [];
+        const rs = Math.max(chems.length, 1);
+        if (!chems.length) {
+            html += '<tr>' + mixCells(r, 1) + '<td>—</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>';
+            return;
+        }
+        chems.forEach((c, ci) => {
+            const am = normAmt(c.amount, c.unit);
+            const rateN = normAmt(c.rate_per_1000L, c.unit); const ratePerL = rateN.value; const rateUnitPerL = rateN.unit === 'kg' ? 'g' : 'ml';
+            const photo = c.photo
+                ? '<a href="' + c.photo + '" target="_blank" title="' + (c.chemical_name || c.chemical || '') + '" style="display:inline-block;width:26px;height:26px;border:1px solid var(--border-2);border-radius:4px;overflow:hidden;vertical-align:middle"><img src="' + c.photo + '" style="width:100%;height:100%;object-fit:cover" alt="" /></a>'
+                : '<span style="color:var(--text-3)">—</span>';
+            html += '<tr>' +
+                (ci === 0 ? mixCells(r, rs) : '') +
+                '<td><strong>' + (c.chemical_name || c.chemical || '—') + '</strong></td>' +
+                '<td class="num">' + num(am.value, 2) + ' ' + (am.unit || '') + '</td>' +
+                '<td class="num">' + num(ratePerL, 2) + ' ' + rateUnitPerL + '/L</td>' +
+                '<td>' + photo + '</td>' +
+            '</tr>';
+        });
+    });
+    tbody.innerHTML = html;
+}
+
+var _loadGen = 0;
+function loadData() {
+    var myGen = ++_loadGen;
+    const params = new URLSearchParams({
+        year: el('filterYear').value,
+        week: el('filterWeek').value,
+        farm: farmMS ? farmMS.getValue() : '',
+        tank: tankMS ? tankMS.getValue() : '',
+        chemical: chemicalMS ? chemicalMS.getValue() : '',
+        from_date: el('filterFrom').value,
+        to_date: el('filterTo').value,
+    });
+    fetch('/api/method/fetchSolutionMixingOverview?' + params.toString(),
+          { headers: { 'X-Frappe-CSRF-Token': frappe.csrf_token || 'token' }, credentials: 'include' })
+        .then(r => r.json())
+        .then(j => {
+            if (myGen !== _loadGen) return;
+            const d = (j && j.message) || {};
+            if (!d.success) {
+                el('kpiTotal').textContent = '—';
+                el('kpiVolume').textContent = '—';
+                el('kpiChemCount').textContent = '—';
+                el('kpiOut').textContent = '—';
+                el('recentRows').innerHTML =
+                    '<tr><td colspan="12" class="empty-state">Failed to load: ' +
+                    (d.error || 'unknown error') + '</td></tr>';
+                return;
+            }
+            const k = d.kpi || {};
+            el('kpiTotal').textContent   = num(k.total_mixes, 0);
+            el('kpiVolume').textContent  = num(k.total_volume_l, 0);
+            el('kpiChemCount').textContent = num((d.chemical_rates || []).length, 0);
+            el('kpiOut').textContent     = num(k.out_of_ph_range, 0);
+
+            // Filter options
+            const opts = d.filter_options || {};
+            fillSelect(el('filterYear'),       (opts.years || []).map(String), el('filterYear').value);
+            fillSelect(el('filterWeek'),       (opts.weeks || []).map(String), el('filterWeek').value);
+            updatePeriodSummary();
+            if (farmMS) farmMS.setOptions(opts.farms || []);
+            if (tankMS) tankMS.setOptions(opts.tanks || []);
+            if (chemicalMS) chemicalMS.setOptions(opts.chemicals || []);
+
+            setBadges(d.active_filters || {});
+            destroyCharts();
+            renderChemRates(d.chemical_rates || []);
+            charts.trend     = lineTrend(d.chemical_rates || []);
+            charts.chemByFarm = chemUsageByFarm(d.chemical_per_farm || []);
+            charts.weekly    = weeklyVsStems(d.weekly_chemical_vs_stems || []);
+            charts.usageTrend = usageTrend(d.chemical_usage_trend || {});
+            renderRecent(d.recent || []);
+        })
+        .catch(err => {
+            if (myGen !== _loadGen) return;
+            el('recentRows').innerHTML =
+                '<tr><td colspan="12" class="empty-state">Failed to load: ' + err.message + '</td></tr>';
+        });
+}
+
+// Reflect the current Year/Week selection on the Period trigger.
+function updatePeriodSummary() {
+    var y = el('filterYear').value, w = el('filterWeek').value;
+    var parts = [];
+    if (y) parts.push(y);
+    if (w) parts.push('W' + w);
+    var s = el('periodSummary');
+    if (s) s.textContent = parts.length ? parts.join(' · ') : 'All';
+}
+
+// Wire up listeners
+['filterYear','filterWeek','filterFrom','filterTo']
+    .forEach(id => el(id).addEventListener('change', loadData));
+['filterYear','filterWeek']
+    .forEach(id => el(id).addEventListener('change', updatePeriodSummary));
+
+// Period dropdown open/close
+(function(){
+    var trigger = el('periodTrigger'), dd = el('periodDD');
+    if (!trigger || !dd) return;
+    trigger.addEventListener('click', function(e){ e.stopPropagation(); dd.classList.toggle('open'); });
+    document.addEventListener('click', function(e){ if (!dd.contains(e.target)) dd.classList.remove('open'); });
+})();
+
+farmMS = createMultiSelect('filterFarm', { placeholder: 'All' });
+if (farmMS) farmMS.onChange(loadData);
+        tankMS = createMultiSelect("filterTank", { placeholder: "All" });
+        if (tankMS) tankMS.onChange(() => { loadData(); });
+        chemicalMS = createMultiSelect("filterChemical", { placeholder: "All" });
+        if (chemicalMS) chemicalMS.onChange(() => { loadData(); });
+el('clearDatesBtn').addEventListener('click', () => {
+    el('filterFrom').value = ''; el('filterTo').value = ''; loadData();
+});
+el('resetFiltersBtn').addEventListener('click', () => {
+    ['filterYear','filterWeek','filterFrom','filterTo']
+        .forEach(id => el(id).value = '');
+    if (farmMS) farmMS.setValue('');
+    if (tankMS) tankMS.setValue('');
+    if (chemicalMS) chemicalMS.setValue('');
+    updatePeriodSummary();
+    loadData();
+});
+
+loadData();
+
+</script>
+
+<script>
+/* -- Sidebar footer (user identity) -- */
+(function fillFooter(){
+    function tryFill(){
+        if (!window.frappe || !frappe.session || !frappe.session.user){ setTimeout(tryFill, 100); return; }
+        var u = frappe.session.user || '';
+        var fullName = (frappe.session.user_fullname || (frappe.boot && frappe.boot.user && frappe.boot.user.full_name)) || u.split('@')[0];
+        var av = document.getElementById('aph-foot-av'), nm = document.getElementById('aph-foot-nm'), em = document.getElementById('aph-foot-em');
+        if (av) av.textContent = (fullName || u || '?').substring(0,1).toUpperCase();
+        if (nm) nm.textContent = fullName;
+        if (em) em.textContent = u;
+    }
+    tryFill();
+})();
+</script>
