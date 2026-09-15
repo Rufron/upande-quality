@@ -15,7 +15,9 @@
   "section_break_rvm8",
   "shelf_locations",
   "harvesting_section",
-  "harvest_item_group_config"
+  "harvest_item_group_config",
+  "scheduling_section",
+  "custom_takt_time"
  ],
  "fields": [
   {
@@ -64,6 +66,18 @@
    "fieldtype": "Table",
    "label": "Max Stems Per Bucket (by Item Group)",
    "options": "Harvest Item Group Config"
+  },
+  {
+   "fieldname": "scheduling_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduling"
+  },
+  {
+   "default": "0",
+   "description": "Standard minutes to pack one box, used by the Packhouse Scheduler to estimate how long a team's queued orders will take.",
+   "fieldname": "custom_takt_time",
+   "fieldtype": "Float",
+   "label": "Takt Time (Minutes per Box)"
   }
  ],
  "grid_page_length": 50,
