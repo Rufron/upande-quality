@@ -1,4 +1,6 @@
-<!DOCTYPE html>
+{% extends "templates/web.html" %}
+{% block page_content %}
+{% raw %}
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1196,4 +1198,5 @@ body{background:var(--bg)!important}
     tryFill(0);
 })();
 </script>
-
+{% endraw %}
+{% endblock %}

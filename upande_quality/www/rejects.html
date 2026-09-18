@@ -1,4 +1,6 @@
-<!DOCTYPE html>
+{% extends "templates/web.html" %}
+{% block page_content %}
+{% raw %}
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rejects | Upande Quality</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -317,3 +319,5 @@ el('resetFiltersBtn').addEventListener('click',function(){el('filterYear').value
 loadData();
 })();
 </script>
+{% endraw %}
+{% endblock %}
