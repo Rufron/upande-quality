@@ -2413,8 +2413,8 @@ def fetchPackhouseQCFormData():
                 "box_items": [
                     {
                         "bunch_type":         bi.bunch_type,
-                        "colour":             bi.colour,
-                        "variety":            bi.variety,
+                        "colour":             bi.get("colour"),
+                        "variety":            bi.get("variety"),
                         "hz_bud_count_range": bi.hz_bud_count_range,
                         "stems_per_bunch":    bi.stems_per_bunch,
                         "length":             bi.length,
@@ -2423,6 +2423,15 @@ def fetchPackhouseQCFormData():
                         "pack_rate":          bi.pack_rate,
                     }
                     for bi in spec_doc.box_items
+                ],
+                "approved_varieties": [
+                    {
+                        "variety":     av.variety,
+                        "colour":      av.colour,
+                        "headsize_cm": av.get("headsize_cm"),
+                        "budcount":    av.get("budcount"),
+                    }
+                    for av in spec_doc.approved_varieties
                 ],
                 "consumables": [
                     {
@@ -2460,35 +2469,31 @@ def fetchPackhouseQCFormData():
         )
         specifications_list = [dict(r) for r in spec_rows]
 
-        # ── 2. Active OPLs (submitted + allocated) ───────────────────────
-        # When a Specification is selected, only orders whose Sales Order Item
-        # links to that exact spec (via the same OPL -> Sales Order Item ->
-        # Specifications FK chain used below) are shown -- so the operator
-        # picks the spec first, then only sees orders that were actually filled
-        # against it.
+        # ── 2. Active OPLs (submitted), optionally filtered by team and/or the
+        # selected Specification. `team` filters straight on the Order Pick List
+        # (never read before, so team filtering did nothing). For a Specification
+        # the old FK path (Sales Order Item.custom_line) is blank on nearly all
+        # orders, so orders never appeared -- instead resolve the spec's customer
+        # and show that customer's active orders.
+        team_filter = data.get("team", "").strip() if data.get("team") else ""
+        opl_conds = ["docstatus = 1"]
+        opl_vals  = []
         if spec_filter:
-            opl_rows = frappe.db.sql(
-                "SELECT DISTINCT o.name, o.customer, o.team, o.farm,"
-                " o.custom_total_stems, o.order_name,"
-                " o.schedule_number"
-                " FROM `tabOrder Pick List` o"
-                " JOIN `tabPick List Item` pli ON pli.parent = o.name"
-                " JOIN `tabSales Order Item` soi ON soi.name = pli.custom_sale_order_item"
-                " WHERE soi.custom_line = %(spec)s"
-                " AND o.docstatus = 1"
-                " ORDER BY o.modified DESC LIMIT 300",
-                {"spec": spec_filter}, as_dict=1
-            )
-        else:
-            opl_rows = frappe.db.sql(
-                "SELECT name, customer, team, farm,"
-                " custom_total_stems, order_name,"
-                " schedule_number"
-                " FROM `tabOrder Pick List`"
-                " WHERE docstatus = 1"
-                " ORDER BY modified DESC LIMIT 300",
-                as_dict=1
-            )
+            spec_customer = frappe.db.get_value("Specifications", spec_filter, "customer") or ""
+            if spec_customer:
+                opl_conds.append("customer = %s")
+                opl_vals.append(spec_customer)
+        if team_filter:
+            opl_conds.append("team = %s")
+            opl_vals.append(team_filter)
+        opl_rows = frappe.db.sql(
+            "SELECT name, customer, team, farm,"
+            " custom_total_stems, order_name, schedule_number"
+            " FROM `tabOrder Pick List`"
+            " WHERE " + " AND ".join(opl_conds) +
+            " ORDER BY modified DESC LIMIT 300",
+            opl_vals, as_dict=1
+        )
         order_specs = []
         for o in opl_rows:
             order_specs.append({
@@ -2506,6 +2511,9 @@ def fetchPackhouseQCFormData():
         item_locations           = []
         variety_options          = []
         greenhouse_options       = []
+        packing_guide            = []
+        variety_bunches          = []
+        total_bunches            = 0
         pending_quarantine_stems = 0
 
         if opl_name:
@@ -2534,6 +2542,42 @@ def fetchPackhouseQCFormData():
                 if gh and gh not in seen_gh:
                     seen_gh.add(gh)
                     greenhouse_options.append(gh)
+
+            # Packing Guide (Order Pick List child) is the authoritative per-variety
+            # breakdown: every variety in the order with its colour, length and
+            # bunch/stem counts -- richer than the picked Pick List Item rows, which
+            # only cover what has been allocated so far. Drive the variety list and
+            # total bunches from here so bunch sampling sees the whole order.
+            pg_rows = frappe.db.sql(
+                "SELECT variety, colour, item_name, length, stems_per_bunch,"
+                " bunches, stems, pack_rate, box_type, box_kind, sales_order_item"
+                " FROM `tabPacking Guide` WHERE parent = %s ORDER BY idx",
+                opl_name, as_dict=1
+            )
+            packing_guide = [dict(r) for r in pg_rows]
+            pg_agg = {}
+            pg_order = []
+            for r in pg_rows:
+                pv = r.get("variety")
+                if not pv:
+                    continue
+                total_bunches = total_bunches + (r.get("bunches") or 0)
+                if pv not in pg_agg:
+                    pg_agg[pv] = {
+                        "variety":         pv,
+                        "colour":          r.get("colour") or "",
+                        "length":          r.get("length") or "",
+                        "stems_per_bunch": r.get("stems_per_bunch") or 0,
+                        "total_bunches":   0,
+                        "total_stems":     0,
+                    }
+                    pg_order.append(pv)
+                pg_agg[pv]["total_bunches"] = pg_agg[pv]["total_bunches"] + (r.get("bunches") or 0)
+                pg_agg[pv]["total_stems"]   = pg_agg[pv]["total_stems"] + (r.get("stems") or 0)
+                if pv not in variety_options:
+                    variety_options.append(pv)
+            for pv in pg_order:
+                variety_bunches.append(pg_agg[pv])
 
             # Packhouse QC doctype removed on this site; no prior-quarantine tracking.
             pending_quarantine_stems = 0
@@ -2599,22 +2643,15 @@ def fetchPackhouseQCFormData():
         # against the Spec Box Item child table. No manual picking either way:
         # if neither path finds anything, there simply is no specification yet.
         def find_spec_by_customer_variety(customer, variety, length):
+            # variety lives on the `Spec Approved Variety` child (approved_varieties),
+            # NOT on `Spec Box Item` -- the old query referenced the non-existent
+            # `bi.variety` column and crashed the whole form load (1054).
             if not customer or not variety:
                 return None
-            if length:
-                rows = frappe.db.sql(
-                    "SELECT s.name FROM `tabSpecifications` s"
-                    " JOIN `tabSpec Box Item` bi ON bi.parent = s.name"
-                    " WHERE s.customer = %(customer)s AND bi.variety = %(variety)s"
-                    " AND bi.length = %(length)s AND s.status = 'Active' LIMIT 1",
-                    {"customer": customer, "variety": variety, "length": length}, as_dict=1
-                )
-                if rows:
-                    return rows[0]["name"]
             rows = frappe.db.sql(
                 "SELECT s.name FROM `tabSpecifications` s"
-                " JOIN `tabSpec Box Item` bi ON bi.parent = s.name"
-                " WHERE s.customer = %(customer)s AND bi.variety = %(variety)s"
+                " JOIN `tabSpec Approved Variety` av ON av.parent = s.name"
+                " WHERE s.customer = %(customer)s AND av.variety = %(variety)s"
                 " AND s.status = 'Active' LIMIT 1",
                 {"customer": customer, "variety": variety}, as_dict=1
             )
@@ -2704,6 +2741,9 @@ def fetchPackhouseQCFormData():
             "order_specs":              order_specs,      # list of active OPLs
             "item_locations":           item_locations,
             "varieties":                variety_options,
+            "variety_bunches":          variety_bunches,   # per-variety bunch/stem totals
+            "packing_guide":            packing_guide,     # raw Packing Guide rows
+            "total_bunches":            total_bunches,     # order total bunches
             "greenhouses":              greenhouse_options,
             "params":                   [dict(p) for p in params],
             "reasons":                  [dict(r) for r in reasons],
@@ -6829,6 +6869,8 @@ def savePackhouseQC():
         boxes_staged     = int(data.get("boxes_staged",      0) or 0)
         boxes_quarantined= int(data.get("boxes_quarantined", 0) or 0)
         sampled_stems    = int(data.get("sampled_stems",     0) or 0)
+        bunches_sampled  = int(data.get("bunches_sampled",   0) or 0)
+        bunches_allocated= int(data.get("total_bunches",     0) or 0)
         # Grading QC replacement outcome -- stems taken from donor buckets, and
         # rejected bunches that were left short (not fully replaced).
         stems_replaced     = int(data.get("stems_replaced",     0) or 0)
@@ -7001,6 +7043,18 @@ def savePackhouseQC():
             "quarantined_stems":        stems_quarantined,
             "quality_parameters":       qr_params,
             "item_group":               data.get("item_group", ""),
+            "bunches_allocated":        bunches_allocated,
+            "bunches_sampled":          bunches_sampled,
+            "bunches_affected":         bunches_affected,
+            "inspection_type":          inspection_type,
+            "inspection_mode":          inspection_mode,
+            "control_area":             control_area,
+            "boxes_checked":            boxes_checked,
+            "boxes_staged":             boxes_staged,
+            "boxes_quarantined":        boxes_quarantined,
+            "stems_accepted":           stems_accepted,
+            "stems_rejected":           stems_rejected,
+            "stems_affected":           stems_affected,
             "custom_inspection_type":   inspection_type,
             "custom_inspection_mode":   inspection_mode,
             "custom_order_pick_list":   order_pick_list,
@@ -7018,6 +7072,22 @@ def savePackhouseQC():
             "custom_boxes_staged":      boxes_staged,
             "custom_boxes_quarantined": boxes_quarantined,
         })
+        # Standard fields are canonical: also write the standard Link fields
+        # (existence-checked so a stale value can never fail the insert).
+        # order_pick_list / box_label / specification / length were already
+        # blanked above when invalid; customer / team are checked here.
+        if customer and frappe.db.exists("Customer", customer):
+            doc.customer = customer
+        if team and frappe.db.exists("Packing Teams", team):
+            doc.team = team
+        if specification:
+            doc.specification = specification
+        if length:
+            doc.length = length
+        if order_pick_list:
+            doc.order_pick_list = order_pick_list
+        if box_label:
+            doc.box_label = box_label
         doc.name = qr_name
         doc.flags.name_set = True
         doc.insert(ignore_permissions=True)
