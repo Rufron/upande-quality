@@ -50,6 +50,11 @@ fixtures = [
 			["property", "in", ["depends_on", "reqd"]],
 		],
 	},
+	# API Server Scripts backing the www/ dashboards (fetchIntakeFtrOverview,
+	# fetchSolutionMixingOverview, etc.). They live only in the DB, so ship them
+	# as fixtures — all carry module "Upande Quality", so this filter grabs exactly
+	# them. Requires `server_script_enabled: true` in common_site_config.json.
+	{"doctype": "Server Script", "filters": [["module", "=", "Upande Quality"]]},
 ]
 
 # Includes in <head>
