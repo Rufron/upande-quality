@@ -1231,6 +1231,10 @@ def createReceivingStockEntry():
             bucket_qr_doc.save(ignore_permissions=True)
             frappe.db.commit()
 
+            varieties_received = sorted({v for (v, _length) in variety_length_qty})
+            variety_display = (
+                varieties_received[0] if len(varieties_received) == 1 else ", ".join(varieties_received)
+            )
             frappe.response["http_status_code"] = 200
             frappe.response["message"] = "Receiving Stock Entry created successfully"
             frappe.response["stock_entry_name"] = stock_entry.name
@@ -1239,6 +1243,7 @@ def createReceivingStockEntry():
             frappe.response["greenhouse"] = greenhouse
             frappe.response["stem_length"] = stem_length
             frappe.response["number_of_stems"] = str(total_stems)
+            frappe.response["variety"] = variety_display
         except Exception as inner_e:
             frappe.db.rollback()
             # The for_update lock narrows the window a lot, but under real
@@ -1255,10 +1260,15 @@ def createReceivingStockEntry():
                 fresh_bucket = frappe.get_doc("Bucket QR Code", bucket_id)
                 last_se = fresh_bucket.last_stock_entry
                 total = 0
+                already_received_variety = ""
                 if last_se:
-                    total = sum(
-                        float(r["qty"] or 0)
-                        for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": last_se}, fields=["qty"])
+                    last_se_items = frappe.db.get_all(
+                        "Stock Entry Detail", filters={"parent": last_se}, fields=["item_code", "qty"]
+                    )
+                    total = sum(float(r["qty"] or 0) for r in last_se_items)
+                    already_varieties = sorted({r["item_code"] for r in last_se_items if r.get("item_code")})
+                    already_received_variety = (
+                        already_varieties[0] if len(already_varieties) == 1 else ", ".join(already_varieties)
                     )
                 frappe.response["http_status_code"] = 200
                 frappe.response["message"] = "Bucket already received " + str(bucket_id)
@@ -1267,6 +1277,7 @@ def createReceivingStockEntry():
                 frappe.response["greenhouse"] = greenhouse
                 frappe.response["stem_length"] = stem_length
                 frappe.response["number_of_stems"] = str(total)
+                frappe.response["variety"] = already_received_variety
             else:
                 frappe.response["http_status_code"] = 500
                 frappe.response["message"] = "Error creating stock entry: " + str(inner_e)
@@ -1286,6 +1297,34 @@ def createReceivingStockEntry():
             frappe.response["greenhouse"] = ""
             frappe.response["stem_length"] = ""
             frappe.response["number_of_stems"] = ""
+
+
+def _write_shelved_log(shelf_item_row, shelf_id, farm):
+    """Write a Shelving Log "Shelved" row for one just-created Shelf Item row.
+    Called once per Shelf Item row a bucket produces (a bucket can carry
+    several varieties/lengths). shelf_item_row must already have its `name`
+    populated (i.e. called after the parent Shelf has been saved)."""
+    frappe.get_doc({
+        "doctype": "Shelving Log",
+        "bucket_id": shelf_item_row.bucket_id,
+        "shelf": shelf_id,
+        "farm": farm,
+        "variety": shelf_item_row.variety,
+        "stem_length": shelf_item_row.stem_length,
+        "stem_qty": shelf_item_row.stem_qty,
+        "greenhouse": shelf_item_row.greenhouse,
+        "warehouse": shelf_item_row.warehouse,
+        "cut_stage": shelf_item_row.cut_stage,
+        "harvest_date": shelf_item_row.harvest_date,
+        "receiving_date": shelf_item_row.receiving_date,
+        "harvester": shelf_item_row.harvester,
+        "graded_by": shelf_item_row.graded_by,
+        "grading_date": shelf_item_row.grading_date,
+        "reason": "Shelved",
+        "shelved_on": frappe.utils.now(),
+        "shelved_by": frappe.session.user,
+        "shelf_item": shelf_item_row.name,
+    }).insert(ignore_permissions=True)
 
 
 @frappe.whitelist()
@@ -1885,6 +1924,7 @@ def createShelvingEntry():
 
                             # Add bucket to shelf
                             total_qty = 0
+                            new_items = []
                             for ri in receiving_doc.items:
                                 new_item = shelf_doc.append("items", {})
                                 new_item.bucket_id = bucket_id
@@ -1902,9 +1942,14 @@ def createShelvingEntry():
                                 new_item.graded_by = receiving_doc.custom_graded_by
                                 new_item.grading_date = receiving_doc.custom_grading_date
                                 total_qty += (ri.qty or 0)
+                                new_items.append(new_item)
                             qty = total_qty
 
                             shelf_doc.save()
+
+                            # Shelving Log: one "Shelved" row per Shelf Item row just created.
+                            for new_item in new_items:
+                                _write_shelved_log(new_item, shelf_id, farm)
 
                             # Mark bucket as shelved in receiving entry
                             mark_bucket_as_shelved(bucket_id, receiving_doc, result)
@@ -10253,4 +10298,379 @@ def saveColdroomQC():
     except Exception as e:
         frappe.log_error(str(e), "saveColdroomQC Error")
         frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def transferBucket():
+    """Move a bucket from its current shelf to another shelf on the SAME farm,
+    re-syncing every place a bucket's location is cached for an existing order
+    (Pick List Item.shelf, Bucket Allocation Status.shelf_location/shelf_farm)
+    so a draft OPL never points a picker at a shelf the bucket has since left.
+    Cross-farm moves are NOT handled here -- that's the separate truck-transfer
+    flow (awaiting_transfer/in_transit/loaded_in_trolley on Pick List Item).
+    A bucket moves as one physical unit: every Shelf Item row it has (one per
+    variety/length) moves together."""
+    try:
+        data = frappe.request.get_json() or {}
+        bucket_id = data.get("bucket_id")
+        to_shelf_id = data.get("to_shelf_id")
+
+        if not bucket_id:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "bucket_id_not_null",
+                "message": "Bucket ID is missing.",
+                "payload": {},
+            }
+            return
+        if not to_shelf_id:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "to_shelf_id_not_null",
+                "message": "Destination shelf ID is missing.",
+                "payload": {"bucket_id": bucket_id},
+            }
+            return
+
+        source_items = frappe.get_all(
+            "Shelf Item",
+            filters={"bucket_id": bucket_id},
+            fields=[
+                "name", "parent", "variety", "greenhouse", "warehouse", "stem_qty",
+                "stem_length", "cut_stage", "harvest_date", "receiving_date", "farm",
+                "harvester", "graded_by", "grading_date",
+            ],
+        )
+        if not source_items:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "not_on_shelf",
+                "message": "This bucket is not currently on any shelf.",
+                "payload": {"bucket_id": bucket_id},
+            }
+            return
+
+        from_shelf_id = source_items[0].parent
+
+        if from_shelf_id == to_shelf_id:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "same_shelf",
+                "message": "The bucket is already on shelf {0}.".format(to_shelf_id),
+                "payload": {"bucket_id": bucket_id, "shelf_id": to_shelf_id},
+            }
+            return
+
+        if not frappe.db.exists("Shelf", to_shelf_id):
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "destination_not_found",
+                "message": "Shelf {0} does not exist.".format(to_shelf_id),
+                "payload": {"bucket_id": bucket_id, "to_shelf_id": to_shelf_id},
+            }
+            return
+
+        from_farm = frappe.db.get_value("Shelf", from_shelf_id, "farm")
+        to_farm = frappe.db.get_value("Shelf", to_shelf_id, "farm")
+        if from_farm != to_farm:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "cross_farm_not_allowed",
+                "message": "Cannot transfer from {0} ({1}) to {2} ({3}) -- shelf-to-shelf "
+                "transfer only works within the same farm.".format(
+                    from_shelf_id, from_farm, to_shelf_id, to_farm
+                ),
+                "payload": {
+                    "bucket_id": bucket_id,
+                    "from_shelf_id": from_shelf_id,
+                    "from_farm": from_farm,
+                    "to_shelf_id": to_shelf_id,
+                    "to_farm": to_farm,
+                },
+            }
+            return
+
+        mid_transfer = frappe.db.sql(
+            """
+            SELECT pli.name FROM `tabPick List Item` pli
+            JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus = 0
+            WHERE pli.parenttype = 'Order Pick List' AND pli.bucket = %s
+              AND (pli.awaiting_transfer = 1 OR pli.in_transit = 1
+                   OR pli.loaded_in_trolley = 1) LIMIT 1""",
+            bucket_id,
+            as_dict=True,
+        )
+        if mid_transfer:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "mid_truck_transfer",
+                "message": "This bucket is mid inter-farm transfer and can't be moved "
+                "between shelves right now.",
+                "payload": {"bucket_id": bucket_id},
+            }
+            return
+
+        to_shelf = frappe.get_doc("Shelf", to_shelf_id)
+        existing_buckets = {(it.bucket_id or "").lower() for it in (to_shelf.items or [])}
+        existing_buckets.discard(bucket_id.lower())
+        if len(existing_buckets) >= 2:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "two_buckets_per_shelf",
+                "message": "The destination shelf is full.",
+                "payload": {"bucket_id": bucket_id, "to_shelf_id": to_shelf_id},
+            }
+            return
+
+        total_qty = 0
+        new_items = []
+        for src in source_items:
+            new_item = to_shelf.append("items", {})
+            new_item.bucket_id = bucket_id
+            new_item.variety = src.variety
+            new_item.greenhouse = src.greenhouse
+            new_item.warehouse = src.warehouse
+            new_item.stem_qty = src.stem_qty
+            new_item.stem_length = src.stem_length
+            new_item.date_added = frappe.utils.now_datetime()
+            new_item.cut_stage = src.cut_stage
+            new_item.harvest_date = src.harvest_date
+            new_item.receiving_date = src.receiving_date
+            new_item.farm = src.farm
+            new_item.harvester = src.harvester
+            new_item.graded_by = src.graded_by
+            new_item.grading_date = src.grading_date
+            new_items.append(new_item)
+            total_qty += src.stem_qty or 0
+        to_shelf.save(ignore_permissions=True)
+
+        for src in source_items:
+            frappe.delete_doc("Shelf Item", src.name, force=1, ignore_permissions=True)
+        frappe.db.set_value("Shelf", from_shelf_id, "modified", frappe.utils.now())
+
+        # Sync every not-yet-issued Pick List Item pointing at this bucket -- an
+        # issued row's shelf is already moot, issuing already happened. Uses a raw
+        # field update (not load-doc-then-save) because the parent Order Pick List
+        # may already be submitted (a partially-picked order) and `shelf` has no
+        # allow_on_submit flag -- loading the doc and calling .save() on it would
+        # throw on a submitted OPL even with ignore_permissions=True, since that
+        # only bypasses permission checks, not the submit-lock field validation.
+        pli_rows = frappe.get_all(
+            "Pick List Item", filters={"bucket": bucket_id, "issued": 0}, fields=["name", "parent"]
+        )
+        synced_opls = []
+        for row in pli_rows:
+            frappe.db.set_value("Pick List Item", row.name, "shelf", to_shelf_id, update_modified=False)
+            synced_opls.append(row.parent)
+        synced_opls = sorted(set(synced_opls))
+
+        # Sync Bucket Allocation Status shelf fields, if a row exists per variety.
+        bas_updated = []
+        for src in source_items:
+            bas_name = frappe.db.get_value(
+                "Bucket Allocation Status", {"bucket_id": bucket_id, "item_code": src.variety}, "name"
+            )
+            if bas_name:
+                frappe.db.set_value(
+                    "Bucket Allocation Status", bas_name,
+                    {"shelf_location": to_shelf_id, "shelf_farm": to_farm},
+                    update_modified=False,
+                )
+                bas_updated.append(bas_name)
+
+        # Shelving Log: close the row this Shelf Item row opened (correlated by
+        # shelf_item name), open a new "Shelved" row for the destination.
+        for i, src in enumerate(source_items):
+            open_log = frappe.db.get_value(
+                "Shelving Log",
+                {"shelf_item": src.name, "reason": "Shelved", "removed_on": ["is", "not set"]},
+                "name",
+            )
+            if open_log:
+                frappe.db.set_value(
+                    "Shelving Log", open_log,
+                    {"removed_on": frappe.utils.now(), "reason": "Transferred (Shelf-to-Shelf)"},
+                    update_modified=False,
+                )
+            _write_shelved_log(new_items[i], to_shelf_id, to_farm)
+
+        frappe.db.commit()
+        frappe.response["data"] = {
+            "status": "success",
+            "message": "Bucket {0} moved from {1} to {2} ({3} stems).".format(
+                bucket_id, from_shelf_id, to_shelf_id, total_qty
+            ),
+            "payload": {
+                "bucket_id": bucket_id,
+                "from_shelf_id": from_shelf_id,
+                "to_shelf_id": to_shelf_id,
+                "stems": total_qty,
+                "synced_opls": synced_opls,
+                "bas_updated": bas_updated,
+            },
+        }
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback(), "transferBucket Error")
+        frappe.response["data"] = {
+            "status": "error",
+            "reason": "unknown_error",
+            "message": "An unexpected error occurred: {0}".format(str(e)),
+        }
+
+
+@frappe.whitelist()
+def createOfflineIssuingEntry():
+    """Report that a bucket was physically removed from its shelf for a reason
+    other than a normal sales issue or a Discard-Request-driven discard (e.g.
+    damage, quality hold, internal use). Posts a real stock-ledger movement
+    (Stock Entry Type "Offline Issuing") from the CURRENT Shelf Item quantities
+    (not the original receiving quantities -- a bucket may already have been
+    partially issued), then clears the shelf and closes the Shelving Log.
+    Blocked outright if the bucket is currently allocated to a sales order --
+    use normal issuing for that instead."""
+    try:
+        data = frappe.request.get_json() or {}
+        bucket_id = data.get("bucket_id")
+        reason = (data.get("reason") or "").strip()
+
+        if not bucket_id:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "bucket_id_not_null",
+                "message": "Bucket ID is missing.",
+                "payload": {},
+            }
+            return
+        if not reason:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "reason_not_null",
+                "message": "A reason is required to report an offline removal.",
+                "payload": {"bucket_id": bucket_id},
+            }
+            return
+
+        shelf_items = frappe.get_all(
+            "Shelf Item",
+            filters={"bucket_id": bucket_id},
+            fields=["name", "parent", "variety", "greenhouse", "warehouse", "stem_qty", "stem_length", "farm"],
+        )
+        if not shelf_items:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "not_on_shelf",
+                "message": "This bucket is not currently on any shelf.",
+                "payload": {"bucket_id": bucket_id},
+            }
+            return
+
+        allocated_orders = set()
+        for si in shelf_items:
+            bas_name = frappe.db.get_value(
+                "Bucket Allocation Status", {"bucket_id": bucket_id, "item_code": si.variety}, "name"
+            )
+            if not bas_name:
+                continue
+            bas_doc = frappe.get_doc("Bucket Allocation Status", bas_name)
+            if (bas_doc.allocated_quantity or 0) > 0:
+                for row in bas_doc.bucket_allocations:
+                    if not row.cancelled and not row.issued and row.sales_order:
+                        allocated_orders.add(row.sales_order)
+        if allocated_orders:
+            frappe.response["data"] = {
+                "status": "failed",
+                "reason": "bucket_allocated",
+                "message": "This bucket is allocated to order(s) {0} -- use normal issuing "
+                "instead of an offline removal report.".format(", ".join(sorted(allocated_orders))),
+                "payload": {"bucket_id": bucket_id, "sales_orders": sorted(allocated_orders)},
+            }
+            return
+
+        # frappe.defaults.get_global_default("company") is unreliable -- this site
+        # has no Global Defaults.default_company configured, so it silently
+        # returns None (Stock Entry then fails validation on submit). Deriving
+        # from the shelf item's own Farm is more correct anyway (multi-company
+        # safe) and always set, since every Shelf Item carries its farm.
+        entry = frappe.new_doc("Stock Entry")
+        entry.stock_entry_type = "Offline Issuing"
+        entry.purpose = "Material Issue"
+        entry.company = frappe.db.get_value("Farm", shelf_items[0].farm, "company")
+        entry.posting_date = frappe.utils.now_datetime().date()
+        entry.posting_time = frappe.utils.now_datetime().time()
+        entry.set_posting_time = 1
+        entry.custom_bucket_id = bucket_id
+        entry.remarks = reason
+        entry.from_warehouse = shelf_items[0].warehouse
+
+        total_qty = 0
+        for si in shelf_items:
+            item_meta = frappe.db.get_value(
+                "Item", si.variety, ["item_name", "description", "item_group", "stock_uom"], as_dict=True
+            )
+            recv_row = frappe.db.sql(
+                """
+                SELECT sed.expense_account, sed.cost_center
+                FROM `tabStock Entry Detail` sed
+                JOIN `tabStock Entry` se ON se.name = sed.parent
+                WHERE se.stock_entry_type IN ('Receiving', 'Late Receipt')
+                  AND se.custom_bucket_id = %s AND se.docstatus = 1
+                  AND sed.item_code = %s
+                ORDER BY se.creation DESC LIMIT 1
+                """,
+                (bucket_id, si.variety),
+                as_dict=True,
+            )
+            row = entry.append("items", {})
+            row.item_code = si.variety
+            row.item_name = item_meta.item_name if item_meta else si.variety
+            row.description = item_meta.description if item_meta else None
+            row.item_group = item_meta.item_group if item_meta else None
+            row.qty = si.stem_qty
+            row.uom = item_meta.stock_uom if item_meta else None
+            row.stock_uom = item_meta.stock_uom if item_meta else None
+            row.conversion_factor = 1
+            row.s_warehouse = si.warehouse
+            row.allow_zero_valuation_rate = 1
+            if recv_row:
+                row.expense_account = recv_row[0].expense_account
+                row.cost_center = recv_row[0].cost_center
+            total_qty += si.stem_qty or 0
+
+        entry.insert(ignore_permissions=True)
+        entry.submit()
+
+        for si in shelf_items:
+            frappe.delete_doc("Shelf Item", si.name, force=1, ignore_permissions=True)
+            frappe.db.set_value("Shelf", si.parent, "modified", frappe.utils.now())
+
+        for si in shelf_items:
+            open_log = frappe.db.get_value(
+                "Shelving Log",
+                {"shelf_item": si.name, "reason": "Shelved", "removed_on": ["is", "not set"]},
+                "name",
+            )
+            if open_log:
+                frappe.db.set_value(
+                    "Shelving Log", open_log,
+                    {"removed_on": frappe.utils.now(), "reason": "Offline Issuing"},
+                    update_modified=False,
+                )
+
+        frappe.db.commit()
+        frappe.response["data"] = {
+            "status": "success",
+            "message": "Bucket {0} reported removed offline ({1} stems). Stock entry {2}.".format(
+                bucket_id, total_qty, entry.name
+            ),
+            "payload": {"bucket_id": bucket_id, "stems": total_qty, "stock_entry": entry.name},
+        }
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback(), "createOfflineIssuingEntry Error")
+        frappe.response["data"] = {
+            "status": "error",
+            "reason": "unknown_error",
+            "message": "An unexpected error occurred: {0}".format(str(e)),
+        }
 
