@@ -971,13 +971,16 @@ def createReceivingStockEntry():
             bucket_qr_doc = frappe.get_doc("Bucket QR Code", bucket_id)
             last_se = bucket_qr_doc.last_stock_entry
             total = 0
+            variety = ""
             last_se_doc = None
             if last_se:
                 last_se_doc = frappe.get_doc("Stock Entry", last_se)
-                total = sum(
-                    float(r["qty"] or 0)
-                    for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": last_se}, fields=["qty"])
+                last_se_items = frappe.db.get_all(
+                    "Stock Entry Detail", filters={"parent": last_se}, fields=["item_code", "qty"]
                 )
+                total = sum(float(r["qty"] or 0) for r in last_se_items)
+                varieties = sorted({r["item_code"] for r in last_se_items if r.get("item_code")})
+                variety = varieties[0] if len(varieties) == 1 else ", ".join(varieties)
             frappe.response["http_status_code"] = 200
             frappe.response["message"] = "Bucket already received " + str(bucket_id)
             frappe.response["status"] = "already_received"
@@ -985,6 +988,7 @@ def createReceivingStockEntry():
             frappe.response["greenhouse"] = last_se_doc.custom_greenhouse if last_se_doc else ""
             frappe.response["stem_length"] = last_se_doc.custom_stem_length if last_se_doc else ""
             frappe.response["number_of_stems"] = str(total)
+            frappe.response["variety"] = variety
             return
 
         if bucket_qr_doc.status != "In Use":
@@ -996,10 +1000,12 @@ def createReceivingStockEntry():
                 blank_geo()
                 return
             last_se_doc = frappe.get_doc("Stock Entry", last_se)
-            total = sum(
-                float(r["qty"] or 0)
-                for r in frappe.db.get_all("Stock Entry Detail", filters={"parent": last_se}, fields=["qty"])
+            last_se_items = frappe.db.get_all(
+                "Stock Entry Detail", filters={"parent": last_se}, fields=["item_code", "qty"]
             )
+            total = sum(float(r["qty"] or 0) for r in last_se_items)
+            varieties = sorted({r["item_code"] for r in last_se_items if r.get("item_code")})
+            variety = varieties[0] if len(varieties) == 1 else ", ".join(varieties)
             frappe.response["http_status_code"] = 200
             frappe.response["message"] = "Bucket already received " + str(bucket_id)
             frappe.response["status"] = "already_received"
@@ -1007,6 +1013,7 @@ def createReceivingStockEntry():
             frappe.response["greenhouse"] = last_se_doc.custom_greenhouse
             frappe.response["stem_length"] = last_se_doc.custom_stem_length
             frappe.response["number_of_stems"] = str(total)
+            frappe.response["variety"] = variety
             return
 
         # Latest only -- never guess a journey boundary by aggregating
