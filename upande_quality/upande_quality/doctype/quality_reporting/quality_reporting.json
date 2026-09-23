@@ -99,7 +99,7 @@
    "print_hide": 1
   },
   {
-   "depends_on": "eval:doc.control_point != 'Packhouse'",
+   "depends_on": "eval:doc.control_point != 'Packhouse' || doc.control_area == 'Airport Returns'",
    "fieldname": "section_solution",
    "fieldtype": "Section Break",
    "label": "Solution Details"

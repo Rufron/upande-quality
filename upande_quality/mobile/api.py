@@ -2787,6 +2787,130 @@ def fetchPackhouseQCFormData():
                 as_dict=1
             )
 
+        # ── Airport Returns: origin greenhouse + invoice reference ──────────
+        # Only in Airport Returns mode (airport_return=1) with a resolved box/OPL.
+        # The box records variety + source farm but NOT the greenhouse, and buckets
+        # are reused across houses -- so trace it: for each picked bucket, take the
+        # greenhouse of its latest Harvesting stock entry (same variety) on/before
+        # the Sales Order creation date. Invoice number = the customer/export order
+        # reference (Sales Order.custom_order_name), falling back to the SO name.
+        airport_return_detail = None
+        is_airport = str(data.get("airport_return", "")) in ("1", "true", "True")
+        # This enrichment must NEVER break box resolution -- on any failure leave
+        # the airport fields blank rather than failing the whole response (which
+        # the app shows as "box not linked to an order").
+        try:
+            if is_airport and opl_name and order_pick_list_detail:
+                opl_sales_order = frappe.db.get_value("Order Pick List", opl_name, "sales_order")
+                invoice_number = ""
+                so_creation_date = None
+                so_farm = order_pick_list_detail.get("farm", "")
+                if opl_sales_order:
+                    so_row = frappe.db.get_value(
+                        "Sales Order", opl_sales_order,
+                        ["name", "custom_order_name", "custom_farm", "creation"], as_dict=1)
+                    if so_row:
+                        invoice_number = so_row.get("custom_order_name") or so_row.get("name") or ""
+                        so_farm = so_row.get("custom_farm") or so_farm
+                        if so_row.get("creation"):
+                            so_creation_date = str(so_row.get("creation"))[:10]
+                if not invoice_number:
+                    invoice_number = order_pick_list_detail.get("order_name") or ""
+
+                # Varieties in THIS box (mixed boxes carry several).
+                box_varieties = []
+                if scanned_box_detail and scanned_box_detail.get("items"):
+                    for it in scanned_box_detail.get("items"):
+                        v = it.get("variety")
+                        if v and v not in box_varieties:
+                            box_varieties.append(v)
+                if not box_varieties and scanned_box_variety:
+                    box_varieties.append(scanned_box_variety)
+
+                # Buckets picked for those varieties on the OPL. Read the child
+                # rows via raw SQL (permission-safe -- get_doc/get_all can trip
+                # the mobile QC user's row-level perms and abort the whole scan).
+                buckets = []
+                pick_rows = frappe.db.sql(
+                    "SELECT bucket, item_code FROM `tabPick List Item`"
+                    " WHERE parent = %(opl)s AND parenttype = 'Order Pick List'"
+                    "   AND bucket IS NOT NULL AND bucket != ''",
+                    {"opl": opl_name}, as_dict=1)
+                for pr in pick_rows:
+                    v = pr.get("item_code")
+                    if box_varieties and v not in box_varieties:
+                        continue
+                    b = pr.get("bucket")
+                    if b and b not in buckets:
+                        buckets.append(b)
+
+                greenhouses = []
+                harvest_dates = []
+                if buckets:
+                    besc = []
+                    for b in buckets:
+                        besc.append(frappe.db.escape(b))
+                    bucket_in = ", ".join(besc)
+                    cutoff = so_creation_date or frappe.utils.today()
+                    variety_cond = ""
+                    if box_varieties:
+                        vesc = []
+                        for v in box_varieties:
+                            vesc.append(frappe.db.escape(v))
+                        variety_cond = " AND sed.item_code IN (" + ", ".join(vesc) + ")"
+                    harv = frappe.db.sql(
+                        "SELECT se.custom_bucket_id AS bucket,"
+                        "  se.custom_greenhouse AS greenhouse,"
+                        "  se.posting_date AS posting_date, se.posting_time AS posting_time"
+                        " FROM `tabStock Entry` se"
+                        " INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name"
+                        " WHERE se.stock_entry_type = 'Harvesting' AND se.docstatus = 1"
+                        "   AND se.custom_bucket_id IN (" + bucket_in + ")"
+                        "   AND se.posting_date <= %(cutoff)s" + variety_cond +
+                        " ORDER BY se.posting_date DESC, se.posting_time DESC",
+                        {"cutoff": cutoff}, as_dict=1)
+                    seen_bucket = {}
+                    for h in harv:
+                        b = h.get("bucket")
+                        if b in seen_bucket:
+                            continue
+                        seen_bucket[b] = True
+                        gh = h.get("greenhouse")
+                        if gh and gh not in greenhouses:
+                            greenhouses.append(gh)
+                        hd = h.get("posting_date")
+                        if hd:
+                            harvest_dates.append(str(hd))
+
+                # days_in_stock = age since the freshest source harvest (the
+                # shipment was packed from the most recent harvest; buckets are
+                # reused so an older variety-matched harvest can overstate age).
+                days_in_stock = 0
+                newest_harvest = None
+                for hd in harvest_dates:
+                    if newest_harvest is None or hd > newest_harvest:
+                        newest_harvest = hd
+                if newest_harvest:
+                    days_in_stock = frappe.utils.date_diff(frappe.utils.today(), newest_harvest)
+                    if days_in_stock < 0:
+                        days_in_stock = 0
+
+                # stems_returned = the scanned box's total stems (pack_rate).
+                stems_returned = 0
+                if scanned_box_detail:
+                    stems_returned = int(scanned_box_detail.get("pack_rate") or 0)
+
+                airport_return_detail = {
+                    "invoice_number": invoice_number,
+                    "greenhouse":     ", ".join(greenhouses),
+                    "farm":           so_farm or "",
+                    "packhouse":      "",
+                    "days_in_stock":  days_in_stock,
+                    "stems_returned": stems_returned,
+                }
+        except Exception:
+            airport_return_detail = None
+
         frappe.response["message"] = {
             "success":                  True,
             "control_points":           control_points,
@@ -2808,7 +2932,8 @@ def fetchPackhouseQCFormData():
             "scanned_box_detail":       scanned_box_detail,
             "scanned_box_variety":      scanned_box_variety,
             "qc_incharge_options":      [dict(u) for u in incharge_rows],
-            "pending_quarantine_stems": pending_quarantine_stems
+            "pending_quarantine_stems": pending_quarantine_stems,
+            "airport_return_detail":    airport_return_detail
         }
 
     except Exception as e:
@@ -7016,6 +7141,15 @@ def savePackhouseQC():
 
         stems_accepted = max(0, stems_checked - stems_quarantined - stems_rejected)
 
+        # Airport Returns: the good returned stems go back to stock (reused).
+        # reused = stems_returned - rejected (stems_checked is just "inspected");
+        # stems_accepted mirrors the reused figure. The per-issue Reject rows were
+        # already summed into stems_rejected above.
+        if is_airport:
+            stems_returned_in = int(data.get("stems_returned", 0) or 0)
+            reuse_stems = max(0, stems_returned_in - stems_rejected)
+            stems_accepted = reuse_stems
+
         if stems_accepted > 0:
             overall_result = "Accepted"
         elif stems_rejected > 0:
@@ -7107,17 +7241,9 @@ def savePackhouseQC():
             "stems_accepted":           stems_accepted,
             "stems_rejected":           stems_rejected,
             "stems_affected":           stems_affected,
-            "custom_inspection_type":   inspection_type,
-            "custom_inspection_mode":   inspection_mode,
             "custom_order_pick_list":   order_pick_list,
-            "custom_customer":          customer,
             "custom_team":              team,
-            "custom_control_area":      control_area,
-            "custom_specification":     specification,
-            "custom_box_label":         box_label,
             "custom_length":            length,
-            "custom_stems_accepted":    stems_accepted,
-            "custom_stems_rejected":    stems_rejected,
             "custom_stems_affected":    stems_affected,
             "custom_bunches_affected":  bunches_affected,
             "custom_boxes_checked":     boxes_checked,
@@ -7312,7 +7438,7 @@ def savePackhouseQC():
                         "basic_rate":       0,
                         "allow_zero_valuation_rate": 1,
                     }
-                    se_type    = "Airport rejects"
+                    se_type    = "Airport Rejects"
                     se_purpose = "Material Receipt"
                 else:
                     # Packhouse rejects: transfer from source cold store to Rejects - KR.
@@ -7370,6 +7496,7 @@ def savePackhouseQC():
                     reuse_se_error = "Variety item '%s' not found" % variety
                 else:
                     reuse_uom = frappe.db.get_value("Item", reuse_item, "stock_uom") or "Stems"
+                    days_in_stock_val = int(data.get("stock_age", 0) or data.get("days_in_stock", 0) or 0)
                     r_item = {
                         "doctype":           "Stock Entry Detail",
                         "item_code":         reuse_item,
@@ -7382,12 +7509,13 @@ def savePackhouseQC():
                     }
                     r_doc = {
                         "doctype":          "Stock Entry",
-                        "stock_entry_type": "Material Receipt",
+                        "stock_entry_type": "Airport Reuse",
                         "purpose":          "Material Receipt",
                         "company":          "Karen Roses",
                         "posting_date":     date_val,
                         "custom_packhouse_qc": doc.name,
                         "team":      team,
+                        "remarks":   "Airport return reuse -- days in stock: " + str(days_in_stock_val),
                         "items": [r_item]
                     }
                     if farm and frappe.db.exists("Farm", farm):
