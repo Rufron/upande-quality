@@ -1,0 +1,113 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "BC-.####",
+ "creation": "2026-09-21 17:52:52.363050",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_zmy9",
+  "buckets_cleaned",
+  "section_break_ak4v",
+  "detergent_details_section",
+  "detergent_used",
+  "qty_of_detergent",
+  "volume_of_solution_detergent",
+  "disinfectant_details_section",
+  "disinfectant_used",
+  "qty_of_disinfectant",
+  "volume_of_solution_disinfectant",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_zmy9",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "buckets_cleaned",
+   "fieldtype": "Int",
+   "label": "Number of Buckets Cleaned"
+  },
+  {
+   "fieldname": "section_break_ak4v",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "detergent_details_section",
+   "fieldtype": "Section Break",
+   "label": "Detergent Details"
+  },
+  {
+   "fieldname": "detergent_used",
+   "fieldtype": "Link",
+   "label": "Detergent Used",
+   "options": "Item"
+  },
+  {
+   "fieldname": "qty_of_detergent",
+   "fieldtype": "Float",
+   "label": "Qty of Detergent"
+  },
+  {
+   "fieldname": "volume_of_solution_detergent",
+   "fieldtype": "Float",
+   "label": "Volume of Solution (Detergent)"
+  },
+  {
+   "fieldname": "disinfectant_details_section",
+   "fieldtype": "Section Break",
+   "label": "Disinfectant Details"
+  },
+  {
+   "fieldname": "disinfectant_used",
+   "fieldtype": "Link",
+   "label": "Disinfectant Used",
+   "options": "Item"
+  },
+  {
+   "fieldname": "qty_of_disinfectant",
+   "fieldtype": "Float",
+   "label": "Qty of Disinfectant"
+  },
+  {
+   "fieldname": "volume_of_solution_disinfectant",
+   "fieldtype": "Float",
+   "label": "Volume of Solution (Disinfectant)"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-22 12:51:51.099442",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Bucket Cleaning Log",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

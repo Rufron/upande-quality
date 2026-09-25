@@ -1,0 +1,115 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-09-21 10:48:08.659686",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_vmnt",
+  "control_point",
+  "section_break_krb4",
+  "box_1",
+  "photo_1",
+  "box_2",
+  "photo_2",
+  "box_3",
+  "photo_3",
+  "box_4",
+  "photo_4",
+  "box_5",
+  "photo_5"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_vmnt",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "control_point",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Control Point",
+   "options": "QC Control Point"
+  },
+  {
+   "fieldname": "box_1",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Box 1 Temp"
+  },
+  {
+   "fieldname": "photo_1",
+   "fieldtype": "Attach Image",
+   "label": "Box 1 Photo"
+  },
+  {
+   "fieldname": "box_2",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Box 2 Temp"
+  },
+  {
+   "fieldname": "photo_2",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Box 2 Photo"
+  },
+  {
+   "fieldname": "box_3",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Box 3 Temp"
+  },
+  {
+   "fieldname": "photo_3",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Box 3 Photo"
+  },
+  {
+   "fieldname": "box_4",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Box 4 Temp"
+  },
+  {
+   "fieldname": "photo_4",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Box 4 Photo"
+  },
+  {
+   "fieldname": "box_5",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Box 5 Temp"
+  },
+  {
+   "fieldname": "photo_5",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Box 5 Photo"
+  },
+  {
+   "fieldname": "section_break_krb4",
+   "fieldtype": "Section Break"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-22 15:52:48.448856",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Temperature Inspection Reading Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

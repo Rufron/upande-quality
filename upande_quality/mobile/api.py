@@ -11199,3 +11199,860 @@ def createOfflineIssuingEntry():
             "message": "An unexpected error occurred: {0}".format(str(e)),
         }
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flower Quality Audit (mobile)
+# ─────────────────────────────────────────────────────────────────────────────
+# One doctype ("Flower Quality Audit") backs four audits — Bud Count, Head
+# Size, Stem Weight and Spray Diameter. The audit type decides which columns of
+# the "Flower Audit Sample Item" child table are in play; the desk form hides
+# the rest (see flower_quality_audit.js) and the app mirrors that mapping.
+
+# audit_type -> child fieldnames that audit actually measures.
+FLOWER_AUDIT_FIELDS = {
+    "Bud Count": ["buds"],
+    "Head Size": ["width", "height"],
+    "Stem Weight": ["val_42", "val_52", "val_62"],
+    "Spray Diameter": ["val_52", "val_62", "val_72"],
+}
+
+# Bud Count and Head Size are taken in the greenhouse, so they carry one.
+# Stem Weight and Spray Diameter are graded post-harvest — no greenhouse.
+FLOWER_AUDIT_GREENHOUSE = {"Bud Count", "Head Size"}
+
+
+@frappe.whitelist()
+def fetchFlowerAuditFormData():
+    # Pickers for the Flower Audit screens: farms + rose varieties (Items).
+    try:
+        farms = [
+            f.get("name")
+            for f in frappe.get_all(
+                "Farm",
+                filters={"company": "Karen Roses"},
+                fields=["name"],
+                order_by="name asc",
+                limit_page_length=0,
+            )
+        ]
+
+        # Varieties sit in child groups (e.g. "Spray Roses - Regular"), so walk
+        # the Item Group nested set from the two parent trees.
+        varieties = frappe.db.sql("""
+            SELECT i.name AS name, i.item_name AS item_name
+            FROM `tabItem` i
+            JOIN `tabItem Group` g ON i.item_group = g.name
+            JOIN `tabItem Group` p ON g.lft >= p.lft AND g.rgt <= p.rgt
+            WHERE i.disabled = 0
+              AND p.name IN ('Spray Roses', 'Standard Roses')
+            ORDER BY i.item_name ASC
+        """, as_dict=1)
+
+        # Sent whole so the app can narrow the picker to the chosen farm
+        # without another round trip.
+        greenhouses = frappe.get_all(
+            "Greenhouse",
+            fields=["name", "farm"],
+            order_by="name asc",
+            limit_page_length=0,
+        )
+
+        frappe.response["message"] = {
+            "success": True,
+            "farms": farms,
+            "greenhouses": [
+                {"name": g.get("name"), "farm": g.get("farm") or ""} for g in greenhouses
+            ],
+            "varieties": [
+                {"name": v.get("name"), "variety": v.get("item_name") or v.get("name")}
+                for v in varieties
+            ],
+            "audit_types": list(FLOWER_AUDIT_FIELDS.keys()),
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "fetchFlowerAuditFormData")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def submitFlowerQualityAudit():
+    # Body: { data: { audit_type, farm, variety, remarks,
+    #                 samples: [{ sample_number, buds, width, height,
+    #                             val_42, val_52, val_62, val_72 }] } }
+    try:
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not data:
+            frappe.throw("data is required")
+
+        audit_type = data.get("audit_type")
+        if audit_type not in FLOWER_AUDIT_FIELDS:
+            frappe.throw("audit_type must be one of: " + ", ".join(FLOWER_AUDIT_FIELDS))
+        if not data.get("farm"):
+            frappe.throw("farm is required")
+        if not data.get("variety"):
+            frappe.throw("variety is required")
+        if audit_type in FLOWER_AUDIT_GREENHOUSE and not data.get("greenhouse"):
+            frappe.throw("greenhouse is required for a " + audit_type + " audit")
+
+        samples = data.get("samples") or []
+        if isinstance(samples, str):
+            samples = frappe.parse_json(samples)
+        if not samples:
+            frappe.throw("at least one sample is required")
+
+        def num(v):
+            try:
+                return float(v)
+            except Exception:
+                return 0
+
+        doc = frappe.new_doc("Flower Quality Audit")
+        doc.audit_type = audit_type
+        doc.farm = data.get("farm")
+        # Ignored for the post-harvest audits even if the app sent one.
+        if audit_type in FLOWER_AUDIT_GREENHOUSE:
+            doc.greenhouse = data.get("greenhouse")
+        doc.variety = data.get("variety")
+        doc.remarks = data.get("remarks") or ""
+
+        # Only the audit type's own measurements are written; the other columns
+        # stay empty so a Bud Count audit never carries stray weight figures.
+        fields = FLOWER_AUDIT_FIELDS[audit_type]
+        for idx, s in enumerate(samples, start=1):
+            if not isinstance(s, dict):
+                continue
+            row = doc.append("samples", {})
+            row.sample_number = int(num(s.get("sample_number")) or idx)
+            for fn in fields:
+                setattr(row, fn, num(s.get(fn)))
+
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": audit_type + " audit " + doc.name + " saved",
+        }
+    except Exception as e:
+        frappe.log_error("submitFlowerQualityAudit error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Vehicle Hygiene Checklist (mobile)
+# ─────────────────────────────────────────────────────────────────────────────
+# One record per vehicle inspection. Floors / roof / walls are Data fields on
+# the doctype, filled from the QC-maintained "Packhouse Condition" list — an
+# operator can flag several conditions per surface, joined with ", ".
+
+# Item Group trees the sanitation pickers draw from — shared by the Vehicle
+# Hygiene and Bucket Cleaning screens. Retarget here if QC reorganises the
+# item master.
+CLEANING_DETERGENT_GROUPS = ["Refreshments and Toiletries", "Consumable"]
+CLEANING_DISINFECTANT_GROUPS = ["Disinfectant"]
+
+VEHICLE_HYGIENE_SURFACES = {
+    "floors_status": "floors",
+    "roof_status": "roof",
+    "walls_status": "walls",
+}
+
+
+def _items_in_group_trees(groups):
+    # Items sit in child groups, so walk the Item Group nested set from each
+    # parent — same approach as the variety lookups above.
+    if not groups:
+        return []
+    placeholders = ", ".join(["%s"] * len(groups))
+    return frappe.db.sql("""
+        SELECT DISTINCT i.name AS name, i.item_name AS item_name
+        FROM `tabItem` i
+        JOIN `tabItem Group` g ON i.item_group = g.name
+        JOIN `tabItem Group` p ON g.lft >= p.lft AND g.rgt <= p.rgt
+        WHERE i.disabled = 0
+          AND p.name IN ({0})
+        ORDER BY i.item_name ASC
+    """.format(placeholders), tuple(groups), as_dict=1)
+
+
+@frappe.whitelist()
+def fetchVehicleHygieneFormData():
+    # Pickers for the Vehicle Hygiene screen: vehicles, conditions, chemicals.
+    try:
+        vehicles = frappe.get_all(
+            "Vehicle",
+            fields=["name", "license_plate", "make", "model"],
+            order_by="license_plate asc",
+            limit_page_length=0,
+        )
+
+        conditions = [
+            c.get("name")
+            for c in frappe.get_all(
+                "Packhouse Condition",
+                fields=["name"],
+                order_by="name asc",
+                limit_page_length=0,
+            )
+        ]
+
+        def as_options(rows):
+            return [
+                {"name": r.get("name"), "item_name": r.get("item_name") or r.get("name")}
+                for r in rows
+            ]
+
+        frappe.response["message"] = {
+            "success": True,
+            "vehicles": [
+                {
+                    "name": v.get("name"),
+                    "license_plate": v.get("license_plate") or v.get("name"),
+                    # Shown as the picker's sublabel; blank when unknown.
+                    "description": " ".join(
+                        x for x in [v.get("make"), v.get("model")] if x and x != "Unknown"
+                    ),
+                }
+                for v in vehicles
+            ],
+            "conditions": conditions,
+            "detergents": as_options(_items_in_group_trees(CLEANING_DETERGENT_GROUPS)),
+            "disinfectants": as_options(_items_in_group_trees(CLEANING_DISINFECTANT_GROUPS)),
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "fetchVehicleHygieneFormData")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def submitVehicleHygieneChecklist():
+    # Body: { data: { vehicle, floors: [], roof: [], walls: [],
+    #                 detergent_used, disinfectant_used, remarks } }
+    try:
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not data:
+            frappe.throw("data is required")
+        if not data.get("vehicle"):
+            frappe.throw("vehicle is required")
+
+        def conditions(key):
+            raw = data.get(key) or []
+            if isinstance(raw, str):
+                raw = frappe.parse_json(raw)
+            picked = []
+            for c in raw:
+                c = (c or "").strip()
+                if c and c not in picked:
+                    picked.append(c)
+            return ", ".join(picked)
+
+        statuses = {fn: conditions(key) for fn, key in VEHICLE_HYGIENE_SURFACES.items()}
+        if not any(statuses.values()):
+            frappe.throw("record a condition for at least one surface")
+
+        doc = frappe.new_doc("Vehicle Hygiene Checklist")
+        doc.vehicle = data.get("vehicle")
+        for fieldname, value in statuses.items():
+            setattr(doc, fieldname, value)
+        doc.detergent_used = data.get("detergent_used") or ""
+        doc.disinfectant_used = data.get("disinfectant_used") or ""
+        doc.remarks = data.get("remarks") or ""
+
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Vehicle hygiene check " + doc.name + " saved",
+        }
+    except Exception as e:
+        frappe.log_error("submitVehicleHygieneChecklist error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bucket Cleaning Log (mobile)
+# ─────────────────────────────────────────────────────────────────────────────
+# One record per cleaning run: how many buckets, and what was used on them.
+# Chemicals come from the same Item Group trees as the Vehicle Hygiene screen.
+
+
+@frappe.whitelist()
+def fetchBucketCleaningFormData():
+    # Pickers for the Bucket Cleaning screen: detergents + disinfectants.
+    try:
+        def as_options(rows):
+            return [
+                {"name": r.get("name"), "item_name": r.get("item_name") or r.get("name")}
+                for r in rows
+            ]
+
+        frappe.response["message"] = {
+            "success": True,
+            "detergents": as_options(_items_in_group_trees(CLEANING_DETERGENT_GROUPS)),
+            "disinfectants": as_options(_items_in_group_trees(CLEANING_DISINFECTANT_GROUPS)),
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "fetchBucketCleaningFormData")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def submitBucketCleaningLog():
+    # Body: { data: { buckets_cleaned,
+    #                 detergent_used, qty_of_detergent, volume_of_solution_detergent,
+    #                 disinfectant_used, qty_of_disinfectant, volume_of_solution_disinfectant,
+    #                 remarks } }
+    try:
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not data:
+            frappe.throw("data is required")
+
+        def num(v):
+            try:
+                return float(v)
+            except Exception:
+                return 0
+
+        buckets = int(num(data.get("buckets_cleaned")))
+        if buckets <= 0:
+            frappe.throw("buckets_cleaned must be greater than zero")
+
+        doc = frappe.new_doc("Bucket Cleaning Log")
+        doc.buckets_cleaned = buckets
+        doc.detergent_used = data.get("detergent_used") or ""
+        doc.qty_of_detergent = num(data.get("qty_of_detergent"))
+        doc.volume_of_solution_detergent = num(data.get("volume_of_solution_detergent"))
+        doc.disinfectant_used = data.get("disinfectant_used") or ""
+        doc.qty_of_disinfectant = num(data.get("qty_of_disinfectant"))
+        doc.volume_of_solution_disinfectant = num(data.get("volume_of_solution_disinfectant"))
+        doc.remarks = data.get("remarks") or ""
+
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Bucket cleaning log " + doc.name + " saved",
+        }
+    except Exception as e:
+        frappe.log_error("submitBucketCleaningLog error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Packhouse Product Temperature Log (mobile)
+# ─────────────────────────────────────────────────────────────────────────────
+# One "Temperature Log Entry" per date + customer, holding a reading row per
+# control point. Each row carries up to five box temperatures, and every
+# temperature recorded must come with a photo of the probe.
+
+# The control points this log covers, in the order the app shows them.
+PRODUCT_TEMPERATURE_CONTROL_POINTS = ["Loading", "Precooling", "Staging"]
+
+# box_1..box_5 / photo_1..photo_5 on "Temperature Inspection Reading Item".
+PRODUCT_TEMPERATURE_BOXES = 5
+
+
+@frappe.whitelist()
+def fetchProductTemperatureFormData():
+    # Pickers for the Product Temperature screen: control points + customers.
+    try:
+        # Only surface the control points that actually exist as QC Control
+        # Point records — the child field is a Link, so a missing one would
+        # fail on insert.
+        existing = set(
+            frappe.get_all("QC Control Point", pluck="name", limit_page_length=0)
+        )
+        control_points = [
+            cp for cp in PRODUCT_TEMPERATURE_CONTROL_POINTS if cp in existing
+        ]
+
+        customers = frappe.get_all(
+            "Customer",
+            fields=["name", "customer_name"],
+            order_by="customer_name asc",
+            limit_page_length=0,
+        )
+
+        frappe.response["message"] = {
+            "success": True,
+            "control_points": control_points,
+            "customers": [
+                {"name": c.get("name"), "customer_name": c.get("customer_name") or c.get("name")}
+                for c in customers
+            ],
+            "boxes": PRODUCT_TEMPERATURE_BOXES,
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "fetchProductTemperatureFormData")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def submitProductTemperatureLog():
+    # Body: { data: { date, customer, readings: [
+    #           { control_point, boxes: [{ temp, photo }, ...] } ] } }
+    # Photos are URLs returned by /api/method/upload_file (already on disk).
+    try:
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not data:
+            frappe.throw("data is required")
+
+        readings = data.get("readings") or []
+        if isinstance(readings, str):
+            readings = frappe.parse_json(readings)
+
+        def num(v):
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        # Validate everything before inserting, so a bad row can't leave a
+        # half-filled log behind.
+        cleaned = []
+        for r in readings:
+            if not isinstance(r, dict):
+                continue
+            cp = (r.get("control_point") or "").strip()
+            if cp not in PRODUCT_TEMPERATURE_CONTROL_POINTS:
+                frappe.throw("unknown control point: " + (cp or "(blank)"))
+            boxes = r.get("boxes") or []
+            if isinstance(boxes, str):
+                boxes = frappe.parse_json(boxes)
+
+            filled = []
+            for idx, b in enumerate(boxes[:PRODUCT_TEMPERATURE_BOXES], start=1):
+                if not isinstance(b, dict):
+                    continue
+                temp = num(b.get("temp"))
+                photo = (b.get("photo") or "").strip()
+                if temp is None and not photo:
+                    continue
+                if temp is None:
+                    frappe.throw("{0} box {1}: photo without a temperature".format(cp, idx))
+                if not photo:
+                    frappe.throw("{0} box {1}: a photo is required".format(cp, idx))
+                filled.append((idx, temp, photo))
+
+            if filled:
+                cleaned.append((cp, filled))
+
+        if not cleaned:
+            frappe.throw("record at least one box temperature")
+
+        log_date = data.get("date") or frappe.utils.nowdate()
+        customer = data.get("customer") or ""
+
+        # The app submits one control point at a time, but the doctype groups
+        # readings under a date + customer. Reuse that day's log if it exists so
+        # Loading / Precooling / Staging land as rows on one sheet, and replace
+        # a control point's row when it is recorded again.
+        existing = frappe.db.get_value(
+            "Temperature Log Entry",
+            {"date": log_date, "customer": customer},
+            "name",
+        )
+        if existing:
+            doc = frappe.get_doc("Temperature Log Entry", existing)
+        else:
+            doc = frappe.new_doc("Temperature Log Entry")
+            doc.date = log_date
+            doc.customer = customer
+
+        photos = []
+        for cp, filled in cleaned:
+            doc.readings = [r for r in doc.readings if r.control_point != cp]
+            row = doc.append("readings", {})
+            row.control_point = cp
+            for idx, temp, photo in filled:
+                setattr(row, "box_{0}".format(idx), temp)
+                setattr(row, "photo_{0}".format(idx), photo)
+                photos.append(photo)
+
+        # Keep the sheet reading in control-point order even when a row was
+        # replaced, since replacing appends it to the end.
+        order = {cp: i for i, cp in enumerate(PRODUCT_TEMPERATURE_CONTROL_POINTS)}
+        doc.readings.sort(key=lambda r: order.get(r.control_point, len(order)))
+        for i, row in enumerate(doc.readings, start=1):
+            row.idx = i
+
+        if existing:
+            doc.save(ignore_permissions=True)
+        else:
+            doc.insert(ignore_permissions=True)
+
+        # Files uploaded via /api/method/upload_file have no parent — adopt them
+        # so they show in the Attachments sidebar alongside the log.
+        for url in photos:
+            try:
+                file_name = frappe.db.get_value("File", {"file_url": url}, "name")
+                if file_name:
+                    f = frappe.get_doc("File", file_name)
+                    f.attached_to_doctype = "Temperature Log Entry"
+                    f.attached_to_name = doc.name
+                    f.save(ignore_permissions=True)
+            except Exception:
+                # The URL on the row is what matters — don't fail the submit
+                # just because the File link couldn't be repointed.
+                pass
+
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "appended": bool(existing),
+            "message": "{0} {1} {2}".format(
+                ", ".join(cp for cp, _ in cleaned),
+                "added to log" if existing else "saved as log",
+                doc.name,
+            ),
+        }
+    except Exception as e:
+        frappe.log_error("submitProductTemperatureLog error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Freight Dispatch Log (mobile)
+# ─────────────────────────────────────────────────────────────────────────────
+# A trip the driver fills in over hours, one stage at a time:
+#   Depart farm  -> status "In Transit"  (vehicle, truck temp, docket photo)
+#   Arrive agent -> status "At Agent"    (+ time taken from farm)
+#   Offload      -> one row per customer (time stamped server-side)
+#   Depart agent -> status "Completed"   (+ freight dwell time)
+# The driver's own open trip is resumed on launch, so a backgrounded or
+# restarted app never loses a trip in progress.
+
+FREIGHT_OPEN_STATUSES = ["In Transit", "At Agent"]
+
+# Only recorders may touch a dispatch log. The app hides the feature from
+# everyone else, but that is presentation — this is the actual gate.
+FREIGHT_DISPATCH_ROLE = "Freight Dispatch Recorder"
+
+
+def _require_freight_role():
+    roles = frappe.get_roles()
+    if FREIGHT_DISPATCH_ROLE not in roles and "Administrator" not in roles:
+        frappe.throw(
+            "you need the {0} role to use freight dispatch".format(FREIGHT_DISPATCH_ROLE),
+            frappe.PermissionError,
+        )
+
+
+def _freight_now_time():
+    # nowtime() carries microseconds, which a Time field keeps and which then
+    # breaks the strptime("%H:%M:%S") in FreightDispatchLog.validate(). Seconds
+    # are all this log needs.
+    return frappe.utils.nowtime().split(".")[0]
+
+
+def _freight_time_str(value):
+    # A stored Time reads back as a timedelta, which stringifies without a
+    # leading zero ("6:15:00") — pad it so the app always gets HH:MM:SS.
+    if not value:
+        return ""
+    parts = frappe.utils.format_timedelta(value).split(".")[0].split(":")
+    return ":".join(p.zfill(2) for p in parts)
+
+
+def _freight_trip_state(doc):
+    # The shape the app renders a trip from.
+    return {
+        "name": doc.name,
+        "status": doc.status,
+        "vehicle": doc.vehicle,
+        "truck_temperature": doc.truck_temperature,
+        "freight_agent": doc.freight_agent,
+        "drop_off_points": [r.delivery_point for r in doc.drop_off_points if r.delivery_point],
+        "docket_photo": doc.docket_photo,
+        "farm_departure_date": str(doc.farm_departure_date or ""),
+        "farm_departure_time": _freight_time_str(doc.farm_departure_time),
+        "freight_arrival_date": str(doc.freight_arrival_date or ""),
+        "freight_arrival_time": _freight_time_str(doc.freight_arrival_time),
+        "departure_time": _freight_time_str(doc.departure_time),
+        "freight_dwell_time": doc.freight_dwell_time or "",
+        "time_taken_from_farm": doc.time_taken_from_farm or "",
+        "offloads": [
+            {
+                "delivery_point": r.delivery_point,
+                "customer": r.customer,
+                "start_offloading": _freight_time_str(r.start_offloading),
+                "boxes_delivered": r.boxes_delivered or 0,
+                "max_temperature": r.max_temperature or 0,
+            }
+            for r in doc.offloads
+        ],
+    }
+
+
+def _open_freight_trip():
+    # This driver's own trip, not somebody else's.
+    name = frappe.db.get_value(
+        "Freight Dispatch Log",
+        {"owner": frappe.session.user, "status": ["in", FREIGHT_OPEN_STATUSES]},
+        "name",
+        order_by="creation desc",
+    )
+    return frappe.get_doc("Freight Dispatch Log", name) if name else None
+
+
+def _require_open_trip(trip_name, expected_status):
+    doc = frappe.get_doc("Freight Dispatch Log", trip_name)
+    if doc.owner != frappe.session.user:
+        frappe.throw("this trip belongs to another driver")
+    if doc.status != expected_status:
+        frappe.throw("trip is {0}, expected {1}".format(doc.status, expected_status))
+    return doc
+
+
+@frappe.whitelist()
+def fetchFreightDispatchFormData():
+    # Pickers plus the driver's open trip, so the app resumes at the right stage.
+    try:
+        _require_freight_role()
+        vehicles = frappe.get_all(
+            "Vehicle",
+            fields=["name", "license_plate", "make", "model"],
+            order_by="license_plate asc",
+            limit_page_length=0,
+        )
+        delivery_points = frappe.get_all(
+            "Delivery Point", fields=["name"], order_by="name asc", limit_page_length=0
+        )
+        customers = frappe.get_all(
+            "Customer",
+            fields=["name", "customer_name"],
+            order_by="customer_name asc",
+            limit_page_length=0,
+        )
+
+        open_trip = _open_freight_trip()
+
+        frappe.response["message"] = {
+            "success": True,
+            "vehicles": [
+                {
+                    "name": v.get("name"),
+                    "license_plate": v.get("license_plate") or v.get("name"),
+                    "description": " ".join(
+                        x for x in [v.get("make"), v.get("model")] if x and x != "Unknown"
+                    ),
+                }
+                for v in vehicles
+            ],
+            "delivery_points": [p.get("name") for p in delivery_points],
+            "customers": [
+                {"name": c.get("name"), "customer_name": c.get("customer_name") or c.get("name")}
+                for c in customers
+            ],
+            "trip": _freight_trip_state(open_trip) if open_trip else None,
+        }
+    except Exception as e:
+        frappe.log_error(str(e), "fetchFreightDispatchFormData")
+        frappe.response["message"] = {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def startFreightDispatch():
+    # Body: { data: { vehicle, truck_temperature, freight_agent, docket_photo } }
+    # Stamps the farm departure server-side — the driver taps, the clock is ours.
+    try:
+        _require_freight_role()
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not data:
+            frappe.throw("data is required")
+        if not data.get("vehicle"):
+            frappe.throw("vehicle is required")
+        if not data.get("docket_photo"):
+            frappe.throw("a docket photo is required")
+
+        points = data.get("drop_off_points") or []
+        if isinstance(points, str):
+            points = frappe.parse_json(points)
+        # De-duplicate but keep the order the driver picked them in.
+        picked = []
+        for pt in points:
+            pt = (pt or "").strip()
+            if pt and pt not in picked:
+                if not frappe.db.exists("Delivery Point", pt):
+                    frappe.throw("unknown drop off point: " + pt)
+                picked.append(pt)
+        if not picked:
+            frappe.throw("pick at least one drop off point")
+
+        if _open_freight_trip():
+            frappe.throw("you already have a trip in progress")
+
+        def num(v):
+            try:
+                return float(v)
+            except Exception:
+                return 0
+
+        doc = frappe.new_doc("Freight Dispatch Log")
+        doc.status = "In Transit"
+        doc.vehicle = data.get("vehicle")
+        doc.truck_temperature = num(data.get("truck_temperature"))
+        # freight_agent stays the first point picked, so the existing reports
+        # and the dwell-time logic keep working off a single value.
+        doc.freight_agent = picked[0]
+        for pt in picked:
+            doc.append("drop_off_points", {"delivery_point": pt})
+        doc.docket_photo = data.get("docket_photo")
+        doc.farm_departure_date = frappe.utils.nowdate()
+        doc.farm_departure_time = _freight_now_time()
+        doc.insert(ignore_permissions=True)
+
+        # Adopt the floating upload so it shows in the Attachments sidebar.
+        try:
+            file_name = frappe.db.get_value("File", {"file_url": doc.docket_photo}, "name")
+            if file_name:
+                f = frappe.get_doc("File", file_name)
+                f.attached_to_doctype = "Freight Dispatch Log"
+                f.attached_to_name = doc.name
+                f.save(ignore_permissions=True)
+        except Exception:
+            pass
+
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Departed farm — trip {0} via {1}".format(doc.name, ", ".join(picked)),
+            "trip": _freight_trip_state(doc),
+        }
+    except Exception as e:
+        frappe.log_error("startFreightDispatch error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def arriveAtFreightAgent():
+    # Body: { data: { trip } }
+    try:
+        _require_freight_role()
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not (data and data.get("trip")):
+            frappe.throw("trip is required")
+
+        doc = _require_open_trip(data.get("trip"), "In Transit")
+        doc.freight_arrival_date = frappe.utils.nowdate()
+        doc.freight_arrival_time = _freight_now_time()
+        # time_taken_from_farm is filled by the doctype's own validate().
+        doc.status = "At Agent"
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Arrived at " + (doc.freight_agent or "agent"),
+            "trip": _freight_trip_state(doc),
+        }
+    except Exception as e:
+        frappe.log_error("arriveAtFreightAgent error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def recordFreightOffload():
+    # Body: { data: { trip, customer, boxes_delivered, max_temperature } }
+    try:
+        _require_freight_role()
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not (data and data.get("trip")):
+            frappe.throw("trip is required")
+        if not data.get("customer"):
+            frappe.throw("customer is required")
+        if not data.get("delivery_point"):
+            frappe.throw("drop off point is required")
+
+        def num(v):
+            try:
+                return float(v)
+            except Exception:
+                return 0
+
+        boxes = int(num(data.get("boxes_delivered")))
+        if boxes <= 0:
+            frappe.throw("boxes delivered must be greater than zero")
+
+        doc = _require_open_trip(data.get("trip"), "At Agent")
+
+        # An offload can only happen at a point this trip is actually serving.
+        point = data.get("delivery_point")
+        on_trip = [r.delivery_point for r in doc.drop_off_points]
+        if point not in on_trip:
+            frappe.throw("{0} is not a drop off point on this trip".format(point))
+
+        row = doc.append("offloads", {})
+        row.delivery_point = point
+        row.customer = data.get("customer")
+        # The offload time is the moment the driver tapped, taken from the
+        # server clock rather than the handset's.
+        row.start_offloading = _freight_now_time()
+        row.boxes_delivered = boxes
+        row.max_temperature = num(data.get("max_temperature"))
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Offloaded {0} boxes for {1} at {2}".format(
+                boxes, row.customer, point
+            ),
+            "trip": _freight_trip_state(doc),
+        }
+    except Exception as e:
+        frappe.log_error("recordFreightOffload error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def departFreightAgent():
+    # Body: { data: { trip } } — closes the trip.
+    try:
+        _require_freight_role()
+        data = frappe.form_dict.get("data")
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+        if not (data and data.get("trip")):
+            frappe.throw("trip is required")
+
+        doc = _require_open_trip(data.get("trip"), "At Agent")
+        if not doc.offloads:
+            frappe.throw("record at least one offload before departing")
+
+        doc.departure_time = _freight_now_time()
+        # freight_dwell_time is filled by the doctype's own validate().
+        doc.status = "Completed"
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+
+        frappe.response["message"] = {
+            "status": "success",
+            "name": doc.name,
+            "message": "Trip " + doc.name + " completed",
+            "trip": None,
+        }
+    except Exception as e:
+        frappe.log_error("departFreightAgent error", str(e))
+        frappe.response["message"] = {"status": "error", "message": str(e)}

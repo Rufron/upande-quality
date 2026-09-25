@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "vh-.####",
+ "creation": "2026-09-21 21:00:00.174680",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_ebxw",
+  "vehicle",
+  "section_break_section",
+  "floors_status",
+  "roof_status",
+  "walls_status",
+  "section_break",
+  "detergent_used",
+  "disinfectant_used",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_ebxw",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle"
+  },
+  {
+   "fieldname": "section_break_section",
+   "fieldtype": "Section Break",
+   "label": "Section Break",
+   "options": "Hygiene Inspection Findings"
+  },
+  {
+   "fieldname": "floors_status",
+   "fieldtype": "Data",
+   "label": "Floors Status"
+  },
+  {
+   "fieldname": "roof_status",
+   "fieldtype": "Data",
+   "label": "Roof Status"
+  },
+  {
+   "fieldname": "walls_status",
+   "fieldtype": "Data",
+   "label": "Walls Status"
+  },
+  {
+   "fieldname": "section_break",
+   "fieldtype": "Section Break",
+   "label": "Section Break",
+   "options": "Sanitation Usage"
+  },
+  {
+   "fieldname": "detergent_used",
+   "fieldtype": "Link",
+   "label": "Detergent Used",
+   "options": "Item"
+  },
+  {
+   "fieldname": "disinfectant_used",
+   "fieldtype": "Link",
+   "label": "Disinfectant Used",
+   "options": "Item"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-22 12:16:33.113059",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Vehicle Hygiene Checklist",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
