@@ -2527,8 +2527,9 @@ def fetchPackhouseQCFormData():
         # the old FK path (Sales Order Item.custom_line) is blank on nearly all
         # orders, so orders never appeared -- instead resolve the spec's customer
         # and show that customer's active orders.
+        # Only TODAY's orders (created today) are shown in the OPL list.
         team_filter = data.get("team", "").strip() if data.get("team") else ""
-        opl_conds = ["docstatus = 1"]
+        opl_conds = ["docstatus < 2", "creation >= CURDATE()"]  # include drafts (read-only in app)
         opl_vals  = []
         if spec_filter:
             spec_customer = frappe.db.get_value("Specifications", spec_filter, "customer") or ""
@@ -2540,14 +2541,38 @@ def fetchPackhouseQCFormData():
             opl_vals.append(team_filter)
         opl_rows = frappe.db.sql(
             "SELECT name, customer, team, farm,"
-            " custom_total_stems, order_name, schedule_number"
+            " custom_total_stems, order_name, schedule_number, docstatus"
             " FROM `tabOrder Pick List`"
             " WHERE " + " AND ".join(opl_conds) +
-            " ORDER BY modified DESC LIMIT 300",
+            " ORDER BY docstatus ASC, modified DESC LIMIT 300",
             opl_vals, as_dict=1
         )
+        # Per-OPL varieties + lengths (height) from the Packing Guide -- shown with
+        # stems in the OPL list so the operator can identify the order at a glance.
+        opl_names = []
+        for o in opl_rows:
+            if o.get("name"):
+                opl_names.append(o.get("name"))
+        meta_by_opl = {}
+        if opl_names:
+            nesc = []
+            for n in opl_names:
+                nesc.append(frappe.db.escape(n))
+            len_rows = frappe.db.sql(
+                "SELECT parent AS opl,"
+                "  GROUP_CONCAT(DISTINCT length ORDER BY length SEPARATOR ', ') AS lengths,"
+                "  GROUP_CONCAT(DISTINCT variety ORDER BY variety SEPARATOR ', ') AS varieties"
+                " FROM `tabPacking Guide`"
+                " WHERE parent IN (" + ", ".join(nesc) + ")"
+                " GROUP BY parent", as_dict=1)
+            for lr in len_rows:
+                meta_by_opl[lr.get("opl")] = {
+                    "lengths": lr.get("lengths") or "",
+                    "varieties": lr.get("varieties") or "",
+                }
         order_specs = []
         for o in opl_rows:
+            meta = meta_by_opl.get(o.get("name")) or {}
             order_specs.append({
                 "name":            o.get("name"),
                 "order_name":      o.get("order_name", ""),
@@ -2555,9 +2580,105 @@ def fetchPackhouseQCFormData():
                 "team":            o.get("team", ""),
                 "farm":            o.get("farm", ""),
                 "total_stems":     o.get("custom_total_stems", 0),
+                "lengths":         meta.get("lengths", ""),
+                "varieties":       meta.get("varieties", ""),
                 "status":          o.get("custom_status", ""),
-                "schedule_number": o.get("schedule_number", "")
+                "schedule_number": o.get("schedule_number", ""),
+                "docstatus":       o.get("docstatus", 1)
             })
+
+        # Which specs GENUINELY have orders today -> green tick in the spec picker.
+        # OPLs carry no spec FK (custom_line is blank), so match on customer +
+        # variety + length: a spec ticks only when a today OPL for its customer holds
+        # one of the spec's approved varieties AT the spec's length. The length lives
+        # in the spec name (e.g. "GULF PINK 52CM"); OPL length is on the Packing Guide.
+        def normlen(x):
+            if not x:
+                return ""
+            s = str(x).strip().lower().replace(" ", "")
+            if s.isdigit():
+                s = s + "cm"
+            return s
+
+        def speclen(name):
+            if not name:
+                return ""
+            cleaned = str(name).replace(",", " ").replace("-", " ")
+            for tok in cleaned.split(" "):
+                t = tok.strip().lower()
+                if len(t) > 2 and t.endswith("cm"):
+                    num = t[:-2]
+                    if num.isdigit():
+                        return num + "cm"
+            return ""
+
+        # Default every spec to 0 (no order today).
+        spec_order_counts = {}
+        for sp in specifications_list:
+            spec_order_counts[sp.get("name")] = 0
+
+        # Only specs whose CUSTOMER has orders today can possibly match.
+        relevant = []
+        today_customers = {}
+        for sp in specifications_list:
+            c = sp.get("customer")
+            if c:
+                today_customers[c] = 1
+        if today_customers:
+            cust_esc = []
+            for c in today_customers:
+                cust_esc.append(frappe.db.escape(c))
+            cust_pairs = {}
+            cust_vars = {}
+            today_pg = frappe.db.sql(
+                "SELECT opl.customer AS customer, pg.variety AS variety, pg.length AS length"
+                " FROM `tabOrder Pick List` opl"
+                " INNER JOIN `tabPacking Guide` pg ON pg.parent = opl.name"
+                " WHERE opl.docstatus < 2 AND opl.creation >= CURDATE()"
+                "   AND opl.customer IN (" + ", ".join(cust_esc) + ")"
+                "   AND pg.variety IS NOT NULL AND pg.variety != ''", as_dict=1)
+            for r in today_pg:
+                c = r.get("customer") or ""
+                if c not in cust_pairs:
+                    cust_pairs[c] = {}
+                    cust_vars[c] = {}
+                v = (r.get("variety") or "").strip()
+                l = normlen(r.get("length"))
+                cust_pairs[c][v + "||" + l] = 1
+                cust_vars[c][v] = 1
+            rnames = []
+            for sp in specifications_list:
+                if sp.get("customer") in cust_pairs:
+                    relevant.append(sp)
+                    rnames.append(sp.get("name"))
+            spec_varieties = {}
+            if rnames:
+                nesc = []
+                for n in rnames:
+                    nesc.append(frappe.db.escape(n))
+                sav = frappe.db.sql(
+                    "SELECT parent AS spec, variety FROM `tabSpec Approved Variety`"
+                    " WHERE parent IN (" + ", ".join(nesc) + ")"
+                    "   AND variety IS NOT NULL AND variety != ''", as_dict=1)
+                for r in sav:
+                    sp = r.get("spec")
+                    if sp not in spec_varieties:
+                        spec_varieties[sp] = []
+                    spec_varieties[sp].append((r.get("variety") or "").strip())
+            for sp in relevant:
+                sname = sp.get("name")
+                scust = sp.get("customer")
+                slen = speclen(sp.get("spec_name") or sname)
+                pairs = cust_pairs.get(scust) or {}
+                ovars = cust_vars.get(scust) or {}
+                for v in spec_varieties.get(sname, []):
+                    if slen:
+                        if (v + "||" + slen) in pairs:
+                            spec_order_counts[sname] = 1
+                            break
+                    elif v in ovars:
+                        spec_order_counts[sname] = 1
+                        break
 
         # ── 3. Item locations + varieties + greenhouses for selected OPL ─
         item_locations           = []
@@ -2852,25 +2973,28 @@ def fetchPackhouseQCFormData():
                         besc.append(frappe.db.escape(b))
                     bucket_in = ", ".join(besc)
                     cutoff = so_creation_date or frappe.utils.today()
+                    cutoff_end = cutoff + " 23:59:59"
                     variety_cond = ""
                     if box_varieties:
                         vesc = []
                         for v in box_varieties:
                             vesc.append(frappe.db.escape(v))
-                        variety_cond = " AND sed.item_code IN (" + ", ".join(vesc) + ")"
-                    harv = frappe.db.sql(
-                        "SELECT se.custom_bucket_id AS bucket,"
-                        "  se.custom_greenhouse AS greenhouse,"
-                        "  se.posting_date AS posting_date, se.posting_time AS posting_time"
-                        " FROM `tabStock Entry` se"
-                        " INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name"
-                        " WHERE se.stock_entry_type = 'Harvesting' AND se.docstatus = 1"
-                        "   AND se.custom_bucket_id IN (" + bucket_in + ")"
-                        "   AND se.posting_date <= %(cutoff)s" + variety_cond +
-                        " ORDER BY se.posting_date DESC, se.posting_time DESC",
-                        {"cutoff": cutoff}, as_dict=1)
+                        variety_cond = " AND variety IN (" + ", ".join(vesc) + ")"
+                    # Greenhouse + harvest age come from the Shelving Log -- it records
+                    # the greenhouse (and harvest_date) at shelving time, which is easier
+                    # and closer to the order than tracing the harvest Stock Entry. Take
+                    # the shelving that fed THIS order (shelved on/before the order date),
+                    # latest per bucket; a later reuse of the bucket is excluded.
+                    slog = frappe.db.sql(
+                        "SELECT bucket_id AS bucket, greenhouse AS greenhouse,"
+                        "  harvest_date AS harvest_date, shelved_on AS shelved_on"
+                        " FROM `tabShelving Log`"
+                        " WHERE bucket_id IN (" + bucket_in + ")"
+                        "   AND shelved_on <= %(cut)s" + variety_cond +
+                        " ORDER BY shelved_on DESC",
+                        {"cut": cutoff_end}, as_dict=1)
                     seen_bucket = {}
-                    for h in harv:
+                    for h in slog:
                         b = h.get("bucket")
                         if b in seen_bucket:
                             continue
@@ -2878,7 +3002,7 @@ def fetchPackhouseQCFormData():
                         gh = h.get("greenhouse")
                         if gh and gh not in greenhouses:
                             greenhouses.append(gh)
-                        hd = h.get("posting_date")
+                        hd = h.get("harvest_date")
                         if hd:
                             harvest_dates.append(str(hd))
 
@@ -2928,6 +3052,7 @@ def fetchPackhouseQCFormData():
             "order_pick_list_detail":   order_pick_list_detail,
             "specifications":           specifications,   # keyed by variety
             "specifications_list":      specifications_list,
+            "spec_order_counts":        spec_order_counts,  # spec -> today's OPL count (tick)
             "specification_detail":     specification_detail,
             "scanned_box_detail":       scanned_box_detail,
             "scanned_box_variety":      scanned_box_variety,
@@ -3967,6 +4092,240 @@ def getShelvingDemand():
             }
     except Exception as e:
         frappe.response["message"] = {"status": "error", "message": str(e), "rows": []}
+
+
+@frappe.whitelist()
+def getBoxTraceability():
+    # getBoxTraceability — scan a box, return greenhouse->dispatch trail per bucket.
+    # Live-schema safe. Buckets are reused, so each stage is the latest Stock Entry
+    # for the bucket on/before the order's Sales Order date. Precise per-box via the
+    # Pick List Item custom_box_id (= box number); falls back to all order buckets.
+    try:
+        data = frappe.form_dict
+        box_name = (data.get("box_label", "") or "").strip()
+        if not box_name:
+            frappe.response["message"] = {"success": False, "error": "Missing box_label"}
+        else:
+            box = frappe.db.get_value(
+                "Box Label", box_name,
+                ["name", "order_pick_list", "box_number", "box_total_count", "customer",
+                 "length", "pack_rate", "farm", "customer_purchase_order", "consignee",
+                 "truck_details", "freight_agent", "delivery_point", "delivery_note",
+                 "date", "delivered", "owner", "creation"], as_dict=1)
+
+            if not box:
+                alt = frappe.db.get_value("Box Label", {"box_label": box_name}, "name")
+                if alt:
+                    box_name = alt
+                    box = frappe.db.get_value(
+                        "Box Label", box_name,
+                        ["name", "order_pick_list", "box_number", "box_total_count", "customer",
+                         "length", "pack_rate", "farm", "customer_purchase_order", "consignee",
+                         "truck_details", "freight_agent", "delivery_point", "delivery_note",
+                         "date", "delivered", "owner", "creation"], as_dict=1)
+
+            if not box:
+                frappe.response["message"] = {"success": False, "error": "Box not found: " + box_name}
+            else:
+                opl = box.get("order_pick_list") or ""
+                box_number = box.get("box_number")
+                so_name = box.get("customer_purchase_order") or ""
+
+                order_name = ""
+                so_date = None
+                so_consignee = ""
+                if so_name and frappe.db.exists("Sales Order", so_name):
+                    so_row = frappe.db.get_value(
+                        "Sales Order", so_name,
+                        ["custom_order_name", "creation", "custom_consignee"], as_dict=1)
+                    if so_row:
+                        order_name = so_row.get("custom_order_name") or ""
+                        if so_row.get("creation"):
+                            so_date = str(so_row.get("creation"))[:10]
+                        so_consignee = so_row.get("custom_consignee") or ""
+                if opl and not order_name:
+                    order_name = frappe.db.get_value("Order Pick List", opl, "order_name") or ""
+                cutoff = so_date or str(box.get("date") or box.get("creation") or "")[:10] or frappe.utils.today()
+
+                # ── Buckets in THIS box (exact via custom_box_id = box_number) ──────
+                pick_rows = []
+                if opl:
+                    pick_rows = frappe.db.sql(
+                        "SELECT bucket, item_code AS variety, stem_length, shelf,"
+                        "  custom_box_id AS box_id, owner AS picked_by, creation AS picked_on"
+                        " FROM `tabPick List Item`"
+                        " WHERE parent = %(opl)s AND parenttype = 'Order Pick List'"
+                        "   AND bucket IS NOT NULL AND bucket != ''"
+                        "   AND custom_box_id = %(bn)s"
+                        " ORDER BY item_code, bucket",
+                        {"opl": opl, "bn": box_number}, as_dict=1)
+                    if not pick_rows:
+                        # Fallback: box items not tagged -> all buckets for the order.
+                        pick_rows = frappe.db.sql(
+                            "SELECT bucket, item_code AS variety, stem_length, shelf,"
+                            "  custom_box_id AS box_id, owner AS picked_by, creation AS picked_on"
+                            " FROM `tabPick List Item`"
+                            " WHERE parent = %(opl)s AND parenttype = 'Order Pick List'"
+                            "   AND bucket IS NOT NULL AND bucket != ''"
+                            " ORDER BY item_code, bucket",
+                            {"opl": opl}, as_dict=1)
+
+                def emp_name(val):
+                    if not val:
+                        return ""
+                    nm = frappe.db.get_value("Employee", val, "employee_name")
+                    if nm:
+                        return nm
+                    nm = frappe.db.get_value("User", val, "full_name")
+                    return nm or val
+
+                def latest(entry_types, bucket, variety, need_variety):
+                    type_list = []
+                    for t in entry_types:
+                        type_list.append(frappe.db.escape(t))
+                    type_in = ", ".join(type_list)
+                    join = ""
+                    vcond = ""
+                    params = {"b": bucket, "cut": cutoff}
+                    if need_variety and variety:
+                        join = " INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name"
+                        vcond = " AND sed.item_code = %(v)s"
+                        params["v"] = variety
+                    rows = frappe.db.sql(
+                        "SELECT se.name AS name, se.custom_greenhouse AS greenhouse, se.farm AS farm,"
+                        "  se.custom_harvester AS harvester, se.custom_cut_stage AS cut_stage,"
+                        "  se.custom_graded_by AS graded_by, se.custom_stem_length AS stem_length,"
+                        "  se.custom_bunch_id AS bunch_id, se.to_warehouse AS warehouse,"
+                        "  se.posting_date AS pdate, se.posting_time AS ptime, se.owner AS owner"
+                        " FROM `tabStock Entry` se" + join +
+                        " WHERE se.stock_entry_type IN (" + type_in + ") AND se.docstatus = 1"
+                        "   AND se.custom_bucket_id = %(b)s AND se.posting_date <= %(cut)s" + vcond +
+                        " ORDER BY se.posting_date DESC, se.posting_time DESC LIMIT 1",
+                        params, as_dict=1)
+                    return rows[0] if rows else None
+
+                def fmt_time(t):
+                    s = str(t or "")
+                    if "." in s:
+                        s = s.split(".")[0]
+                    return s[:8]
+
+                buckets_out = []
+                for pr in pick_rows:
+                    b = pr.get("bucket")
+                    v = pr.get("variety") or ""
+
+                    h = latest(["Harvesting"], b, v, True)
+                    r = latest(["Receiving", "Late Receipt"], b, v, False)
+                    g = latest(["Grading"], b, v, False)
+
+                    # Shelving: durable Shelving Log. It keeps every shelving of the
+                    # bucket, so bound to the one that fed THIS order's pick (shelved
+                    # on/before the pick) -- otherwise a later reuse would show.
+                    sh = None
+                    picked_on = pr.get("picked_on")
+                    if picked_on:
+                        log_rows = frappe.db.sql(
+                            "SELECT shelf, greenhouse, stem_length, stem_qty, shelved_on, shelved_by"
+                            " FROM `tabShelving Log` WHERE bucket_id = %(b)s AND shelved_on <= %(p)s"
+                            " ORDER BY shelved_on DESC LIMIT 1", {"b": b, "p": picked_on}, as_dict=1)
+                    else:
+                        log_rows = frappe.db.sql(
+                            "SELECT shelf, greenhouse, stem_length, stem_qty, shelved_on, shelved_by"
+                            " FROM `tabShelving Log` WHERE bucket_id = %(b)s"
+                            " ORDER BY shelved_on DESC LIMIT 1", {"b": b}, as_dict=1)
+                    if log_rows:
+                        sh = log_rows[0]
+
+                    harvest = None
+                    if h:
+                        harvest = {
+                            "greenhouse": h.get("greenhouse") or "",
+                            "farm": h.get("farm") or "",
+                            "harvester": emp_name(h.get("harvester")),
+                            "cut_stage": h.get("cut_stage") or "",
+                            "date": str(h.get("pdate") or ""),
+                            "time": fmt_time(h.get("ptime")),
+                        }
+                    receiving = None
+                    if r:
+                        receiving = {
+                            "warehouse": r.get("warehouse") or "",
+                            "date": str(r.get("pdate") or ""),
+                            "time": fmt_time(r.get("ptime")),
+                        }
+                    grading = None
+                    if g:
+                        grading = {
+                            "graded_by": emp_name(g.get("graded_by")),
+                            "stem_length": g.get("stem_length") or "",
+                            "bunch_id": g.get("bunch_id") or "",
+                            "date": str(g.get("pdate") or ""),
+                        }
+                    shelving = None
+                    if sh:
+                        shelving = {
+                            "shelf": pr.get("shelf") or sh.get("shelf") or "",
+                            "greenhouse": sh.get("greenhouse") or "",
+                            "date": str(sh.get("shelved_on") or "")[:19],
+                            "shelved_by": emp_name(sh.get("shelved_by")),
+                        }
+                    elif pr.get("shelf"):
+                        shelving = {"shelf": pr.get("shelf"), "greenhouse": "", "date": "", "shelved_by": ""}
+
+                    picked = {
+                        "for_box": pr.get("box_id"),
+                        "date": str(pr.get("picked_on") or "")[:19],
+                        "picked_by": emp_name(pr.get("picked_by")),
+                    }
+
+                    buckets_out.append({
+                        "bucket": b,
+                        "variety": v,
+                        "stem_length": pr.get("stem_length") or "",
+                        "harvest": harvest,
+                        "receiving": receiving,
+                        "grading": grading,
+                        "shelving": shelving,
+                        "picked": picked,
+                    })
+
+                box_out = {
+                    "box_label": box.get("name"),
+                    "box_number": box.get("box_number"),
+                    "box_total_count": box.get("box_total_count"),
+                    "order_pick_list": opl,
+                    "order_name": order_name,
+                    "customer": box.get("customer") or "",
+                    "length": box.get("length") or "",
+                    "pack_rate": box.get("pack_rate") or 0,
+                    "farm": box.get("farm") or "",
+                    "packed_on": str(box.get("creation") or "")[:19],
+                    "packed_by": box.get("owner") or "",
+                    "exact_buckets": 1 if (pick_rows and pick_rows[0].get("box_id") == box_number) else 0,
+                }
+                dispatch = {
+                    "sales_order": so_name,
+                    "order_name": order_name,
+                    "customer": box.get("customer") or "",
+                    "consignee": box.get("consignee") or so_consignee or "",
+                    "delivery_point": box.get("delivery_point") or "",
+                    "freight_agent": box.get("freight_agent") or "",
+                    "truck": box.get("truck_details") or "",
+                    "delivery_note": box.get("delivery_note") or "",
+                    "delivered": box.get("delivered") or 0,
+                    "date": str(box.get("date") or ""),
+                }
+
+                frappe.response["message"] = {
+                    "success": True,
+                    "box": box_out,
+                    "buckets": buckets_out,
+                    "dispatch": dispatch,
+                }
+    except Exception as e:
+        frappe.log_error(str(e), "getBoxTraceability")
+        frappe.response["message"] = {"success": False, "error": str(e)}
 
 
 @frappe.whitelist()
@@ -7388,6 +7747,9 @@ def savePackhouseQC():
         new_cars = [c for c in created_cars if c.get("new")]
         if new_cars:
             try:
+                # Packhouse/Grading QC: keep the legacy custom link only. The
+                # standard corrective_action_report link is populated for INTAKE
+                # only (per requirement) -- see the batch-quality functions.
                 frappe.db.set_value(
                     "Quality Reporting", doc.name,
                     "custom_corrective_action_report", new_cars[0]["car"],
@@ -8274,6 +8636,20 @@ def submitBatchQuality():
                     car_doc = frappe.get_doc(car_data)
                     car_doc.insert(ignore_permissions=True)
                     corrective_action_reports.append(car_doc.name)
+                    # Link this Intake QC record to the CAR it raised (canonical
+                    # Link field + legacy custom field). Intake only.
+                    if car_control_point == "Intake":
+                        try:
+                            frappe.db.set_value(
+                                "Quality Reporting", intake_doc.name,
+                                {
+                                    "corrective_action_report":        car_doc.name,
+                                    "custom_corrective_action_report": car_doc.name,
+                                },
+                                update_modified=False
+                            )
+                        except Exception:
+                            pass
             except Exception as e:
                 frappe.log_error(str(e), "Submit Batch Quality - CAR " + item_code)
 
@@ -8844,6 +9220,20 @@ def _submit_batch_quality_impl():
                     car_doc = frappe.get_doc(car_data)
                     car_doc.insert(ignore_permissions=True)
                     corrective_action_reports.append(car_doc.name)
+                    # Link this Intake QC record to the CAR it raised (canonical
+                    # Link field + legacy custom field). Intake only.
+                    if car_control_point == "Intake":
+                        try:
+                            frappe.db.set_value(
+                                "Quality Reporting", intake_doc.name,
+                                {
+                                    "corrective_action_report":        car_doc.name,
+                                    "custom_corrective_action_report": car_doc.name,
+                                },
+                                update_modified=False
+                            )
+                        except Exception:
+                            pass
             except Exception as e:
                 frappe.log_error(frappe.get_traceback(), "Submit Batch Quality - CAR " + item_code)
 
