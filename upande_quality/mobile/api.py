@@ -2200,6 +2200,24 @@ def deleteSavedTrolleys():
         frappe.response["message"] = {"status": "error", "message": str(e)}
 
 
+def _farm_pick_rows(farm, filters, starts_with=False, **kwargs):
+    """Pick List Items from `farm`: the row's own `farm` (the bucket's shelf farm, set at
+    allocation) decides. The warehouse name is only a fallback for rows without one —
+    remote farms can receive into the hub's cold store, so "<Farm> Receiving Cold Store"
+    does not say where a bucket is."""
+    like = (farm + "%") if starts_with else ("%" + farm + "%")
+    own = frappe.get_all("Pick List Item", filters=dict(filters, farm=farm), **kwargs)
+    legacy = frappe.get_all(
+        "Pick List Item",
+        filters=dict(filters, farm=["is", "not set"], source_warehouse=["like", like]),
+        **kwargs,
+    )
+    rows = own + legacy
+    if kwargs.get("pluck") and kwargs.get("distinct"):
+        rows = list(dict.fromkeys(rows))
+    return rows
+
+
 @frappe.whitelist()
 def fetchAllocatedBuckets():
     # Frappe Server Script (Type: API), api_method = fetchAllocatedBuckets
@@ -2241,15 +2259,14 @@ def fetchAllocatedBuckets():
             "awaiting_transfer": 1,
             "in_transit": 0,
             "bucket": ["!=", ""],
-            "source_warehouse": ["like", "%" + farm_name + "%"],  # v16: warehouse is empty on pick rows
             "parenttype": "Order Pick List",
         }
         if opl_name:
             pli_filters["parent"] = opl_name
 
-        pick_list_items = frappe.get_all(
-            "Pick List Item",
-            filters=pli_filters,
+        pick_list_items = _farm_pick_rows(
+            farm_name,
+            pli_filters,
             fields=[
                 "name",
                 "parent",
@@ -3553,10 +3570,10 @@ def getFarmPlannedTrips():
         # but not yet on a trip is not tagged "Unscheduled" in the app.
         from upande_packhouse.api.transfer_control import _schedule_map
 
-        waiting_opls = frappe.get_all(
-            "Pick List Item",
-            filters={"parenttype": "Order Pick List", "awaiting_transfer": 1, "in_transit": 0,
-                     "bucket": ["!=", ""], "source_warehouse": ["like", like]},
+        waiting_opls = _farm_pick_rows(
+            farm_name,
+            {"parenttype": "Order Pick List", "awaiting_transfer": 1, "in_transit": 0,
+             "bucket": ["!=", ""]},
             distinct=True,
             pluck="parent",
         )
@@ -3587,10 +3604,10 @@ def getFarmPlannedTrips():
         # waiting -> loaded (on the truck) -> transit -> arrived (shelved at the packhouse).
         opl_states = {}
         if device_opls:
-            for r in frappe.get_all(
-                "Pick List Item",
-                filters={"parent": ["in", device_opls], "parenttype": "Order Pick List",
-                         "bucket": ["!=", ""], "source_warehouse": ["like", like]},
+            for r in _farm_pick_rows(
+                farm_name,
+                {"parent": ["in", device_opls], "parenttype": "Order Pick List",
+                 "bucket": ["!=", ""]},
                 fields=["parent", "loaded_in_trolley", "in_transit", "shelved"],
                 limit_page_length=0,
             ):
@@ -3962,15 +3979,15 @@ def getSavedTrolleys():
             pluck="name",
         )
 
-        rows = frappe.get_all(
-            "Pick List Item",
-            filters={
-                "source_warehouse": ["like", farm + "%"],  # v16: warehouse is empty on pick rows
+        rows = _farm_pick_rows(
+            farm,
+            {
                 "loaded_in_trolley": 1,
                 "in_transit": 0,
                 "trolley_id": ["is", "set"],
                 "parent": ["in", opl_today],
             },
+            starts_with=True,
             fields=[
                 "parent as opl_name",
                 "trolley_id as trolley_id",
@@ -12505,7 +12522,7 @@ def getDriverBucketLogistics():
     # clears awaiting_transfer, so trolley-loaded buckets dropped out of the screen.
     fd = frappe.form_dict
     delivery_date = fd.get('delivery_date') or frappe.utils.today()
-    FARM_EXPR = "SUBSTRING_INDEX(COALESCE(NULLIF(pli.source_warehouse,''), pli.warehouse), ' ', 1)"
+    FARM_EXPR = "COALESCE(NULLIF(pli.farm, ''), SUBSTRING_INDEX(COALESCE(NULLIF(pli.source_warehouse,''), pli.warehouse), ' ', 1))"
     TRANSFER = "(pli.awaiting_transfer = 1 OR pli.loaded_in_trolley = 1 OR pli.in_transit = 1 OR pli.shelved = 1)"
 
     rows = frappe.db.sql("""
