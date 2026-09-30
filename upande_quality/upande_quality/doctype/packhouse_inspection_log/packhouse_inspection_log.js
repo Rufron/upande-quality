@@ -44,12 +44,18 @@ frappe.ui.form.on("Packhouse Inspection Component", {
 		const row = locals[cdt][cdn];
 		const tags = (row.conditions || "")
 			.split(",")
-			.map(function (s) { return s.trim(); })
+			.map(function (s) {
+				return s.trim();
+			})
 			.filter(Boolean);
 
 		let status = "Not Checked";
 		if (tags.length) {
-			status = tags.every(function (t) { return OK.includes(t); }) ? "√ Okay" : "X Faulty";
+			status = tags.every(function (t) {
+				return OK.includes(t);
+			})
+				? "√ Okay"
+				: "X Faulty";
 		}
 		frappe.model.set_value(cdt, cdn, "status", status);
 	},
