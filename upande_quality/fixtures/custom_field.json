@@ -1,0 +1,14 @@
+[
+ {
+  "doctype": "Custom Field",
+  "dt": "Farm Distance",
+  "fieldname": "via_farms",
+  "fieldtype": "Data",
+  "insert_after": "is_road_leg",
+  "label": "Via Farms",
+  "description": "Farms a non-direct pair's drive passes through — computed on save from the road legs.",
+  "read_only": 1,
+  "module": "Upande Quality",
+  "name": "Farm Distance-via_farms"
+ }
+]

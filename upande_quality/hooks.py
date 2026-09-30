@@ -55,6 +55,9 @@ fixtures = [
 	# as fixtures — all carry module "Upande Quality", so this filter grabs exactly
 	# them. Requires `server_script_enabled: true` in common_site_config.json.
 	{"doctype": "Server Script", "filters": [["module", "=", "Upande Quality"]]},
+	# Farm Distance.via_farms — filled by transfer_events.compute_farm_distance_via_farms
+	# (the field exists on kaitet-group live; Farm Distance itself is upande_packhouse's).
+	{"doctype": "Custom Field", "filters": [["name", "in", ["Farm Distance-via_farms"]]]},
 ]
 
 # Includes in <head>
@@ -80,6 +83,8 @@ fixtures = [
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+# Client Script "Bucket Logistics Route Vehicle Filter" from kaitet-group live.
+doctype_js = {"Bucket Logistics Route": "public/js/bucket_logistics_route.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -181,6 +186,12 @@ fixtures = [
 # 		"on_trash": "method"
 # 	}
 # }
+
+# DocType-event Server Scripts ported from kaitet-group live (see transfer_events.py).
+doc_events = {
+	"Farm Distance": {"before_save": "upande_quality.transfer_events.compute_farm_distance_via_farms"},
+	"Stock Entry": {"on_submit": "upande_quality.transfer_events.material_transfer_transit_notification"},
+}
 
 # Scheduled Tasks
 # ---------------

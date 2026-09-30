@@ -2079,14 +2079,17 @@ def createShelvingEntry():
 
 @frappe.whitelist()
 def deleteSavedTrolleys():
+    # v16: Pick List Item / Order Pick List fields are bare (bucket, trolley_id,
+    # loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
+    # names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
     # Frappe Server Script (Type: API), api_method = deleteSavedTrolleys
     # Undo a SAVED trolley grouping WITHOUT re-shelving its buckets.
-    # Clears custom_trolley_id / custom_loaded_in_trolley / custom_awaiting_transfer
-    # on the trolley's Pick List Item rows, leaving custom_shelf untouched.
-    # Only acts on not-yet-loaded rows (custom_in_transit != 1); loaded ones are
+    # Clears trolley_id / loaded_in_trolley / awaiting_transfer
+    # on the trolley's Pick List Item rows, leaving shelf untouched.
+    # Only acts on not-yet-loaded rows (in_transit != 1); loaded ones are
     # skipped and reported back.
     #
-    # Matching is Pick List Item-FIRST (by custom_trolley_id), because saved
+    # Matching is Pick List Item-FIRST (by trolley_id), because saved
     # trolleys live on OPLs of EITHER docstatus (draft AND submitted) — an earlier
     # version scoped to draft OPLs only and matched 0 rows for submitted-OPL
     # trolleys. Farm is used only as a cross-farm safety check via the parent OPL.
@@ -2115,8 +2118,8 @@ def deleteSavedTrolleys():
         else:
             rows = frappe.get_all(
                 "Pick List Item",
-                filters=[["custom_trolley_id", "in", trolley_ids]],
-                fields=["name", "parent", "custom_trolley_id", "custom_in_transit"],
+                filters=[["trolley_id", "in", trolley_ids]],
+                fields=["name", "parent", "trolley_id", "in_transit"],
             )
 
             # Resolve parent OPL farms once (small set) for the cross-farm safety check.
@@ -2131,10 +2134,10 @@ def deleteSavedTrolleys():
             farm_by_parent = {}
             if len(pnames) > 0:
                 opls = frappe.get_all("Order Pick List", filters=[["name", "in", pnames]],
-                                      fields=["name", "custom_farm"])
+                                      fields=["name", "farm"])
                 j = 0
                 while j < len(opls):
-                    farm_by_parent[opls[j].name] = opls[j].custom_farm
+                    farm_by_parent[opls[j].name] = opls[j].farm
                     j = j + 1
 
             cleared_count = 0
@@ -2145,15 +2148,15 @@ def deleteSavedTrolleys():
                 r = rows[m]
                 row_farm = farm_by_parent.get(r.parent, "")
                 if farm != "" and row_farm != farm:
-                    skipped_farm[r.custom_trolley_id] = 1
-                elif r.custom_in_transit == 1:
-                    skipped[r.custom_trolley_id] = 1
+                    skipped_farm[r.trolley_id] = 1
+                elif r.in_transit == 1:
+                    skipped[r.trolley_id] = 1
                 else:
                     if not dry_run:
                         frappe.db.set_value("Pick List Item", r.name, {
-                            "custom_trolley_id": "",
-                            "custom_loaded_in_trolley": 0,
-                            "custom_awaiting_transfer": 0,
+                            "trolley_id": "",
+                            "loaded_in_trolley": 0,
+                            "awaiting_transfer": 0,
                         }, update_modified=True)
                     cleared_count = cleared_count + 1
                 m = m + 1
@@ -2182,7 +2185,7 @@ def deleteSavedTrolleys():
 def fetchAllocatedBuckets():
     # Frappe Server Script (Type: API), api_method = fetchAllocatedBuckets
     # Buckets awaiting transfer for a farm, for the bucket-requests app.
-    # Visibility is gated by STATE (custom_awaiting_transfer=1, custom_in_transit=0),
+    # Visibility is gated by STATE (awaiting_transfer=1, in_transit=0),
     # NOT by OPL creation date — a bucket allocated on a previous day is still
     # awaiting transfer until it is loaded/shelved, so it must remain downloadable.
     # Payload: { "farm": "<farm>", "opl_name": "<optional OPL>" }
@@ -2216,10 +2219,10 @@ def fetchAllocatedBuckets():
         #    State (awaiting_transfer=1, not yet in transit) is the gate; buckets
         #    drop off automatically once transferred/shelved. No date filter.
         pli_filters = {
-            "custom_awaiting_transfer": 1,
-            "custom_in_transit": 0,
-            "custom_bucket": ["!=", ""],
-            "warehouse": ["like", "%" + farm_name + "%"],
+            "awaiting_transfer": 1,
+            "in_transit": 0,
+            "bucket": ["!=", ""],
+            "source_warehouse": ["like", "%" + farm_name + "%"],  # v16: warehouse is empty on pick rows
             "parenttype": "Order Pick List",
         }
         if opl_name:
@@ -2233,12 +2236,14 @@ def fetchAllocatedBuckets():
                 "parent",
                 "item_code",
                 "item_name",
-                "custom_bucket",
-                "custom_shelf",
+                "bucket",
+                "shelf",
                 "warehouse",
+                "source_warehouse",
+                "farm",
                 "qty",
                 "uom",
-                "custom_stem_length",
+                "stem_length",
                 "sales_order",
                 "sales_order_item",
             ],
@@ -2261,13 +2266,23 @@ def fetchAllocatedBuckets():
                     "name",
                     "creation",
                     "customer",
-                    "custom_order_name",
-                    "custom_consignee",
+                    "order_name",
                     "sales_order",
-                    "custom_status",
+                    "docstatus",
                 ],
             )
             opl_map = {o["name"]: o for o in opl_docs}
+            # v16 Order Pick List has no consignee/status columns: consignee comes from
+            # the Sales Order, status from docstatus.
+            opl_so_names = list(set(o["sales_order"] for o in opl_docs if o.get("sales_order")))
+            so_consignee = {}
+            if opl_so_names:
+                for so_row in frappe.get_all(
+                    "Sales Order",
+                    filters={"name": ["in", opl_so_names]},
+                    fields=["name", "custom_consignee"],
+                ):
+                    so_consignee[so_row["name"]] = so_row.get("custom_consignee")
 
             # ── Delivery-date window: keep only OPLs whose Sales Order delivers in
             #    [from_date, to_date]. Skipped for a specific opl_name request. ──────
@@ -2305,7 +2320,7 @@ def fetchAllocatedBuckets():
                 frappe.response["http_status_code"] = 200
             else:
                 # ── Step 3: Bulk fetch latest harvest date per bucket ──────────────
-                bucket_ids = list(set(item["custom_bucket"] for item in pick_list_items))
+                bucket_ids = list(set(item["bucket"] for item in pick_list_items))
                 all_harvest_entries = frappe.get_all(
                     "Stock Entry",
                     filters={
@@ -2333,7 +2348,7 @@ def fetchAllocatedBuckets():
                 result = []
                 seen_bucket = {}
                 for item in pick_list_items:
-                    bucket_id = item["custom_bucket"]
+                    bucket_id = item["bucket"]
                     dedupe_key = str(item["parent"]) + "||" + str(bucket_id).lower()
                     if dedupe_key in seen_bucket:
                         continue
@@ -2346,20 +2361,22 @@ def fetchAllocatedBuckets():
                         # OPL Information
                         "opl_name": item["parent"],
                         "customer": opl_info.get("customer"),
-                        "order_name": opl_info.get("custom_order_name"),
-                        "consignee": opl_info.get("custom_consignee"),
+                        "order_name": opl_info.get("order_name"),
+                        "consignee": so_consignee.get(opl_info.get("sales_order")),
                         "sales_order": item["sales_order"],
-                        "opl_status": opl_info.get("custom_status"),
+                        "opl_status": "Draft" if opl_info.get("docstatus") == 0 else "Submitted",
                         # Item Information
                         "pick_list_item_id": item["name"],
                         "item_code": item["item_code"],
                         "item_name": item["item_name"],
                         "qty": item["qty"],
                         "uom": item["uom"],
-                        "stem_length": item["custom_stem_length"],
+                        "stem_length": item["stem_length"],
                         # Location Information
-                        "shelf_location": item["custom_shelf"],
-                        "warehouse": item["warehouse"],
+                        "shelf_location": item["shelf"],
+                        "warehouse": item["source_warehouse"] or item["warehouse"],
+                        # Remote farm the bucket is transferred from.
+                        "farm": item.get("farm") or ((item["source_warehouse"] or item["warehouse"] or "").split(" ")[0]),
                         # Bucket Information
                         "bucket_id": bucket_id,
                         "harvest_date": harvest_info.get("harvest_date"),
@@ -2547,7 +2564,7 @@ def fetchPackhouseQCFormData():
         )
         specifications_list = [dict(r) for r in spec_rows]
 
-        # ── 2. Active OPLs (submitted), optionally filtered by team and/or the
+        # ── 2. Active OPLs (draft + submitted), optionally filtered by team and/or the
         # selected Specification. `team` filters straight on the Order Pick List
         # (never read before, so team filtering did nothing). For a Specification
         # the old FK path (Sales Order Item.custom_line) is blank on nearly all
@@ -2555,7 +2572,8 @@ def fetchPackhouseQCFormData():
         # and show that customer's active orders.
         # Only TODAY's orders (created today) are shown in the OPL list.
         team_filter = data.get("team", "").strip() if data.get("team") else ""
-        opl_conds = ["docstatus < 2", "creation >= CURDATE()"]  # include drafts (read-only in app)
+        # Drafts are included (shown read-only in the app); cancelled are excluded.
+        opl_conds = ["docstatus < 2"]
         opl_vals  = []
         if spec_filter:
             spec_customer = frappe.db.get_value("Specifications", spec_filter, "customer") or ""
@@ -3491,6 +3509,9 @@ def getDispatchTrucks():
 
 @frappe.whitelist()
 def getFarmPlannedTrips():
+    # v16: Pick List Item / Order Pick List fields are bare (bucket, trolley_id,
+    # loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
+    # names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
     # Frappe Server Script (Type: API), api_method = getFarmPlannedTrips
     # For the cold-store attendant on the Bucket Requests app: the upcoming planned
     # trips (Bucket Request Trip) that will collect buckets from THIS farm. For each
@@ -3508,18 +3529,80 @@ def getFarmPlannedTrips():
         frappe.response["message"] = {"status": "error", "message": "farm is required", "data": []}
     else:
         like = "%" + farm_name + "%"
+        # Packhouse Schedule entry of every order still waiting at this farm — the
+        # same schedule the transfer dashboard shows — so an order that is scheduled
+        # but not yet on a trip is not tagged "Unscheduled" in the app.
+        from upande_packhouse.api.transfer_control import _schedule_map
+
+        waiting_opls = frappe.get_all(
+            "Pick List Item",
+            filters={"parenttype": "Order Pick List", "awaiting_transfer": 1, "in_transit": 0,
+                     "bucket": ["!=", ""], "source_warehouse": ["like", like]},
+            distinct=True,
+            pluck="parent",
+        )
+        # OPLs the app already holds (Requests / Trolley / In Transit) keep their team,
+        # schedule number and live state while they move through the tabs.
+        device_opls = [o for o in (payload.get("opls") or []) if o] if isinstance(payload, dict) else []
+
+        def schedules_for(opl_list):
+            opl_list = list(dict.fromkeys(opl_list))
+            if not opl_list:
+                return {}
+            all_schedules = _schedule_map()
+            # Not yet on a Packhouse Schedule: fall back to the team stamped on the OPL at allocation.
+            opl_teams = {}
+            for o in frappe.get_all("Order Pick List", filters={"name": ["in", opl_list]},
+                                    fields=["name", "team"]):
+                opl_teams[o.name] = o.get("team") or ""
+            out = {}
+            for op in opl_list:
+                sc = all_schedules.get(op) or {}
+                team = sc.get("team") or opl_teams.get(op) or ""
+                if team or sc:
+                    out[op] = {"team": team, "schedule": sc.get("schedule") or 0,
+                               "scheduled": 1 if sc else 0}
+            return out
+
+        # Live state of this farm's buckets for every OPL on the device:
+        # waiting -> loaded (on the truck) -> transit -> arrived (shelved at the packhouse).
+        opl_states = {}
+        if device_opls:
+            for r in frappe.get_all(
+                "Pick List Item",
+                filters={"parent": ["in", device_opls], "parenttype": "Order Pick List",
+                         "bucket": ["!=", ""], "source_warehouse": ["like", like]},
+                fields=["parent", "loaded_in_trolley", "in_transit", "shelved"],
+                limit_page_length=0,
+            ):
+                st = opl_states.setdefault(r.parent, {"total": 0, "loaded": 0, "transit": 0, "shelved": 0})
+                st["total"] += 1
+                st["loaded"] += 1 if int(r.loaded_in_trolley or 0) else 0
+                st["transit"] += 1 if int(r.in_transit or 0) else 0
+                st["shelved"] += 1 if int(r.shelved or 0) else 0
+            for op, st in opl_states.items():
+                if st["shelved"] == st["total"]:
+                    opl_states[op] = "arrived"
+                elif st["transit"] + st["shelved"] == st["total"]:
+                    opl_states[op] = "transit"
+                elif st["loaded"] + st["transit"] + st["shelved"] == st["total"]:
+                    opl_states[op] = "loaded"
+                else:
+                    opl_states[op] = "waiting"
         # Trips (not yet dispatched) that include at least one order row from this farm.
         name_rows = frappe.db.sql("""
             SELECT DISTINCT t.name AS name
             FROM `tabBucket Request Trip` t
             INNER JOIN `tabBucket Request Trip Order` o ON o.parent = t.name
-            WHERE t.status != 'Dispatched'
+            WHERE t.status IN ('Draft', 'Scheduled')
               AND ( o.farm = %(farm)s OR o.farm LIKE %(like)s OR %(farm)s LIKE CONCAT('%%', o.farm, '%%') )
         """, {"farm": farm_name, "like": like}, as_dict=True)
         trip_names = [r['name'] for r in name_rows]
 
         if not trip_names:
-            frappe.response["message"] = {"status": "success", "data": [], "farm": farm_name}
+            frappe.response["message"] = {"status": "success", "data": [], "farm": farm_name,
+                                          "schedules": schedules_for(waiting_opls + device_opls),
+                                          "opl_states": opl_states}
         else:
             headers = frappe.get_all(
                 "Bucket Request Trip",
@@ -3556,20 +3639,20 @@ def getFarmPlannedTrips():
                 pli = frappe.get_all(
                     "Pick List Item",
                     filters={"parent": ["in", opls], "parenttype": "Order Pick List",
-                             "custom_bucket": ["!=", ""]},
-                    fields=["parent", "custom_bucket", "warehouse",
-                            "custom_awaiting_transfer", "custom_loaded_in_trolley",
-                            "custom_in_transit", "custom_shelved"],
+                             "bucket": ["!=", ""]},
+                    fields=["parent", "bucket", "warehouse", "source_warehouse",
+                            "awaiting_transfer", "loaded_in_trolley",
+                            "in_transit", "shelved"],
                     limit_page_length=0,
                 )
                 seen_bkt = {}
                 p = 0
                 while p < len(pli):
                     it = pli[p]
-                    wh = it.get('warehouse') or ''
+                    wh = it.get('source_warehouse') or it.get('warehouse') or ''  # v16 fills source_warehouse
                     farm_short = wh.split(' ')[0] if wh else ''
                     op = it.get('parent')
-                    bkt = it.get('custom_bucket') or ''
+                    bkt = it.get('bucket') or ''
                     dk = str(op) + '||' + str(bkt).lower()
                     if bkt and (dk in seen_bkt):
                         p = p + 1
@@ -3581,11 +3664,11 @@ def getFarmPlannedTrips():
                         portion_state[key] = {"awaiting": 0, "loaded": 0, "transit": 0, "shelved": 0, "total": 0}
                     st = portion_state[key]
                     st["total"] = st["total"] + 1
-                    if int(it.get('custom_shelved') or 0):
+                    if int(it.get('shelved') or 0):
                         st["shelved"] = st["shelved"] + 1
-                    elif int(it.get('custom_in_transit') or 0):
+                    elif int(it.get('in_transit') or 0):
                         st["transit"] = st["transit"] + 1
-                    elif int(it.get('custom_loaded_in_trolley') or 0):
+                    elif int(it.get('loaded_in_trolley') or 0):
                         st["loaded"] = st["loaded"] + 1
                     else:
                         st["awaiting"] = st["awaiting"] + 1
@@ -3699,7 +3782,9 @@ def getFarmPlannedTrips():
                     if bottleneck_found == 0 and (status == "waiting" or status == "loading"):
                         delaying = 1
                         bottleneck_found = 1
-                    if transit > 0 or shelved > 0:
+                    # Only buckets actually on the truck put the trip in transit —
+                    # shelved buckets are already home, not moving.
+                    if transit > 0:
                         trip_transit = 1
 
                     is_you = 0
@@ -3732,7 +3817,10 @@ def getFarmPlannedTrips():
                 })
                 h = h + 1
 
-            frappe.response["message"] = {"status": "success", "data": data, "farm": farm_name}
+            trip_opls = [o["opl"] for t in data for o in t["orders"] if o.get("opl")]
+            frappe.response["message"] = {"status": "success", "data": data, "farm": farm_name,
+                                          "schedules": schedules_for(waiting_opls + device_opls + trip_opls),
+                                          "opl_states": opl_states}
 
 
 @frappe.whitelist()
@@ -3838,6 +3926,9 @@ def getInTransitBuckets():
 
 @frappe.whitelist()
 def getSavedTrolleys():
+    # v16: Pick List Item / Order Pick List fields are bare (bucket, trolley_id,
+    # loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
+    # names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
     try:
         farm = frappe.form_dict.get("farm")
         if not farm:
@@ -3855,26 +3946,26 @@ def getSavedTrolleys():
         rows = frappe.get_all(
             "Pick List Item",
             filters={
-                "warehouse": ["like", farm + "%"],
-                "custom_loaded_in_trolley": 1,
-                "custom_in_transit": 0,
-                "custom_trolley_id": ["is", "set"],
+                "source_warehouse": ["like", farm + "%"],  # v16: warehouse is empty on pick rows
+                "loaded_in_trolley": 1,
+                "in_transit": 0,
+                "trolley_id": ["is", "set"],
                 "parent": ["in", opl_today],
             },
             fields=[
                 "parent as opl_name",
-                "custom_trolley_id as trolley_id",
-                "custom_bucket as bucket_id",
+                "trolley_id as trolley_id",
+                "bucket as bucket_id",
                 "item_code",
                 "item_name",
-                "custom_shelf as shelf_location",
-                "custom_stem_length as stem_length",
+                "shelf as shelf_location",
+                "stem_length as stem_length",
                 "qty",
                 "uom",
-                "custom_truck as truck",
-                "warehouse"
+                "transit_truck as truck",
+                "source_warehouse as warehouse"
             ],
-            order_by="custom_trolley_id asc, idx asc"
+            order_by="trolley_id asc, idx asc"
         )
 
         trolley_map = {}
@@ -5776,6 +5867,9 @@ def listReplacementCandidates():
 
 @frappe.whitelist()
 def loadTrolleyInTruck():
+    # v16: Pick List Item / Order Pick List fields are bare (bucket, trolley_id,
+    # loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
+    # names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
     try:
         data = frappe.form_dict.get("data")
         if not data:
@@ -5785,22 +5879,22 @@ def loadTrolleyInTruck():
             data = frappe.parse_json(data)
 
         trolley_id = data.get("trolley_id")
-        custom_transit_truck = data.get("truck_id")
+        transit_truck = data.get("truck_id")
 
         if not trolley_id:
             frappe.throw("trolley_id is required")
 
-        if not custom_transit_truck:
-            frappe.throw("custom_transit_truck is required")
+        if not transit_truck:
+            frappe.throw("transit_truck is required")
 
         rows = frappe.get_all(
             "Pick List Item",
             filters={
-                "custom_trolley_id": trolley_id,
-                "custom_loaded_in_trolley": 1,
-                "custom_in_transit": 0
+                "trolley_id": trolley_id,
+                "loaded_in_trolley": 1,
+                "in_transit": 0
             },
-            fields=["name", "parent", "custom_bucket"],
+            fields=["name", "parent", "bucket"],
             order_by="parent asc"
         )
 
@@ -5817,18 +5911,18 @@ def loadTrolleyInTruck():
                 if parent not in opl_map:
                     opl_map[parent] = []
                 opl_map[parent].append(row.get("name"))
-                bid = row.get("custom_bucket")
+                bid = row.get("bucket")
                 if bid and bid not in bucket_ids:
                     bucket_ids.append(bid)
 
             updated_count = 0
             for opl_name, child_names in opl_map.items():
                 doc = frappe.get_doc("Order Pick List", opl_name)
-                for loc_row in doc.locations:
+                for loc_row in (doc.get("table_ytkc") or doc.get("locations") or []):
                     if loc_row.name in child_names:
-                        loc_row.custom_in_transit = 1
-                        loc_row.custom_transit_truck=custom_transit_truck
-                        loc_row.custom_shelf = ""
+                        loc_row.in_transit = 1
+                        loc_row.transit_truck=transit_truck
+                        loc_row.shelf = ""
                         updated_count += 1
                 doc.save(ignore_permissions=True)
 
@@ -5859,7 +5953,7 @@ def loadTrolleyInTruck():
 
             frappe.response["message"] = {
                 "status": "success",
-                "message": str(updated_count) + " bucket(s) from trolley " + str(trolley_id) + " loaded to " + str(custom_transit_truck) + ". " + str(shelf_removed_count) + " shelf row(s) removed."
+                "message": str(updated_count) + " bucket(s) from trolley " + str(trolley_id) + " loaded to " + str(transit_truck) + ". " + str(shelf_removed_count) + " shelf row(s) removed."
             }
 
     except Exception as e:
@@ -7941,6 +8035,9 @@ def savePackhouseQC():
 
 @frappe.whitelist()
 def saveTrolleyData():
+    # v16: Pick List Item / Order Pick List fields are bare (bucket, trolley_id,
+    # loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
+    # names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
     try:
         data = frappe.form_dict.get("data")
         if not data:
@@ -7964,13 +8061,16 @@ def saveTrolleyData():
                 continue
             doc = frappe.get_doc("Order Pick List", opl_name)
             found = False
-            for row in doc.locations:
-                if row.custom_bucket == bucket_id:
-                    row.custom_loaded_in_trolley = 1
-                    row.custom_trolley_id = trolley_id
-                    row.custom_awaiting_transfer = 0
+            # v16 keeps one pick row per BOX, so a bucket spans several rows of the
+            # OPL: flag every one of them. The live script stopped at the first row,
+            # which left the rest awaiting transfer and put only part of the bucket
+            # on the truck in loadTrolleyInTruck (it moves the rows carrying trolley_id).
+            for row in (doc.get("table_ytkc") or doc.get("locations") or []):
+                if row.bucket == bucket_id:
+                    row.loaded_in_trolley = 1
+                    row.trolley_id = trolley_id
+                    row.awaiting_transfer = 0
                     found = True
-                    break
             if found:
                 doc.save(ignore_permissions=True)
                 updated_count += 1
@@ -8019,6 +8119,9 @@ def saveTrolleyData():
 
 @frappe.whitelist()
 def setOfflineTrolleyFlags():
+    # v16: Pick List Item / Order Pick List fields are bare (bucket, trolley_id,
+    # loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
+    # names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
     # Frappe Server Script (Type: API), api_method = setOfflineTrolleyFlags
     # Additive-only sync for the offline Bucket Requests app. Marks specific
     # Pick List Item rows as loaded-in-trolley or in-transit WITHOUT submitting the
@@ -8067,9 +8170,9 @@ def setOfflineTrolleyFlags():
 
         field = None
         if flag == "loaded":
-            field = "custom_loaded_in_trolley"
+            field = "loaded_in_trolley"
         elif flag == "transit":
-            field = "custom_in_transit"
+            field = "in_transit"
 
         if not field:
             frappe.response["message"] = {"status": "error", "message": "Invalid flag (expected 'loaded' or 'transit')."}
@@ -8088,13 +8191,13 @@ def setOfflineTrolleyFlags():
                     # flag every sibling row for that bucket in the same OPL — scanning
                     # the bucket once must update them all, or the OPL never completes.
                     parent = frappe.db.get_value("Pick List Item", name, "parent")
-                    bucket = frappe.db.get_value("Pick List Item", name, "custom_bucket")
+                    bucket = frappe.db.get_value("Pick List Item", name, "bucket")
                     sibs = []
                     if parent and bucket:
                         sibs = frappe.get_all(
                             "Pick List Item",
                             filters={"parent": parent, "parenttype": "Order Pick List",
-                                     "custom_bucket": bucket},
+                                     "bucket": bucket},
                             fields=["name"],
                         )
                     if not sibs:
@@ -8104,7 +8207,7 @@ def setOfflineTrolleyFlags():
                         frappe.db.set_value("Pick List Item", sib["name"], field, 1, update_modified=True)
                         # On load, also stamp the chosen truck onto the row (Data field).
                         if flag == "loaded" and truck:
-                            frappe.db.set_value("Pick List Item", sib["name"], "custom_transit_truck", truck, update_modified=True)
+                            frappe.db.set_value("Pick List Item", sib["name"], "transit_truck", truck, update_modified=True)
                     # The bucket has left the shelf now it's on the trolley/truck —
                     # remove its Shelf Item so the shelf reflects reality.
                     removed_shelves = removed_shelves + remove_bucket_from_shelf(bucket)
@@ -11225,3 +11328,563 @@ def createOfflineIssuingEntry():
             "message": "An unexpected error occurred: {0}".format(str(e)),
         }
 
+
+
+# ============================================================================
+# BUCKET TRANSFERS — remote farm -> sales farm (ported from kaitet-group live,
+# 2026-09-25; verbatim copies of the live scripts are in kaitet_group_scripts/).
+# v16 renamed the v15 custom_* pick-row fields (custom_bucket -> bucket,
+# custom_awaiting_transfer -> awaiting_transfer, …) and fills source_warehouse
+# instead of warehouse on pick rows; the ports below use the v16 names.
+# ============================================================================
+
+
+@frappe.whitelist()
+def getDriverBucketLogistics():
+    # Frappe Server Script (Type: API), api_method = getDriverBucketLogistics
+    # Driver Bucket Logistics — per (source farm, order) transfer summary for a
+    # delivery date. Powers the app's driver screen: farms list + per-order status
+    # and "% loaded in trolley". Source farm = first word of the source warehouse.
+    # v16: a row counts as a transfer while it is awaiting, in a trolley, in transit
+    # or shelved — v15 only looked at awaiting/shelved, but its own saveTrolleyData
+    # clears awaiting_transfer, so trolley-loaded buckets dropped out of the screen.
+    fd = frappe.form_dict
+    delivery_date = fd.get('delivery_date') or frappe.utils.today()
+    FARM_EXPR = "SUBSTRING_INDEX(COALESCE(NULLIF(pli.source_warehouse,''), pli.warehouse), ' ', 1)"
+    TRANSFER = "(pli.awaiting_transfer = 1 OR pli.loaded_in_trolley = 1 OR pli.in_transit = 1 OR pli.shelved = 1)"
+
+    rows = frappe.db.sql("""
+        SELECT
+            """ + FARM_EXPR + """  AS farm,
+            opl.name               AS opl,
+            opl.order_name         AS order_name,
+            so.customer            AS customer,
+            so.delivery_date       AS delivery_date,
+            COUNT(*)               AS total,
+            SUM(pli.loaded_in_trolley = 1 OR pli.in_transit = 1 OR pli.shelved = 1) AS loaded,
+            SUM(pli.loaded_in_trolley = 1) AS trolley,
+            SUM(pli.awaiting_transfer = 1) AS awaiting,
+            SUM(pli.in_transit = 1)        AS transit,
+            SUM(pli.shelved = 1)           AS shelved,
+            SUM(pli.custom_ready_for_packing = 1) AS ready,
+            SUM(pli.issued = 1)            AS issued
+        FROM `tabPick List Item` pli
+        JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+        LEFT JOIN `tabSales Order` so ON so.name = opl.sales_order
+        WHERE opl.docstatus < 2 AND pli.parenttype = 'Order Pick List'
+          AND so.delivery_date = %(d)s AND """ + TRANSFER + """
+        GROUP BY farm, opl.name
+        ORDER BY farm, opl.order_name
+    """, {'d': delivery_date}, as_dict=True)
+
+    for r in rows:
+        for k in ['total', 'loaded', 'trolley', 'awaiting', 'transit', 'shelved', 'ready', 'issued']:
+            r[k] = int(r.get(k) or 0)
+
+    frappe.response['message'] = {'delivery_date': str(delivery_date), 'rows': rows}
+
+
+@frappe.whitelist()
+def fixTransferShelvedOpls():
+    # Frappe Server Script (Type: API), api_method = fixTransferShelvedOpls
+    # One-off / maintenance: for OPL rows whose bucket is SHELVED but still carries
+    # stale transfer flags (awaiting_transfer / in_transit / loaded_in_trolley),
+    # clear those flags, then submit any draft OPL whose transfer buckets are all
+    # shelved. Idempotent. Payload: { "data": { "opl": "<name>" } } — omit "opl" to
+    # sweep every affected draft OPL.
+    # v16: submits through the central readiness check (sales_allocation.
+    # _try_submit_opl_if_complete) instead of a bare doc.submit(), so an OPL whose
+    # buckets are shelved but whose lines aren't fully allocated stays in draft —
+    # the same gate shelveBucket uses.
+    from upande_packhouse.upande_packhouse.page.sales_allocation.sales_allocation import (
+        _try_submit_opl_if_complete,
+    )
+
+    frappe.response["message"] = {"status": "error"}
+    try:
+        data = frappe.request.get_json(silent=True) if frappe.request else None
+        if isinstance(data, dict) and "data" in data:
+            data = data.get("data")
+        data = data or frappe.form_dict or {}
+        opl = data.get("opl")
+
+        if opl:
+            names = [opl]
+        else:
+            rows = frappe.db.sql(
+                """
+                SELECT DISTINCT parent FROM `tabPick List Item`
+                WHERE parenttype = 'Order Pick List' AND shelved = 1
+                  AND (awaiting_transfer = 1 OR in_transit = 1 OR loaded_in_trolley = 1)
+                """,
+                as_dict=True,
+            )
+            names = [r.parent for r in rows]
+
+        fixed = []
+        submitted = []
+        for name in names:
+            doc = frappe.get_doc("Order Pick List", name)
+            if doc.docstatus != 0:
+                continue
+            changed = False
+            for row in (doc.get("table_ytkc") or doc.get("locations") or []):
+                is_transfer = (
+                    (row.in_transit or 0) == 1
+                    or (row.awaiting_transfer or 0) == 1
+                    or (row.loaded_in_trolley or 0) == 1
+                )
+                if is_transfer and (row.shelved or 0) == 1:
+                    row.in_transit = 0
+                    row.awaiting_transfer = 0
+                    row.loaded_in_trolley = 0
+                    changed = True
+            if changed:
+                doc.save(ignore_permissions=True)
+                fixed.append(name)
+            try:
+                if _try_submit_opl_if_complete(name):
+                    submitted.append(name)
+            except Exception:
+                frappe.log_error("fixTransferShelvedOpls: submit failed", frappe.get_traceback())
+
+        frappe.db.commit()
+        frappe.response["message"] = {
+            "status": "success", "candidates": len(names), "fixed": fixed, "submitted": submitted
+        }
+    except Exception as e:
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+# ----------------------------------------------------------------------------
+# Trip / route / logistics endpoints. The v16 implementations live in
+# upande_packhouse (api/transfer_control.py, api/bucket_logistics.py) — these
+# are the same endpoints under upande_quality.mobile.api, delegating to that one
+# implementation rather than keeping a second copy that would drift.
+# Same form_dict in, same frappe.response out.
+# ----------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def saveBucketTrip():
+    # api_method = saveBucketTrip -> upande_packhouse.api.transfer_control.saveBucketTrip
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.saveBucketTrip()
+
+
+@frappe.whitelist()
+def deleteBucketTrip():
+    # api_method = deleteBucketTrip -> upande_packhouse.api.transfer_control.deleteBucketTrip
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.deleteBucketTrip()
+
+
+@frappe.whitelist()
+def dispatchBucketTrip():
+    # api_method = dispatchBucketTrip -> upande_packhouse.api.transfer_control.dispatchBucketTrip
+    # (also flags the trip's buckets in_transit on the truck)
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.dispatchBucketTrip()
+
+
+@frappe.whitelist()
+def receiveBucketTrip():
+    # api_method = receiveBucketTrip -> upande_packhouse.api.transfer_control.receiveBucketTrip
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.receiveBucketTrip()
+
+
+@frappe.whitelist()
+def saveBucketLogisticsRoute():
+    # api_method = saveBucketLogisticsRoute -> upande_packhouse.api.transfer_control.saveBucketLogisticsRoute
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.saveBucketLogisticsRoute()
+
+
+@frappe.whitelist()
+def getTransferControlData():
+    # api_method = getTransferControlData -> upande_packhouse.api.transfer_control.getTransferControlData
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.getTransferControlData()
+
+
+@frappe.whitelist()
+def getTransferScheduleData():
+    # api_method = getTransferScheduleData -> upande_packhouse.api.transfer_control.getTransferScheduleData
+    from upande_packhouse.api import transfer_control
+
+    transfer_control.getTransferScheduleData()
+
+
+@frappe.whitelist()
+def getBucketLogistics():
+    # api_method = getBucketLogistics -> upande_packhouse.api.bucket_logistics.getBucketLogistics
+    from upande_packhouse.api import bucket_logistics
+
+    bucket_logistics.getBucketLogistics()
+
+
+@frappe.whitelist()
+def getBucketLogisticsDetail():
+    # api_method = getBucketLogisticsDetail -> upande_packhouse.api.bucket_logistics.getBucketLogisticsDetail
+    from upande_packhouse.api import bucket_logistics
+
+    bucket_logistics.getBucketLogisticsDetail()
+
+
+@frappe.whitelist()
+def get_vehicle_trips():
+    # Frappe Server Script (Type: API), api_method = get_vehicle_trips
+    # "Get Vehicle Trips" on kaitet-group live (modified 2026-06-08), ported verbatim.
+    # Trips + stops + speed stats reconstructed from a vehicle's GPS fixes.
+    try:
+        DEG = 3.141592653589793 / 180.0
+        EARTH_KM = 6371.0
+        EARTH_M = 6371000.0
+        STOP_RADIUS_M = 30.0
+        STOP_SECS = 10 * 60.0
+        MAX_KMH = 140.0
+        SPEED_LIMIT = 80.0
+        MIN_TRIP_KM = 0.2
+        LAT_MIN = -5.0
+        LAT_MAX = 5.0
+        LNG_MIN = 33.0
+        LNG_MAX = 42.0
+
+        vehicle   = frappe.form_dict.get("vehicle")
+        imei_arg  = frappe.form_dict.get("imei")
+        from_date = frappe.form_dict.get("from_date")
+        to_date   = frappe.form_dict.get("to_date")
+
+        # Build filter on the GPS table. Prefer vehicle (it's the link);
+        # fall back to imei if only that was supplied.
+        flt = {}
+        if vehicle:
+            flt["vehicle"] = vehicle
+        elif imei_arg:
+            flt["imei"] = imei_arg
+
+        if not flt:
+            frappe.response["message"] = {"error": "vehicle or imei is required"}
+        else:
+            if from_date and to_date:
+                flt["timestamp"] = ["between", [from_date + " 00:00:00", to_date + " 23:59:59"]]
+            elif from_date:
+                flt["timestamp"] = [">=", from_date + " 00:00:00"]
+            elif to_date:
+                flt["timestamp"] = ["<=", to_date + " 23:59:59"]
+
+            rows = frappe.get_all("GPS",
+                filters=flt,
+                fields=["timestamp", "latitude", "longitude", "imei", "vehicle"],
+                order_by="timestamp asc",
+                limit_page_length=0)
+
+            resolved_imei = imei_arg
+            resolved_vehicle = vehicle
+
+            # ---- clean fixes ----
+            fixes = []
+            for r in rows:
+                if not r.timestamp:
+                    continue
+                lat = None
+                lng = None
+                try:
+                    lat = float(r.latitude)
+                    lng = float(r.longitude)
+                except (TypeError, ValueError):
+                    lat = None
+                if lat is None:
+                    continue
+                if lat < LAT_MIN or lat > LAT_MAX or lng < LNG_MIN or lng > LNG_MAX:
+                    continue
+                if not resolved_imei and r.imei:
+                    resolved_imei = r.imei
+                if not resolved_vehicle and r.vehicle:
+                    resolved_vehicle = r.vehicle
+                fixes.append({"t": str(r.timestamp), "lat": lat, "lng": lng})
+
+            n = len(fixes)
+
+            # ---- per-segment distance + speed (for stats, not stop detection) ----
+            idx = 1
+            while idx < n:
+                a = fixes[idx - 1]
+                b = fixes[idx]
+                mlat = (a["lat"] + b["lat"]) / 2.0 * DEG
+                ct = 1.0
+                tot = 1.0
+                x2 = mlat * mlat
+                cn = 1
+                while cn <= 8:
+                    ct = -ct * x2 / ((2 * cn - 1) * (2 * cn))
+                    tot += ct
+                    cn += 1
+                dx = (b["lng"] - a["lng"]) * DEG * tot
+                dy = (b["lat"] - a["lat"]) * DEG
+                dist_km = ((dx * dx + dy * dy) ** 0.5) * EARTH_KM
+                dt = 0.0
+                try:
+                    dt = (frappe.utils.get_datetime(b["t"]) - frappe.utils.get_datetime(a["t"])).total_seconds()
+                except Exception:
+                    dt = 0.0
+                kmh = (dist_km / dt * 3600.0) if dt > 0 else 0.0
+                b["seg_km"] = dist_km
+                b["seg_dt"] = dt
+                b["kmh"] = kmh if kmh <= MAX_KMH else 0.0
+                idx += 1
+            if n > 0:
+                fixes[0]["seg_km"] = 0.0
+                fixes[0]["seg_dt"] = 0.0
+                fixes[0]["kmh"] = 0.0
+
+            # ---- POSITION-BASED stop detection + trip segmentation ----
+            trips = []
+            stops_all = []
+            i = 0
+            cur_start_i = None
+
+            while i < n:
+                anchor = fixes[i]
+                j = i + 1
+                while j < n:
+                    mlat = (anchor["lat"] + fixes[j]["lat"]) / 2.0 * DEG
+                    ct = 1.0
+                    tot = 1.0
+                    x2 = mlat * mlat
+                    cn = 1
+                    while cn <= 8:
+                        ct = -ct * x2 / ((2 * cn - 1) * (2 * cn))
+                        tot += ct
+                        cn += 1
+                    dx = (fixes[j]["lng"] - anchor["lng"]) * DEG * tot
+                    dy = (fixes[j]["lat"] - anchor["lat"]) * DEG
+                    d_m = ((dx * dx + dy * dy) ** 0.5) * EARTH_M
+                    if d_m > STOP_RADIUS_M:
+                        break
+                    j += 1
+                cluster_secs = 0.0
+                if j - 1 > i:
+                    try:
+                        cluster_secs = (frappe.utils.get_datetime(fixes[j-1]["t"]) - frappe.utils.get_datetime(anchor["t"])).total_seconds()
+                    except Exception:
+                        cluster_secs = 0.0
+
+                if cluster_secs >= STOP_SECS:
+                    if cur_start_i is not None and i > cur_start_i:
+                        trips.append({"a": cur_start_i, "b": i})
+                    stops_all.append({
+                        "lat": anchor["lat"], "lng": anchor["lng"],
+                        "from": anchor["t"], "to": fixes[j-1]["t"],
+                        "minutes": round(cluster_secs / 60.0, 1),
+                    })
+                    cur_start_i = j
+                    i = j
+                else:
+                    if cur_start_i is None:
+                        cur_start_i = i
+                    i += 1
+
+            if cur_start_i is not None and (n - 1) > cur_start_i:
+                trips.append({"a": cur_start_i, "b": n - 1})
+
+            # ---- build trip summaries ----
+            out_trips = []
+            total_km = 0.0
+            total_stops = len(stops_all)
+            trip_no = 0
+            ti = 0
+            while ti < len(trips):
+                seg = trips[ti]
+                a = seg["a"]
+                b = seg["b"]
+                dist_km = 0.0
+                max_kmh = 0.0
+                speed_sum = 0.0
+                speed_n = 0
+                move_secs = 0.0
+                idle_secs = 0.0
+                speeding = 0
+                path = []
+                path.append([fixes[a]["lat"], fixes[a]["lng"], 0.0])
+                k = a + 1
+                while k <= b:
+                    f = fixes[k]
+                    dist_km += f["seg_km"]
+                    kmh = f["kmh"]
+                    if kmh >= 3.0:
+                        move_secs += f["seg_dt"]
+                        speed_sum += kmh
+                        speed_n += 1
+                        if kmh > max_kmh:
+                            max_kmh = kmh
+                        if kmh > SPEED_LIMIT:
+                            speeding += 1
+                    else:
+                        idle_secs += f["seg_dt"]
+                    path.append([f["lat"], f["lng"], round(kmh, 1)])
+                    k += 1
+
+                if dist_km < MIN_TRIP_KM:
+                    ti += 1
+                    continue
+
+                trip_no += 1
+                start_t = fixes[a]["t"]
+                end_t = fixes[b]["t"]
+                dur = 0.0
+                try:
+                    dur = (frappe.utils.get_datetime(end_t) - frappe.utils.get_datetime(start_t)).total_seconds()
+                except Exception:
+                    dur = 0.0
+                avg_kmh = (speed_sum / speed_n) if speed_n else 0.0
+
+                trip_stops = []
+                si = 0
+                while si < len(stops_all):
+                    s = stops_all[si]
+                    if s["from"] >= start_t and s["to"] <= end_t:
+                        trip_stops.append(s)
+                    si += 1
+
+                out_trips.append({
+                    "index": trip_no,
+                    "date": (start_t or "")[0:10],
+                    "start": start_t,
+                    "end": end_t,
+                    "distance_km": round(dist_km, 2),
+                    "max_speed_kmh": round(max_kmh, 1),
+                    "avg_moving_kmh": round(avg_kmh, 1),
+                    "duration_minutes": round(dur / 60.0, 1),
+                    "moving_minutes": round(move_secs / 60.0, 1),
+                    "idle_minutes": round(idle_secs / 60.0, 1),
+                    "stop_count": len(trip_stops),
+                    "stops": trip_stops,
+                    "speeding_segments": speeding,
+                    "over_limit": (max_kmh > SPEED_LIMIT),
+                    "speed_limit_kmh": 80,
+                    "path": path,
+                    "point_count": (b - a + 1),
+                })
+                total_km += dist_km
+                ti += 1
+
+            assigned = 0
+            ai = 0
+            while ai < len(out_trips):
+                assigned += out_trips[ai]["stop_count"]
+                ai += 1
+            parked_count = total_stops - assigned
+            if parked_count < 0:
+                parked_count = 0
+
+            frappe.response["message"] = {
+                "vehicle": resolved_vehicle,
+                "imei": resolved_imei,
+                "from_date": from_date,
+                "to_date": to_date,
+                "source": "GPS",
+                "fix_count": n,
+                "trip_count": len(out_trips),
+                "total_distance_km": round(total_km, 2),
+                "total_stops": total_stops,
+                "parked_stop_count": parked_count,
+                "stop_radius_m": 30,
+                "stop_threshold_minutes": 10,
+                "trips": out_trips,
+            }
+
+    except Exception as e:
+        frappe.response["message"] = {
+            "error": "server_exception",
+            "detail": str(e),
+        }
+
+
+@frappe.whitelist()
+def latestRoutes():
+    # Frappe Server Script (Type: API), api_method = latestRoutes
+    # "Latest Routes" on kaitet-group live (modified 2026-07-27), ported verbatim.
+    # Each user's most recent desk route in the last 12 hours (Route History).
+
+    if frappe.request.method == "GET":
+        try:
+            since = frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-12)
+            rows = frappe.db.sql("""
+                SELECT rh.user, rh.route, rh.modified
+                FROM `tabRoute History` rh
+                INNER JOIN (
+                    SELECT user, MAX(modified) AS mx
+                    FROM `tabRoute History`
+                    WHERE modified >= %(since)s
+                    GROUP BY user
+                ) t ON t.user = rh.user AND rh.modified = t.mx
+                WHERE rh.modified >= %(since)s
+            """, {"since": since}, as_dict=True)
+
+            seen = {}
+            deduped = []
+            for r in rows:
+                if r["user"] in seen:
+                    continue
+                seen[r["user"]] = 1
+                deduped.append({"user": r["user"], "route": r["route"],
+                                "modified": str(r["modified"]) if r.get("modified") else None})
+            rows = deduped
+
+            frappe.response.pop("docs", None)
+            frappe.response["status"] = "success"
+            frappe.response["data"] = {"routes": rows, "count": len(rows)}
+            frappe.response.http_status_code = 200
+        except Exception as e:
+            frappe.log_error(title="Latest Routes API Error", message=str(e))
+            frappe.response["status"] = "error"
+            frappe.response["message"] = f"Failed: {e!s}"
+            frappe.response.http_status_code = 500
+    else:
+        frappe.response["status"] = "error"
+        frappe.response["message"] = "Method not allowed. Use GET."
+        frappe.response.http_status_code = 405
+
+
+def _bucket_request_payload():
+    data = frappe.request.get_json(silent=True) if frappe.request else None
+    if isinstance(data, dict) and "data" in data:
+        data = data.get("data")
+    return data or frappe.form_dict or {}
+
+
+@frappe.whitelist()
+def findRequestedBucketReplacement():
+    # Bucket Requests app: preview the shelved bucket that would replace a requested
+    # bucket missing from the cold room (same variety + stem length + farm, FIFO).
+    # Payload: { "data": { "pick_list_item": "<name>" } }
+    from upande_packhouse.upande_packhouse.page.sales_allocation import sales_allocation
+
+    try:
+        data = _bucket_request_payload()
+        res = sales_allocation.find_requested_bucket_replacement(data.get("pick_list_item"))
+        frappe.response["message"] = dict(res, status="success" if res.get("found") else "error")
+    except Exception as e:
+        frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist(methods=["POST"])
+def replaceRequestedBucket():
+    # Bucket Requests app: swap a missing requested bucket for the matching one —
+    # updates the OPL rows, the Bucket Allocation Status and the stock entries.
+    # Payload: { "data": { "pick_list_item": "<name>", "new_bucket_id": "<previewed bucket>" } }
+    from upande_packhouse.upande_packhouse.page.sales_allocation import sales_allocation
+
+    data = _bucket_request_payload()
+    res = sales_allocation.replace_requested_bucket(
+        data.get("pick_list_item"), new_bucket_id=data.get("new_bucket_id")
+    )
+    frappe.response["message"] = dict(res, status="success" if res.get("success") else "error")
