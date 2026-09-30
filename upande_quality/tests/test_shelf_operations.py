@@ -4,20 +4,28 @@ from frappe.tests import IntegrationTestCase
 
 class IntegrationTestShelfOperations(IntegrationTestCase):
 	def setUp(self):
+		# These run against the Karen Roses setup (company, "Reflex", the
+		# "... - KR" greenhouse/cold-store warehouses, Harvesting/Receiving entry
+		# types) that a real kaitet bench carries. A fresh CI site has none of
+		# it, so skip there instead of erroring in setUp.
+		if not frappe.db.exists("Company", "Karen Roses"):
+			self.skipTest("needs the Karen Roses master data of a kaitet bench")
 		self.farm = "Test Shelf Ops Farm"
 		if not frappe.db.exists("Farm", self.farm):
-			frappe.get_doc({
-				"doctype": "Farm",
-				"farm_name": self.farm,
-				"company": "Karen Roses",
-				"abbreviation": "TSOF",
-				"farm_type": [{"farm_type": "Has Greenhouses"}],
-			}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Farm",
+					"farm_name": self.farm,
+					"company": "Karen Roses",
+					"abbreviation": "TSOF",
+					"farm_type": [{"farm_type": "Has Greenhouses"}],
+				}
+			).insert(ignore_permissions=True)
 		self.bucket_id = "TEST-BUCKET-001"
 		if not frappe.db.exists("Bucket QR Code", self.bucket_id):
-			frappe.get_doc(
-				{"doctype": "Bucket QR Code", "id": self.bucket_id, "item_code": "Reflex"}
-			).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Bucket QR Code", "id": self.bucket_id, "item_code": "Reflex"}).insert(
+				ignore_permissions=True
+			)
 		frappe.db.commit()
 
 	def tearDown(self):
@@ -41,9 +49,9 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 	def test_shelving_writes_shelved_log_row(self):
 		shelf_id = "TEST-SHELF-A"
 		if not frappe.db.exists("Shelf", shelf_id):
-			frappe.get_doc(
-				{"doctype": "Shelf", "shelf_id": shelf_id, "farm": self.farm}
-			).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Shelf", "shelf_id": shelf_id, "farm": self.farm}).insert(
+				ignore_permissions=True
+			)
 
 		shelf_doc = frappe.get_doc("Shelf", shelf_id)
 		new_item = shelf_doc.append("items", {})
@@ -80,32 +88,52 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 			)
 
 		today = frappe.utils.today()
-		harvest = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"stock_entry_type": "Harvesting",
-			"purpose": "Material Receipt",
-			"company": "Karen Roses",
-			"posting_date": today,
-			"custom_bucket_id": self.bucket_id,
-			"items": [{"item_code": "Reflex", "qty": 20, "t_warehouse": "Karen GH 04 - KR", "uom": "Stems", "allow_zero_valuation_rate": 1, "cost_center": "Karen Roses - KR"}],
-		})
+		harvest = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"stock_entry_type": "Harvesting",
+				"purpose": "Material Receipt",
+				"company": "Karen Roses",
+				"posting_date": today,
+				"custom_bucket_id": self.bucket_id,
+				"items": [
+					{
+						"item_code": "Reflex",
+						"qty": 20,
+						"t_warehouse": "Karen GH 04 - KR",
+						"uom": "Stems",
+						"allow_zero_valuation_rate": 1,
+						"cost_center": "Karen Roses - KR",
+					}
+				],
+			}
+		)
 		harvest.insert(ignore_permissions=True)
 		harvest.submit()
 
-		receiving = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"stock_entry_type": "Receiving",
-			"purpose": "Material Transfer",
-			"company": "Karen Roses",
-			"posting_date": today,
-			"set_posting_time": 1,
-			"custom_bucket_id": self.bucket_id,
-			"items": [{
-				"item_code": "Reflex", "qty": 20, "uom": "Stems",
-				"s_warehouse": "Karen GH 04 - KR", "t_warehouse": "Karen Receiving Cold Store - KR",
-				"custom_stem_length": "52cm", "allow_zero_valuation_rate": 1, "cost_center": "Karen Roses - KR",
-			}],
-		})
+		receiving = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"stock_entry_type": "Receiving",
+				"purpose": "Material Transfer",
+				"company": "Karen Roses",
+				"posting_date": today,
+				"set_posting_time": 1,
+				"custom_bucket_id": self.bucket_id,
+				"items": [
+					{
+						"item_code": "Reflex",
+						"qty": 20,
+						"uom": "Stems",
+						"s_warehouse": "Karen GH 04 - KR",
+						"t_warehouse": "Karen Receiving Cold Store - KR",
+						"custom_stem_length": "52cm",
+						"allow_zero_valuation_rate": 1,
+						"cost_center": "Karen Roses - KR",
+					}
+				],
+			}
+		)
 		receiving.insert(ignore_permissions=True)
 		receiving.submit()
 		frappe.db.commit()
@@ -163,14 +191,14 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		from upande_quality.mobile.api import transferBucket
 
 		frappe.local.form_dict = frappe._dict({})
-		frappe.request = frappe._dict(
-			get_json=lambda: {"bucket_id": self.bucket_id, "to_shelf_id": shelf_b}
-		)
+		frappe.request = frappe._dict(get_json=lambda: {"bucket_id": self.bucket_id, "to_shelf_id": shelf_b})
 		frappe.response = frappe._dict()
 		transferBucket()
 
 		self.assertEqual(frappe.response["data"]["status"], "success")
-		remaining_on_a = frappe.get_all("Shelf Item", filters={"parent": shelf_a, "bucket_id": self.bucket_id})
+		remaining_on_a = frappe.get_all(
+			"Shelf Item", filters={"parent": shelf_a, "bucket_id": self.bucket_id}
+		)
 		on_b = frappe.get_all(
 			"Shelf Item", filters={"parent": shelf_b, "bucket_id": self.bucket_id}, fields=["stem_qty"]
 		)
@@ -215,10 +243,20 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 				"naming_series": "OPL-.YYYY.-",
 				"farm": self.farm,
 				"table_ytkc": [
-					{"item_code": "Reflex", "bucket": self.bucket_id, "shelf": shelf_a,
-					 "issued": 0, "qty": 20},
-					{"item_code": "Reflex", "bucket": self.bucket_id, "shelf": shelf_a,
-					 "issued": 1, "qty": 5},
+					{
+						"item_code": "Reflex",
+						"bucket": self.bucket_id,
+						"shelf": shelf_a,
+						"issued": 0,
+						"qty": 20,
+					},
+					{
+						"item_code": "Reflex",
+						"bucket": self.bucket_id,
+						"shelf": shelf_a,
+						"issued": 1,
+						"qty": 5,
+					},
 				],
 			}
 		)
@@ -228,9 +266,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 
 		from upande_quality.mobile.api import transferBucket
 
-		frappe.request = frappe._dict(
-			get_json=lambda: {"bucket_id": self.bucket_id, "to_shelf_id": shelf_e}
-		)
+		frappe.request = frappe._dict(get_json=lambda: {"bucket_id": self.bucket_id, "to_shelf_id": shelf_e})
 		frappe.response = frappe._dict()
 		transferBucket()
 
@@ -247,13 +283,15 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		shelf_a = "TEST-SHELF-A"
 		other_farm = "Test Shelf Ops Farm 2"
 		if not frappe.db.exists("Farm", other_farm):
-			frappe.get_doc({
-				"doctype": "Farm",
-				"farm_name": other_farm,
-				"company": "Karen Roses",
-				"abbreviation": "TSOF2",
-				"farm_type": [{"farm_type": "Has Greenhouses"}],
-			}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Farm",
+					"farm_name": other_farm,
+					"company": "Karen Roses",
+					"abbreviation": "TSOF2",
+					"farm_type": [{"farm_type": "Has Greenhouses"}],
+				}
+			).insert(ignore_permissions=True)
 		shelf_d = "TEST-SHELF-D"
 		if not frappe.db.exists("Shelf", shelf_d):
 			frappe.get_doc({"doctype": "Shelf", "shelf_id": shelf_d, "farm": other_farm}).insert(
@@ -276,9 +314,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 
 		from upande_quality.mobile.api import transferBucket
 
-		frappe.request = frappe._dict(
-			get_json=lambda: {"bucket_id": self.bucket_id, "to_shelf_id": shelf_d}
-		)
+		frappe.request = frappe._dict(get_json=lambda: {"bucket_id": self.bucket_id, "to_shelf_id": shelf_d})
 		frappe.response = frappe._dict()
 		transferBucket()
 
@@ -308,7 +344,9 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 					"custom_farm": self.farm,
 				}
 			).insert(ignore_permissions=True)
-		warehouse = frappe.get_all("Warehouse", filters={"warehouse_name": "Test Shelf Ops WH"}, pluck="name")[0]
+		warehouse = frappe.get_all(
+			"Warehouse", filters={"warehouse_name": "Test Shelf Ops WH"}, pluck="name"
+		)[0]
 
 		# Seed real stock in this fresh warehouse -- createOfflineIssuingEntry
 		# posts a real Material Issue out of it, and this site enforces
@@ -322,35 +360,51 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		# -- which only scans Receiving/Late Receipt entries for this
 		# bucket_id/item_code -- will find, so cost_center isn't left unset
 		# on the Offline Issuing entry (mandatory for GL posting).
-		harvest = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"stock_entry_type": "Harvesting",
-			"purpose": "Material Receipt",
-			"company": "Karen Roses",
-			"posting_date": frappe.utils.today(),
-			"custom_bucket_id": self.bucket_id,
-			"items": [{
-				"item_code": "Reflex", "qty": 15, "t_warehouse": "Karen GH 04 - KR", "uom": "Stems",
-				"allow_zero_valuation_rate": 1, "cost_center": "Karen Roses - KR",
-			}],
-		})
+		harvest = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"stock_entry_type": "Harvesting",
+				"purpose": "Material Receipt",
+				"company": "Karen Roses",
+				"posting_date": frappe.utils.today(),
+				"custom_bucket_id": self.bucket_id,
+				"items": [
+					{
+						"item_code": "Reflex",
+						"qty": 15,
+						"t_warehouse": "Karen GH 04 - KR",
+						"uom": "Stems",
+						"allow_zero_valuation_rate": 1,
+						"cost_center": "Karen Roses - KR",
+					}
+				],
+			}
+		)
 		harvest.insert(ignore_permissions=True)
 		harvest.submit()
 
-		seed = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"stock_entry_type": "Receiving",
-			"purpose": "Material Transfer",
-			"company": "Karen Roses",
-			"posting_date": frappe.utils.today(),
-			"set_posting_time": 1,
-			"custom_bucket_id": self.bucket_id,
-			"items": [{
-				"item_code": "Reflex", "qty": 15, "uom": "Stems",
-				"s_warehouse": "Karen GH 04 - KR", "t_warehouse": warehouse,
-				"allow_zero_valuation_rate": 1, "cost_center": "Karen Roses - KR",
-			}],
-		})
+		seed = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"stock_entry_type": "Receiving",
+				"purpose": "Material Transfer",
+				"company": "Karen Roses",
+				"posting_date": frappe.utils.today(),
+				"set_posting_time": 1,
+				"custom_bucket_id": self.bucket_id,
+				"items": [
+					{
+						"item_code": "Reflex",
+						"qty": 15,
+						"uom": "Stems",
+						"s_warehouse": "Karen GH 04 - KR",
+						"t_warehouse": warehouse,
+						"allow_zero_valuation_rate": 1,
+						"cost_center": "Karen Roses - KR",
+					}
+				],
+			}
+		)
 		seed.insert(ignore_permissions=True)
 		seed.submit()
 		frappe.db.commit()
@@ -434,8 +488,13 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 				"allocated_quantity": 15,
 				"available_quantity": 0,
 				"bucket_allocations": [
-					{"sales_order": "SAL-ORD-TEST-0001", "sales_order_item": "row1",
-					 "quantity_allocated": 15, "cancelled": 0, "issued": 0}
+					{
+						"sales_order": "SAL-ORD-TEST-0001",
+						"sales_order_item": "row1",
+						"quantity_allocated": 15,
+						"cancelled": 0,
+						"issued": 0,
+					}
 				],
 			}
 		)
@@ -444,9 +503,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 
 		from upande_quality.mobile.api import createOfflineIssuingEntry
 
-		frappe.request = frappe._dict(
-			get_json=lambda: {"bucket_id": self.bucket_id, "reason": "Damaged"}
-		)
+		frappe.request = frappe._dict(get_json=lambda: {"bucket_id": self.bucket_id, "reason": "Damaged"})
 		frappe.response = frappe._dict()
 		createOfflineIssuingEntry()
 

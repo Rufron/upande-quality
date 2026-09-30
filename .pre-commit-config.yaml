@@ -35,11 +35,13 @@ repos:
     hooks:
       - id: prettier
         types_or: [javascript, vue, scss]
-        # Ignore any files that might contain jinja / bundles
+        # Ignore any files that might contain jinja / bundles, and the verbatim
+        # kaitet_group_scripts reference copies (ruff excludes them too)
         exclude: |
             (?x)^(
                 upande_quality/public/dist/.*|
                 .*node_modules.*|
+                kaitet_group_scripts/.*|
                 .*boilerplate.*|
                 upande_quality/templates/includes/.*|
                 upande_quality/public/js/lib/.*
@@ -52,12 +54,14 @@ repos:
       - id: eslint
         types_or: [javascript]
         args: ['--quiet']
-        # Ignore any files that might contain jinja / bundles
+        # Ignore any files that might contain jinja / bundles, and the verbatim
+        # kaitet_group_scripts reference copies (ruff excludes them too)
         exclude: |
             (?x)^(
                 upande_quality/public/dist/.*|
                 cypress/.*|
                 .*node_modules.*|
+                kaitet_group_scripts/.*|
                 .*boilerplate.*|
                 upande_quality/templates/includes/.*|
                 upande_quality/public/js/lib/.*
