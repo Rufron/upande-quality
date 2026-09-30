@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-09-21 21:05:04.253029",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_arrx",
+  "option_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_arrx",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "option_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Option Name"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-21 21:12:03.631757",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Hygiene Check Option",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

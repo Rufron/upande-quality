@@ -1,0 +1,33 @@
+{
+ "add_total_row": 0,
+ "columns": [],
+ "creation": "2026-09-24 07:07:21.000000",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letterhead": null,
+ "modified": "2026-09-24 07:07:21.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Packhouse Cleaning Records",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "query": "SELECT name AS \"ID:Link/Packhouse Cleaning Record:220\", date AS \"Date:Date:100\", area AS \"Area Cleaned:Data:140\", mode_of_cleaning AS \"Mode:Data:120\", inspected_by AS \"Inspected By:Data:140\", detergent_used AS \"Detergent:Data:130\", disinfectant_used AS \"Disinfectant:Data:130\", remarks AS \"Remarks:Data:250\" FROM `tabPackhouse Cleaning Record` ORDER BY date DESC, creation DESC",
+ "ref_doctype": "Packhouse Cleaning Record",
+ "report_name": "Packhouse Cleaning Records",
+ "report_type": "Query Report",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Stock User"
+  },
+  {
+   "role": "Sales User"
+  }
+ ]
+}

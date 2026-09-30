@@ -1,0 +1,37 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-09-25 15:07:48.691367",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "delivery_point"
+ ],
+ "fields": [
+  {
+   "fieldname": "delivery_point",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Drop Off Point",
+   "options": "Delivery Point",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-25 15:07:48.691367",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Freight Drop Off Point",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
