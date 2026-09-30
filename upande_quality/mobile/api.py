@@ -1914,10 +1914,29 @@ def createShelvingEntry():
                             # replaces an earlier, simpler farm-keyed "Farm Transfer"
                             # mechanism (roses_warehouse_map.transfer_to_farm_warehouse)
                             # that overlapped with this engine instead of using it.
+                            #
+                            # Only when the bucket is shelved AT that arrival farm, though.
+                            # Shelved back on its own (remote) farm it has not moved: the
+                            # stems stay in that farm's receiving cold store until the
+                            # order is allocated, and allocation (move_allocation_to_sold)
+                            # posts the Remote Transfers + Sold legs then. Posting the
+                            # arrival here moved them to the hub on paper while they were
+                            # still on the farm's shelf, so allocation recorded the hub as
+                            # the source and remote transfers lost track of the farm.
                             from upande_packhouse import stock_movement
                             business_unit = data.get("business_unit") or "Roses"
                             warehouse_by_ri = {}
                             for ri in receiving_doc.items:
+                                target = stock_movement.stage_warehouse(
+                                    ri.t_warehouse, business_unit, stage=stock_movement.ARRIVAL_STAGE
+                                )
+                                target_farm = (
+                                    frappe.db.get_value("Warehouse", target, "custom_farm")
+                                    or (target or "").split(" ")[0]
+                                )
+                                if target == ri.t_warehouse or (target_farm or "").lower() != (farm or "").lower():
+                                    warehouse_by_ri[ri.name] = ri.t_warehouse
+                                    continue
                                 arrival = stock_movement.post_arrival(
                                     bucket_id=bucket_id,
                                     item_code=ri.item_code,
