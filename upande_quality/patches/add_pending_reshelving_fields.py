@@ -35,7 +35,5 @@ def execute():
 	for df in FIELDS:
 		if frappe.db.exists("Custom Field", {"dt": "Stock Entry", "fieldname": df["fieldname"]}):
 			continue
-		frappe.get_doc({"doctype": "Custom Field", "dt": "Stock Entry", **df}).insert(
-			ignore_permissions=True
-		)
+		frappe.get_doc({"doctype": "Custom Field", "dt": "Stock Entry", **df}).insert(ignore_permissions=True)
 	frappe.clear_cache(doctype="Stock Entry")

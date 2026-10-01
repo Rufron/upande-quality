@@ -198,9 +198,7 @@ doc_events = {
 
 scheduler_events = {
 	"cron": {
-		"0 0 * * *": [
-			"upande_quality.tasks.auto_discard_request"
-		],
+		"0 0 * * *": ["upande_quality.tasks.auto_discard_request"],
 	},
 }
 

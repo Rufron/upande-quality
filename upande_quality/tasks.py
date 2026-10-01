@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import today, now_datetime, getdate, get_datetime
+from frappe.utils import get_datetime, getdate, now_datetime, today
 
 
 def auto_discard_request():
