@@ -196,23 +196,13 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"upande_quality.tasks.all"
-# 	],
-# 	"daily": [
-# 		"upande_quality.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"upande_quality.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"upande_quality.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"upande_quality.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"cron": {
+		"0 0 * * *": [
+			"upande_quality.tasks.auto_discard_request"
+		],
+	},
+}
 
 # Testing
 # -------

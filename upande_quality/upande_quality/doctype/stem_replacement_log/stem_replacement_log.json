@@ -1,0 +1,138 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "SRL-.YYYY.-.#####",
+ "creation": "2026-09-25 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "pick_list_item",
+  "opl",
+  "sale_order_item",
+  "col1",
+  "destination_bucket",
+  "donor_bucket",
+  "donor_shelf",
+  "sec1",
+  "variety",
+  "stem_length",
+  "stems",
+  "col2",
+  "replaced_at",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "pick_list_item",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Pick List Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "opl",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Order Pick List",
+   "options": "Order Pick List"
+  },
+  {
+   "fieldname": "sale_order_item",
+   "fieldtype": "Data",
+   "label": "Sale Order Item"
+  },
+  {
+   "fieldname": "col1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "destination_bucket",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Destination Bucket"
+  },
+  {
+   "fieldname": "donor_bucket",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Donor Bucket"
+  },
+  {
+   "fieldname": "donor_shelf",
+   "fieldtype": "Data",
+   "label": "Donor Shelf"
+  },
+  {
+   "fieldname": "sec1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variety"
+  },
+  {
+   "fieldname": "stem_length",
+   "fieldtype": "Data",
+   "label": "Stem Length"
+  },
+  {
+   "fieldname": "stems",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Stems"
+  },
+  {
+   "fieldname": "col2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "replaced_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Replaced At"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Stem Replacement Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Harvest Details Updater",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

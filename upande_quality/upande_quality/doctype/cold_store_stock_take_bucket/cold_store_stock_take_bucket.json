@@ -1,0 +1,84 @@
+{
+ "actions": [],
+ "creation": "2026-10-01 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bucket_id",
+  "status",
+  "shelf",
+  "col_break_1",
+  "variety",
+  "stem_length",
+  "age_days",
+  "scanned_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "bucket_id",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Bucket",
+   "options": "Bucket QR Code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Shelved\nUnshelved"
+  },
+  {
+   "description": "The shelf this bucket was found on at scan time. Blank when Unshelved.",
+   "fieldname": "shelf",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Shelf",
+   "options": "Shelf"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item"
+  },
+  {
+   "fieldname": "stem_length",
+   "fieldtype": "Link",
+   "label": "Stem Length",
+   "options": "Stem Length"
+  },
+  {
+   "description": "Shelved: age of the Shelf Item's own Harvest Date. Unshelved: age of the bucket's latest Harvesting Stock Entry (buckets are reused, so only the most recent harvest counts).",
+   "fieldname": "age_days",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Age (days)"
+  },
+  {
+   "default": "Now",
+   "fieldname": "scanned_at",
+   "fieldtype": "Datetime",
+   "label": "Scanned At"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-01 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Cold Store Stock Take Bucket",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

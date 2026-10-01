@@ -14082,3 +14082,243 @@ def replaceRequestedBucket():
 		data.get("pick_list_item"), new_bucket_id=data.get("new_bucket_id")
 	)
 	frappe.response["message"] = dict(res, status="success" if res.get("success") else "error")
+
+
+def _parse_scanned_at(raw, fallback):
+	"""The mobile app's local SQLite queue stamps scanned_at with JS's own
+	Date.toISOString() - "2026-10-01T18:30:00.000Z", not MySQL's own
+	"YYYY-MM-DD HH:MM:SS" - so assigning it straight to a Datetime field
+	reached the database unconverted and MySQL rejected it outright
+	("Incorrect datetime value"). frappe.utils.get_datetime parses ISO 8601
+	correctly, but keeps it UTC-aware ("2026-10-01 18:30:00+00:00") - MySQL
+	rejects that offset suffix too, so it's converted to the site's own
+	timezone (matching what now_datetime() itself returns) and the tzinfo
+	dropped before it's ever assigned to the field. Any other unparseable
+	value (or none at all) falls back to the server's own now_datetime()
+	rather than failing the whole sync."""
+	if not raw:
+		return fallback
+	try:
+		dt = frappe.utils.get_datetime(raw)
+		if dt.tzinfo is not None:
+			dt = frappe.utils.convert_utc_to_system_timezone(dt).replace(tzinfo=None)
+		return dt
+	except Exception:
+		return fallback
+
+
+@frappe.whitelist()
+def syncStockTakeBuckets():
+	"""Bulk-persist a locally-queued batch of stock-take scans in one round
+	trip. Scanning itself happens fully offline (karen-stock-take-db.ts,
+	expo-sqlite - no server round trip per bucket, so walking a cold store
+	scanning thousands of buckets is instant regardless of connectivity).
+	This is the one network call that actually resolves and saves them,
+	built to stay fast at any batch size:
+	  - ONE query resolves every scanned bucket's current Shelf Item
+		(shelved), instead of one lookup per bucket.
+	  - ONE query finds the latest Harvesting Stock Entry for whichever
+		buckets weren't shelved (a single grouped query, not a lookup per
+		bucket - a bucket is reused across many harvests, only the most
+		recent one describes what's in it right now).
+	  - ONE query fetches those entries' Stock Entry Detail varieties.
+	  - One Cold Store Stock Take doc is loaded ONCE and every bucket in
+		this batch is appended/updated on it in memory, then saved ONCE -
+		never reloaded-and-resaved per bucket, which is what makes a large
+		batch slow (each save would re-validate the whole, ever-growing
+		child table just to add one row).
+	The client chunks a big batch itself so one request can't time out;
+	each chunk is still exactly this shape: 3 bulk reads + one append loop
+	+ one save. Re-syncing a bucket already in today's document (a re-scan,
+	or a retried chunk) updates its row in place rather than duplicating it.
+
+	Payload: {coldstore, farm, stock_take_date, buckets: [{bucket_id,
+	scanned_at}, ...]}. Returns per-bucket results so the client can mark
+	each one synced (or show why it failed) without re-deriving anything
+	itself."""
+	try:
+		data = frappe.form_dict.get("data")
+		if isinstance(data, str):
+			data = frappe.parse_json(data)
+		if not data:
+			frappe.throw("data is required")
+
+		coldstore = data.get("coldstore")
+		farm = data.get("farm")
+		stock_take_date = data.get("stock_take_date") or frappe.utils.nowdate()
+		scans = data.get("buckets") or []
+
+		if not coldstore:
+			frappe.response["data"] = {
+				"status": "failed", "reason": "coldstore_not_null",
+				"message": "Cold store is missing.",
+			}
+			return
+		if not farm:
+			frappe.response["data"] = {
+				"status": "failed", "reason": "farm_not_null",
+				"message": "Farm is missing.",
+			}
+			return
+		if not scans:
+			frappe.response["data"] = {
+				"status": "failed", "reason": "buckets_not_null",
+				"message": "No buckets to sync.",
+			}
+			return
+
+		bucket_ids = []
+		scanned_at_by_bucket = {}
+		for s in scans:
+			bid = s.get("bucket_id")
+			if not bid or bid in scanned_at_by_bucket:
+				continue
+			bucket_ids.append(bid)
+			scanned_at_by_bucket[bid] = s.get("scanned_at")
+
+		# Which of these are real, recognised buckets at all - anything else
+		# is reported back as a per-bucket failure, not a whole-batch one.
+		real_buckets = set(
+			frappe.get_all("Bucket QR Code", filters={"name": ["in", bucket_ids]}, pluck="name")
+		)
+
+		# ── Bulk resolve: shelved (same lookup transferBucket uses, for
+		#	 every bucket in this batch at once) ────────────────────────
+		shelved_by_bucket = {}
+		if real_buckets:
+			shelf_items = frappe.get_all(
+				"Shelf Item",
+				filters={"bucket_id": ["in", list(real_buckets)]},
+				fields=["bucket_id", "parent", "variety", "stem_length", "harvest_date"],
+			)
+			for si in shelf_items:
+				# A bucket's rows all share one shelf (it moves as one
+				# physical unit - see transferBucket's own docstring), so the
+				# first row seen for a bucket_id is as good as any other.
+				shelved_by_bucket.setdefault(si.bucket_id, si)
+
+		# ── Bulk resolve: unshelved -> latest Harvesting Stock Entry ─────
+		unshelved_ids = [b for b in real_buckets if b not in shelved_by_bucket]
+		harvest_by_bucket = {}
+		variety_by_se = {}
+		if unshelved_ids:
+			# creation is folded into the same MAX() key, not just
+			# posting_date/posting_time - an amended Stock Entry (the "-1"
+			# resubmission Frappe creates when one is cancelled and
+			# corrected) carries the exact same posting_date/posting_time
+			# as the original it replaced, which left this tied and
+			# non-deterministic (confirmed live: two runs against the same
+			# data picked two different entries). creation, to the
+			# microsecond, is what actually tells them apart.
+			rows = frappe.db.sql(
+				"""
+				select se.custom_bucket_id as bucket_id, se.name as se_name,
+					   se.posting_date, se.posting_time, se.custom_stem_length
+				from `tabStock Entry` se
+				inner join (
+					select custom_bucket_id,
+						   max(concat(posting_date, ' ', coalesce(posting_time, '00:00:00'), ' ', creation)) as max_dt
+					from `tabStock Entry`
+					where stock_entry_type = 'Harvesting' and custom_bucket_id in %(ids)s
+					group by custom_bucket_id
+				) latest
+				  on latest.custom_bucket_id = se.custom_bucket_id
+				 and concat(se.posting_date, ' ', coalesce(se.posting_time, '00:00:00'), ' ', se.creation) = latest.max_dt
+				where se.stock_entry_type = 'Harvesting'
+				""",
+				{"ids": tuple(unshelved_ids)},
+				as_dict=True,
+			)
+			for r in rows:
+				harvest_by_bucket.setdefault(r.bucket_id, r)  # first wins on a genuine full tie
+
+			se_names = [r.se_name for r in harvest_by_bucket.values()]
+			if se_names:
+				details = frappe.get_all(
+					"Stock Entry Detail",
+					filters={"parent": ["in", se_names]},
+					fields=["parent", "item_code"],
+				)
+				for d in details:
+					variety_by_se.setdefault(d.parent, d.item_code)
+
+		now_dt = frappe.utils.now_datetime()
+		name_guess = "{0}-{1}".format(coldstore, stock_take_date)
+		if frappe.db.exists("Cold Store Stock Take", name_guess):
+			doc = frappe.get_doc("Cold Store Stock Take", name_guess)
+		else:
+			doc = frappe.new_doc("Cold Store Stock Take")
+			doc.farm = farm
+			doc.coldstore = coldstore
+			doc.stock_take_date = stock_take_date
+
+		existing_row_by_bucket = {r.bucket_id: r for r in doc.buckets}
+
+		results = []
+		for bucket_id in bucket_ids:
+			if bucket_id not in real_buckets:
+				results.append({
+					"bucket_id": bucket_id, "status": "failed",
+					"reason": "bucket_not_found", "message": "Not a recognised bucket.",
+				})
+				continue
+
+			si = shelved_by_bucket.get(bucket_id)
+			if si:
+				status, shelf = "Shelved", si.parent
+				variety, stem_length = si.variety, si.stem_length
+				age_days = frappe.utils.date_diff(now_dt, si.harvest_date) if si.harvest_date else None
+			else:
+				he = harvest_by_bucket.get(bucket_id)
+				if not he:
+					results.append({
+						"bucket_id": bucket_id, "status": "failed",
+						"reason": "no_harvest_history",
+						"message": "No harvest record for this bucket.",
+					})
+					continue
+				status, shelf = "Unshelved", None
+				stem_length = he.custom_stem_length
+				variety = variety_by_se.get(he.se_name)
+				posting_dt = frappe.utils.get_datetime(
+					"{0} {1}".format(he.posting_date, he.posting_time or "00:00:00")
+				)
+				age_days = frappe.utils.date_diff(now_dt, posting_dt)
+
+			row = existing_row_by_bucket.get(bucket_id)
+			if not row:
+				row = doc.append("buckets", {})
+				existing_row_by_bucket[bucket_id] = row
+			row.bucket_id = bucket_id
+			row.status = status
+			row.shelf = shelf
+			row.variety = variety
+			row.stem_length = stem_length
+			row.age_days = age_days
+			row.scanned_at = _parse_scanned_at(scanned_at_by_bucket.get(bucket_id), now_dt)
+
+			results.append({
+				"bucket_id": bucket_id,
+				"status": "success",
+				"payload": {
+					"status": status, "shelf": shelf, "variety": variety,
+					"stem_length": stem_length, "age_days": age_days,
+				},
+			})
+
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()	# nosemgrep: frappe-manual-commit
+
+		frappe.response["data"] = {
+			"status": "success",
+			"message": "Synced {0} bucket(s).".format(len(results)),
+			"payload": {"stock_take": doc.name, "results": results},
+		}
+	except Exception as e:
+		frappe.db.rollback()
+		frappe.log_error(frappe.get_traceback(), "syncStockTakeBuckets Error")
+		frappe.response["data"] = {
+			"status": "error",
+			"reason": "unknown_error",
+			"message": "An unexpected error occurred: {0}".format(str(e)),
+		}
