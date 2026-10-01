@@ -1,0 +1,95 @@
+name: Quality CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.css"
+      - "**.svg"
+      - "**.png"
+      - "**.ico"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-upande_quality-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Install + Migrate (Frappe v16 · ERPNext)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: 'root'
+        ports:
+          - 3306:3306
+        options: --health-cmd="mariadb-admin ping" --health-interval=5s --health-timeout=2s --health-retries=3
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # Frappe v16 requires Python >=3.14,<3.15 (matches frappe's own CI).
+          python-version: "3.14"
+
+      - name: Check for valid Python & Merge Conflicts
+        run: |
+          python -m compileall -q "${GITHUB_WORKSPACE}/upande_quality"
+          if grep -lr --exclude-dir=node_modules "^<<<<<<< " "${GITHUB_WORKSPACE}/upande_quality"; then
+            echo "Found merge conflict markers"; exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          check-latest: true
+
+      - name: Add to Hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Get yarn cache directory
+        id: yarn-cache-dir
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache yarn
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-yarn-
+
+      # Runs the version-16 branches (the live sites are Frappe/ERPNext v16).
+      # install.sh installs the dependency chain first — upande_core,
+      # upande_packhouse, upande_agriculture — because upande_quality ships a
+      # Custom Field on packhouse's Farm Distance and calls packhouse's stock
+      # movement code at runtime.
+      - name: Install & Migrate upande_quality (deploy simulation)
+        run: bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
+        env:
+          FRAPPE_BRANCH: version-16
+          ERPNEXT_BRANCH: version-16
+          PAYMENTS_BRANCH: version-16
+
+      - name: Run app tests
+        working-directory: /home/runner/frappe-bench
+        run: bench --site test_site run-tests --app upande_quality

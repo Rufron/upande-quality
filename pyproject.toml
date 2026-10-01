@@ -62,6 +62,20 @@ ignore = [
     "UP032", # Use f-string instead of `format` call (translations)
     "UP037", # quoted annotations
     "UP040", # Use type aliases instead of type annotations
+    # ── Pre-existing backlog, not a blessing ─────────────────────────────────
+    # Same muted set as upande_packhouse: every hit predates the CI workflows
+    # (ruff has never gated this repo before) and clusters in mobile/api.py's
+    # bodies ported verbatim from DB Server Scripts, where `rows = rows + [r]` and
+    # bare `except:` were the house style. Muted so the linter can enforce
+    # everything else from today; clear them file-by-file and delete the codes.
+    "B007", # unused loop control variable
+    "E722", # bare except
+    "F841", # assigned-but-unused local
+    "RUF001", # ambiguous unicode in a string (— · → are deliberate)
+    "RUF002", # ambiguous unicode in a docstring
+    "RUF003", # ambiguous unicode in a comment
+    "RUF005", # list concatenation instead of unpacking
+    "RUF015", # next(iter(x)) instead of x[0]
 ]
 typing-modules = ["frappe.types.DF"]
 
