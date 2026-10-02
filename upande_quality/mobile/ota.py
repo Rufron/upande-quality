@@ -152,7 +152,9 @@ def _manifest(runtime, platform):
 		elif status == 404:
 			cached = {"status": 404, "body": ""}
 		else:
-			_log_once(key, "Quality OTA manifest upstream error", f"HTTP {status} from {url}\n\n{body[:2000]}")
+			_log_once(
+				key, "Quality OTA manifest upstream error", f"HTTP {status} from {url}\n\n{body[:2000]}"
+			)
 			return _no_update()
 		cache.set_value(cache_key, cached, expires_in_sec=CACHE_SECONDS)
 
