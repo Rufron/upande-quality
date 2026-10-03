@@ -5608,7 +5608,9 @@ def getTraceability():
 				for tr in remote_transfers:
 					if tr["state"] == "not_found":
 						warnings.append(
-							"Not found at {0} for {1} — left out of that transfer".format(tr["from_farm"], tr["order_name"])
+							"Not found at {0} for {1} — left out of that transfer".format(
+								tr["from_farm"], tr["order_name"]
+							)
 						)
 
 				frappe.response["data"] = {
@@ -9073,7 +9075,9 @@ def setOfflineTrolleyFlags():
 				frappe.db.set_value("Shelf", item.parent, "modified", frappe.utils.now())
 		except Exception:
 			# Shelf removal must not fail the flag sync — but leave a trace.
-			frappe.log_error("setOfflineTrolleyFlags: shelf removal failed for " + str(bucket_id), frappe.get_traceback())
+			frappe.log_error(
+				"setOfflineTrolleyFlags: shelf removal failed for " + str(bucket_id), frappe.get_traceback()
+			)
 		return removed
 
 	frappe.response["message"] = {"status": "error", "message": "Script failed"}
@@ -9148,7 +9152,10 @@ def setOfflineTrolleyFlags():
 						(
 							r
 							for r in sibs
-							if r.get("in_transit") and r.get("transit_truck") and truck and r.get("transit_truck") != truck
+							if r.get("in_transit")
+							and r.get("transit_truck")
+							and truck
+							and r.get("transit_truck") != truck
 						),
 						None,
 					)
@@ -9195,7 +9202,9 @@ def setOfflineTrolleyFlags():
 							"doctype": "Version",
 							"ref_doctype": "Order Pick List",
 							"docname": opl_name,
-							"data": frappe.as_json({"row_changed": changes, "changed": [], "added": [], "removed": []}),
+							"data": frappe.as_json(
+								{"row_changed": changes, "changed": [], "added": [], "removed": []}
+							),
 						}
 					).insert(ignore_permissions=True)
 				except Exception:
@@ -12535,7 +12544,10 @@ def createOfflineIssuingEntry():
 				farm_wh = mapped.source_warehouse
 			candidates = [w for w in dict.fromkeys([si.warehouse, farm_wh]) if w]
 			for w in list(candidates):
-				candidates += [h["to"] for h in stock_movement.resolve_route(w, "Roses", upto=stock_movement.ARRIVAL_STAGE)]
+				candidates += [
+					h["to"]
+					for h in stock_movement.resolve_route(w, "Roses", upto=stock_movement.ARRIVAL_STAGE)
+				]
 			best, best_qty = si.warehouse, -1
 			for w in dict.fromkeys(candidates):
 				have = stock_movement.bucket_balance(bucket_id, si.variety, w)
@@ -12549,7 +12561,13 @@ def createOfflineIssuingEntry():
 		# Never issue more than the bucket still has: a repeated report (or a second shelf
 		# row of an already issued bucket) used to issue it again and drive the store negative.
 		issue_qty = {
-			si.name: max(0, min(frappe.utils.flt(si.stem_qty), stock_movement.bucket_balance(bucket_id, si.variety, homes[si.name])))
+			si.name: max(
+				0,
+				min(
+					frappe.utils.flt(si.stem_qty),
+					stock_movement.bucket_balance(bucket_id, si.variety, homes[si.name]),
+				),
+			)
 			for si in shelf_items
 		}
 		entry.from_warehouse = homes[shelf_items[0].name]
