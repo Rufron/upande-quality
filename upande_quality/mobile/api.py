@@ -1453,6 +1453,18 @@ def createShelvingEntry():
 					),
 				)
 
+			# Not transferred yet: shelved at its own farm as usual. Already transferred
+			# (on a trolley / truck, in transit, or its stock left the farm): only the
+			# sales farm can shelve it — a remote shelf is refused, and recorded.
+			if result["passed"]:
+				from upande_packhouse.api.transfer_control import remote_shelving_block
+
+				blocked = remote_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
+				if blocked:
+					result["passed"] = False
+					result["reason"] = "already_transferred"
+					result["message"] = blocked + " Shelve it at the sales farm."
+
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
 				for item in shelf_doc.items:
@@ -1782,7 +1794,7 @@ def createShelvingEntry():
 				from upande_packhouse.api import transfer_control as tc
 
 				opls = tc.open_transfer_opls(data.get("bucket_id"))
-				if opls:
+				if opls or result.get("reason") == "already_transferred":
 					tc.log_transfer_event(
 						data.get("bucket_id"),
 						"Shelving refused",
