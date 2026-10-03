@@ -1432,6 +1432,27 @@ def createShelvingEntry():
 			result["shelf_doc"] = shelf_doc
 			bucket_id = data.get("bucket_id")
 
+			# A shelf belongs to its farm: shelving onto it counts at THAT farm, whatever
+			# the app is set to (the app on Simotwo at a Kapkolia shelf is a Kapkolia
+			# shelving — the arrival). Never refused; the correction is recorded.
+			req_farm = (data.get("farm") or "").strip()
+			if shelf_doc.farm and req_farm and shelf_doc.farm.lower() != req_farm.lower():
+				data["farm"] = shelf_doc.farm
+				result["farm_corrected"] = {"app": req_farm, "shelf": shelf_doc.farm}
+				from upande_packhouse.api import transfer_control as tc
+
+				opls = tc.open_transfer_opls(bucket_id)
+				tc.log_transfer_event(
+					bucket_id,
+					"Shelving farm corrected",
+					opl=opls[0] if opls else None,
+					farm=req_farm,
+					shelf=shelf_id,
+					details="App set to {0}; shelf {1} belongs to {2} — shelved at {2}".format(
+						req_farm, shelf_id, shelf_doc.farm
+					),
+				)
+
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
 				for item in shelf_doc.items:
@@ -1755,6 +1776,24 @@ def createShelvingEntry():
 				"message": result.get("message"),
 				"payload": {"shelf_id": data.get("shelf_id"), "bucket_id": data.get("bucket_id")},
 			}
+			# Traceability: a refused shelving of a transfer bucket (wrong farm, already
+			# transferred, duplicate, full shelf…) is recorded on its journey.
+			try:
+				from upande_packhouse.api import transfer_control as tc
+
+				opls = tc.open_transfer_opls(data.get("bucket_id"))
+				if opls:
+					tc.log_transfer_event(
+						data.get("bucket_id"),
+						"Shelving refused",
+						outcome="Refused",
+						opl=opls[0] if opls else None,
+						farm=data.get("farm"),
+						shelf=data.get("shelf_id"),
+						details=result.get("message") or result.get("reason"),
+					)
+			except Exception:
+				frappe.log_error("Shelving: transfer event not logged", frappe.get_traceback())
 		else:
 			bucket_id = data.get("bucket_id")
 			shelf_id = data.get("shelf_id")
@@ -1971,7 +2010,9 @@ def createShelvingEntry():
 
 							# ---------------------------------------------------------
 							shelf_doc = result.get("shelf_doc")
-							shelf_doc.farm = farm
+							# Only a new shelf takes the farm; an existing one keeps its own.
+							if not shelf_doc.farm:
+								shelf_doc.farm = farm
 
 							# A bucket can be RECEIVED at one farm's coldstore but
 							# SHELVED at a different one (physically carried there --
@@ -2135,6 +2176,19 @@ def createShelvingEntry():
 								except Exception:
 									frappe.log_error("Skipped Transfer anomaly log failed", "anomaly")
 								result["skipped_transfer"] = {"removed_from": removed_from}
+								from upande_packhouse.api import transfer_control as tc
+
+								for old in removed_from:
+									tc.log_transfer_event(
+										bucket_id,
+										"Removed from wrong shelf",
+										opl=result.get("transit_opl"),
+										farm=farm,
+										shelf=old,
+										details="Taken off {0} when shelved at {1} on {2}".format(
+											old, farm, shelf_id
+										),
+									)
 
 							# ─────────────────────────────────────────────────────
 							# NEW: UPDATE BUCKET ALLOCATION STATUS
@@ -2145,6 +2199,36 @@ def createShelvingEntry():
 							# NEW: CHECK IF OPL CAN BE AUTO-SUBMITTED
 							# ─────────────────────────────────────────────────────
 							check_and_submit_opl(bucket_id, result)
+
+							# Traceability: where this shelving left the transfer.
+							try:
+								from upande_packhouse.api import transfer_control as tc
+
+								opls = tc.open_transfer_opls(bucket_id)
+								if result.get("transit_updated"):
+									tc.log_transfer_event(
+										bucket_id,
+										"Shelved at sales farm",
+										opl=result.get("transit_opl"),
+										farm=farm,
+										shelf=shelf_id,
+										details="Arrived — transfer ended",
+									)
+								elif opls and not at_arrival:
+									tc.log_transfer_event(
+										bucket_id,
+										"Shelved at remote farm",
+										opl=opls[0],
+										farm=farm,
+										shelf=shelf_id,
+										details="Shelved at {0} — not an arrival; the transfer continues".format(
+											farm
+										),
+									)
+							except Exception:
+								frappe.log_error(
+									"Shelving: transfer event not logged", frappe.get_traceback()
+								)
 
 							# Build response message
 							msg = f"Bucket {bucket_id} shelved successfully with {qty} stems."
@@ -4004,6 +4088,13 @@ def getFarmPlannedTrips():
 						}
 						farm_order.append(f)
 					fm = farm_map[f]
+					# An order whose delivery date has passed isn't shown to the farm (below),
+					# so it must not count on the stop either — else the stop reads 4/9 and
+					# never completes. Unless some of it is already on the truck.
+					dd_row = opl_delivery.get(r.get("order_pick_list") or "", "")
+					if dd_row and dd_row < today_s and not int(r.get("loaded_buckets") or 0):
+						j = j + 1
+						continue
 					# A load nothing planned shows what went on the truck.
 					pb = max(int(r.get("buckets") or 0), int(r.get("loaded_buckets") or 0))
 					fm["planned"] = fm["planned"] + pb
@@ -4028,6 +4119,12 @@ def getFarmPlannedTrips():
 								"customer": r.get("customer") or "",
 								"varieties": r.get("varieties") or "",
 								"buckets": pb,
+								# This order's own progress at the farm, so the app can show the
+								# stop for the delivery date on screen (a stop holds several dates).
+								"total": int((ps or {}).get("total") or 0),
+								"loaded": int((ps or {}).get("loaded") or 0),
+								"transit": int((ps or {}).get("transit") or 0),
+								"shelved": int((ps or {}).get("shelved") or 0),
 							}
 						)
 					j = j + 1
@@ -8976,6 +9073,11 @@ def saveTrolleyData():
 					found = True
 			if found:
 				doc.save(ignore_permissions=True)
+				from upande_packhouse.api import transfer_control as tc
+
+				tc.log_transfer_event(
+					bucket_id, "On trolley", opl=opl_name, details="Trolley {0}".format(trolley_id)
+				)
 				updated_count += 1
 
 				# Remove bucket from shelf
@@ -9073,6 +9175,9 @@ def setOfflineTrolleyFlags():
 				removed.append(item.parent)
 				# Touch parent Shelf (keeps UI + modified in sync)
 				frappe.db.set_value("Shelf", item.parent, "modified", frappe.utils.now())
+				from upande_packhouse.api import transfer_control as tc
+
+				tc.log_transfer_event(bucket_id, "Left remote shelf", farm=farm, shelf=item.parent)
 		except Exception:
 			# Shelf removal must not fail the flag sync — but leave a trace.
 			frappe.log_error(
@@ -9160,6 +9265,18 @@ def setOfflineTrolleyFlags():
 						None,
 					)
 					if on_other or any(r.get("shelved") or r.get("issued") for r in sibs):
+						from upande_packhouse.api import transfer_control as tc
+
+						tc.log_transfer_event(
+							bucket,
+							"Load refused",
+							outcome="Refused",
+							opl=parent,
+							vehicle=truck,
+							details="Already on {0}".format(on_other.get("transit_truck"))
+							if on_other
+							else "Already shelved / issued at the packhouse",
+						)
 						conflicts.append(
 							{
 								"bucket": bucket,
@@ -9184,6 +9301,14 @@ def setOfflineTrolleyFlags():
 							frappe.db.set_value(
 								"Pick List Item", sib["name"], "transit_truck", truck, update_modified=True
 							)
+					from upande_packhouse.api import transfer_control as tc
+
+					tc.log_transfer_event(
+						bucket,
+						"Loaded on truck" if flag == "loaded" else "In transit",
+						opl=parent,
+						vehicle=truck or frappe.db.get_value("Pick List Item", name, "transit_truck"),
+					)
 					# The bucket has left the shelf now it's on the trolley/truck —
 					# remove its Shelf Item so the shelf reflects reality.
 					removed_shelves = removed_shelves + remove_bucket_from_shelf(
@@ -13890,8 +14015,10 @@ def getDriverBucketLogistics():
           AND so.delivery_date = %(d)s AND """
 		+ TRANSFER
 		+ """
-        GROUP BY farm, opl.name
-        ORDER BY farm, opl.order_name
+        GROUP BY """
+		+ FARM_EXPR
+		+ """, opl.name
+        ORDER BY 1, opl.order_name
     """,
 		{"d": delivery_date},
 		as_dict=True,
