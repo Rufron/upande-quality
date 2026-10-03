@@ -1432,6 +1432,18 @@ def createShelvingEntry():
 			result["shelf_doc"] = shelf_doc
 			bucket_id = data.get("bucket_id")
 
+			# A shelf belongs to its farm. Scanning another farm's shelf (the app set to
+			# Simotwo at a Kapkolia shelf) used to re-farm the shelf — and the stock rule
+			# reads the farm to know whether the bucket has arrived. Refuse it instead.
+			req_farm = (data.get("farm") or "").strip()
+			if shelf_doc.farm and req_farm and shelf_doc.farm.lower() != req_farm.lower():
+				result["passed"] = False
+				result["reason"] = "wrong_farm_shelf"
+				result["message"] = (
+					f"Shelf {shelf_id} belongs to {shelf_doc.farm}, but the app is set to {req_farm}. "
+					f"Switch the farm to {shelf_doc.farm} to shelve here."
+				)
+
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
 				for item in shelf_doc.items:
@@ -1971,7 +1983,9 @@ def createShelvingEntry():
 
 							# ---------------------------------------------------------
 							shelf_doc = result.get("shelf_doc")
-							shelf_doc.farm = farm
+							# Only a new shelf takes the farm; an existing one keeps its own.
+							if not shelf_doc.farm:
+								shelf_doc.farm = farm
 
 							# A bucket can be RECEIVED at one farm's coldstore but
 							# SHELVED at a different one (physically carried there --
