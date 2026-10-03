@@ -2185,7 +2185,9 @@ def createShelvingEntry():
 										opl=result.get("transit_opl"),
 										farm=farm,
 										shelf=old,
-										details="Taken off {0} when shelved at {1} on {2}".format(old, farm, shelf_id),
+										details="Taken off {0} when shelved at {1} on {2}".format(
+											old, farm, shelf_id
+										),
 									)
 
 							# ─────────────────────────────────────────────────────
@@ -2219,10 +2221,14 @@ def createShelvingEntry():
 										opl=opls[0],
 										farm=farm,
 										shelf=shelf_id,
-										details="Shelved at {0} — not an arrival; the transfer continues".format(farm),
+										details="Shelved at {0} — not an arrival; the transfer continues".format(
+											farm
+										),
 									)
 							except Exception:
-								frappe.log_error("Shelving: transfer event not logged", frappe.get_traceback())
+								frappe.log_error(
+									"Shelving: transfer event not logged", frappe.get_traceback()
+								)
 
 							# Build response message
 							msg = f"Bucket {bucket_id} shelved successfully with {qty} stems."
@@ -9069,7 +9075,9 @@ def saveTrolleyData():
 				doc.save(ignore_permissions=True)
 				from upande_packhouse.api import transfer_control as tc
 
-				tc.log_transfer_event(bucket_id, "On trolley", opl=opl_name, details="Trolley {0}".format(trolley_id))
+				tc.log_transfer_event(
+					bucket_id, "On trolley", opl=opl_name, details="Trolley {0}".format(trolley_id)
+				)
 				updated_count += 1
 
 				# Remove bucket from shelf
