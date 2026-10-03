@@ -4035,6 +4035,12 @@ def getFarmPlannedTrips():
 								"customer": r.get("customer") or "",
 								"varieties": r.get("varieties") or "",
 								"buckets": pb,
+								# This order's own progress at the farm, so the app can show the
+								# stop for the delivery date on screen (a stop holds several dates).
+								"total": int((ps or {}).get("total") or 0),
+								"loaded": int((ps or {}).get("loaded") or 0),
+								"transit": int((ps or {}).get("transit") or 0),
+								"shelved": int((ps or {}).get("shelved") or 0),
 							}
 						)
 					j = j + 1
@@ -13879,8 +13885,10 @@ def getDriverBucketLogistics():
           AND so.delivery_date = %(d)s AND """
 		+ TRANSFER
 		+ """
-        GROUP BY farm, opl.name
-        ORDER BY farm, opl.order_name
+        GROUP BY """
+		+ FARM_EXPR
+		+ """, opl.name
+        ORDER BY 1, opl.order_name
     """,
 		{"d": delivery_date},
 		as_dict=True,
