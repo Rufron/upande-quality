@@ -4004,6 +4004,13 @@ def getFarmPlannedTrips():
 						}
 						farm_order.append(f)
 					fm = farm_map[f]
+					# An order whose delivery date has passed isn't shown to the farm (below),
+					# so it must not count on the stop either — else the stop reads 4/9 and
+					# never completes. Unless some of it is already on the truck.
+					dd_row = opl_delivery.get(r.get("order_pick_list") or "", "")
+					if dd_row and dd_row < today_s and not int(r.get("loaded_buckets") or 0):
+						j = j + 1
+						continue
 					# A load nothing planned shows what went on the truck.
 					pb = max(int(r.get("buckets") or 0), int(r.get("loaded_buckets") or 0))
 					fm["planned"] = fm["planned"] + pb
@@ -4028,6 +4035,12 @@ def getFarmPlannedTrips():
 								"customer": r.get("customer") or "",
 								"varieties": r.get("varieties") or "",
 								"buckets": pb,
+								# This order's own progress at the farm, so the app can show the
+								# stop for the delivery date on screen (a stop holds several dates).
+								"total": int((ps or {}).get("total") or 0),
+								"loaded": int((ps or {}).get("loaded") or 0),
+								"transit": int((ps or {}).get("transit") or 0),
+								"shelved": int((ps or {}).get("shelved") or 0),
 							}
 						)
 					j = j + 1
@@ -13890,8 +13903,10 @@ def getDriverBucketLogistics():
           AND so.delivery_date = %(d)s AND """
 		+ TRANSFER
 		+ """
-        GROUP BY farm, opl.name
-        ORDER BY farm, opl.order_name
+        GROUP BY """
+		+ FARM_EXPR
+		+ """, opl.name
+        ORDER BY 1, opl.order_name
     """,
 		{"d": delivery_date},
 		as_dict=True,
