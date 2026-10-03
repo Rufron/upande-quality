@@ -4004,6 +4004,13 @@ def getFarmPlannedTrips():
 						}
 						farm_order.append(f)
 					fm = farm_map[f]
+					# An order whose delivery date has passed isn't shown to the farm (below),
+					# so it must not count on the stop either — else the stop reads 4/9 and
+					# never completes. Unless some of it is already on the truck.
+					dd_row = opl_delivery.get(r.get("order_pick_list") or "", "")
+					if dd_row and dd_row < today_s and not int(r.get("loaded_buckets") or 0):
+						j = j + 1
+						continue
 					# A load nothing planned shows what went on the truck.
 					pb = max(int(r.get("buckets") or 0), int(r.get("loaded_buckets") or 0))
 					fm["planned"] = fm["planned"] + pb
