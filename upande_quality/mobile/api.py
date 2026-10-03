@@ -1444,6 +1444,16 @@ def createShelvingEntry():
 					f"Switch the farm to {shelf_doc.farm} to shelve here."
 				)
 
+			# Once its transfer has started, a bucket never goes back on a remote shelf.
+			if result["passed"]:
+				from upande_packhouse.api.transfer_control import remote_shelving_block
+
+				blocked = remote_shelving_block(bucket_id, req_farm or shelf_doc.farm)
+				if blocked:
+					result["passed"] = False
+					result["reason"] = "already_transferred"
+					result["message"] = blocked
+
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
 				for item in shelf_doc.items:
