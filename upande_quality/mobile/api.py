@@ -126,6 +126,36 @@ def clearOplAllocations():
 		frappe.response["message"] = {"success": False, "error": str(e)}
 
 
+@frappe.whitelist()
+def getVarietyAndStemLengthOptions():
+	# Edit Details / Replacement pickers: every enabled rose variety (Spray and
+	# Standard Roses, sub-groups included) and every stem length. Read here rather
+	# than through /api/resource so a user without read rights on Item / Stem Length
+	# still gets the full lists.
+	groups = set()
+	for root in ("Spray Roses", "Standard Roses"):
+		if frappe.db.exists("Item Group", root):
+			lft, rgt = frappe.db.get_value("Item Group", root, ["lft", "rgt"])
+			groups.update(
+				frappe.get_all("Item Group", filters={"lft": [">=", lft], "rgt": ["<=", rgt]}, pluck="name")
+			)
+	varieties = (
+		frappe.get_all(
+			"Item",
+			filters={"item_group": ["in", list(groups)], "disabled": 0},
+			pluck="item_code",
+			order_by="item_code asc",
+		)
+		if groups
+		else []
+	)
+	lengths = frappe.get_all("Stem Length", fields=["name", "length"], order_by="length asc")
+	frappe.response["data"] = {
+		"varieties": varieties,
+		"stem_lengths": [r.length or r.name for r in lengths if (r.length or r.name)],
+	}
+
+
 def _bucket_session_entries(bucket_id, window_days=5):
 	"""The stock entries of a bucket's current round (a bucket is reused round after
 	round): anchored on its latest Grading / Receiving, same variety, within
