@@ -136,18 +136,9 @@ def correctDetails():
 	new_stem_length = (data.get("stem_length") or "").strip()
 
 	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if kind not in ("bunch", "bucket"):
@@ -5823,18 +5814,9 @@ def gradingReplacementOptions():
 		return [t[3] for t in keyed]
 
 	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not order_pick_list or not variety:
@@ -6190,18 +6172,9 @@ def listBunchDestinations():
 		return [t[3] for t in keyed]
 
 	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not variety or not stem_length or not farm:
@@ -6447,18 +6420,9 @@ def listReplacementCandidates():
 		return [t[3] for t in keyed]
 
 	# Permission check
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not bucket_id:
@@ -6721,18 +6685,9 @@ def moveBunch():
 	dest_bucket_id = (data.get("dest_bucket_id") or "").strip()
 
 	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not bunch_id or not source_bucket_id:
@@ -7599,18 +7554,9 @@ def replaceBucket():
 	requested_pli = (data.get("pick_list_item") or "").strip()
 
 	# Permission check via Has Role (same role as bunch correction)
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not bucket_id:
@@ -7893,18 +7839,9 @@ def replaceBunchInOpl():
 			pass
 		return 5
 
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not pick_list_item or not donor_bucket_id:
@@ -8182,18 +8119,9 @@ def replaceStems():
 		return 5
 
 	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
 
 	if user_has_role:
 		if not pick_list_item or not donor_bucket_id or stems <= 0:
