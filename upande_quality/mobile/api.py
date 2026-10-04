@@ -2529,6 +2529,9 @@ def fetchAllocatedBuckets():
 				"stem_length",
 				"sales_order",
 				"sales_order_item",
+				# 'ASAP': a quality-issue replacement the packhouse is waiting on
+				# (upande_packhouse.api.packing_quality) -- the app lists it first.
+				"transfer_priority",
 			],
 		)
 
@@ -2660,6 +2663,8 @@ def fetchAllocatedBuckets():
 						seen_bucket[dedupe_key]["qty"] = (seen_bucket[dedupe_key]["qty"] or 0) + (
 							item["qty"] or 0
 						)
+						if item.get("transfer_priority") == "ASAP":
+							seen_bucket[dedupe_key]["priority"] = "ASAP"
 						continue
 					harvest_info = bucket_harvest_map.get(bucket_id, {})
 					opl_info = opl_map.get(item["parent"], {})
@@ -2695,6 +2700,7 @@ def fetchAllocatedBuckets():
 							opl_info.get("sales_order") or item.get("sales_order")
 						)
 						or "",
+						"priority": item.get("transfer_priority") or None,
 					}
 					seen_bucket[dedupe_key] = row_out
 					result.append(row_out)
@@ -8172,7 +8178,7 @@ def replaceStems():
 					donor_shelf_items = frappe.db.sql(
 						"""
                         SELECT si.name AS shelf_item, si.parent AS shelf, si.stem_qty,
-                               si.variety, si.stem_length, s.farm,
+                               si.variety, si.stem_length, s.farm, si.warehouse,
                                COALESCE(bas.allocated_quantity, 0) AS allocated_qty,
                                (COALESCE(si.stem_qty, 0) - COALESCE(bas.allocated_quantity, 0)) AS available_qty,
                                COALESCE(bas.in_transit, 0) AS in_transit,
@@ -8284,6 +8290,23 @@ def replaceStems():
 								new_qty,
 							)
 							frappe.db.set_value("Shelf", donor["shelf"], "modified", now_ts)
+
+							# Stock: the donor's stems are sold to this line and issued to the
+							# packhouse, as a packing replacement's are. A leg that can't post
+							# raises and the whole replacement rolls back (below).
+							from upande_packhouse.api.packing_reject import post_donor_stock
+
+							post_donor_stock(
+								donor_bucket=donor_bucket_id,
+								variety=donor.get("variety") or pli.get("item_code"),
+								stem_length=donor.get("stem_length") or pli.get("stem_length") or "",
+								stems=stems,
+								warehouse=donor.get("warehouse"),
+								farm=donor.get("farm"),
+								sales_order=frappe.db.get_value("Order Pick List", pli.get("parent"), "sales_order"),
+								so_item=pli.get("custom_sale_order_item") or "",
+								opl=pli.get("parent") or "",
+							)
 
 							log_name = ""
 							try:
