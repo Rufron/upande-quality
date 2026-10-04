@@ -2070,6 +2070,12 @@ def createShelvingEntry():
 							# submitted OPL, a retry after a failed post or a row without
 							# transfer flags must still get its sale (it is idempotent).
 							if at_arrival:
+								# Shelving at the hub has started: its truck has arrived.
+								from upande_packhouse.api.remote_transfer.transfer_scheduling import (
+									auto_arrive_for_bucket,
+								)
+
+								auto_arrive_for_bucket(bucket_id)
 								try:
 									result["sale_on_arrival"] = stock_movement.post_sale_on_arrival(
 										bucket_id, business_unit
