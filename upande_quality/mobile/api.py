@@ -127,6 +127,82 @@ def clearOplAllocations():
 
 
 @frappe.whitelist()
+def getVarietyAndStemLengthOptions():
+	# Edit Details / Replacement pickers: every enabled rose variety (Spray and
+	# Standard Roses, sub-groups included) and every stem length. Read here rather
+	# than through /api/resource so a user without read rights on Item / Stem Length
+	# still gets the full lists.
+	groups = set()
+	for root in ("Spray Roses", "Standard Roses"):
+		if frappe.db.exists("Item Group", root):
+			lft, rgt = frappe.db.get_value("Item Group", root, ["lft", "rgt"])
+			groups.update(
+				frappe.get_all("Item Group", filters={"lft": [">=", lft], "rgt": ["<=", rgt]}, pluck="name")
+			)
+	varieties = (
+		frappe.get_all(
+			"Item",
+			filters={"item_group": ["in", list(groups)], "disabled": 0},
+			pluck="item_code",
+			order_by="item_code asc",
+		)
+		if groups
+		else []
+	)
+	lengths = frappe.get_all("Stem Length", fields=["name", "length"], order_by="length asc")
+	frappe.response["data"] = {
+		"varieties": varieties,
+		"stem_lengths": [r.length or r.name for r in lengths if (r.length or r.name)],
+	}
+
+
+def _bucket_session_entries(bucket_id, window_days=5):
+	"""The stock entries of a bucket's current round (a bucket is reused round after
+	round): anchored on its latest Grading / Receiving, same variety, within
+	`window_days`. Stock Entry has no harvest batch number on this schema, so this is
+	how a round is told apart — the same way getTraceability scopes a scan."""
+	rows = frappe.get_all(
+		"Stock Entry",
+		filters={"custom_bucket_id": bucket_id, "docstatus": ["<", 2]},
+		fields=[
+			"name",
+			"stock_entry_type",
+			"posting_date",
+			"posting_time",
+			"creation",
+			"custom_stem_length",
+			"custom_bunch_id",
+			"farm",
+			"custom_pending_reshelving",
+		],
+		order_by="posting_date desc, posting_time desc, creation desc",
+		limit=200,
+	)
+	if not rows:
+		return []
+	variety_of = {}
+	for r in frappe.get_all(
+		"Stock Entry Detail",
+		filters={"parent": ["in", [x.name for x in rows]]},
+		fields=["parent", "item_code"],
+	):
+		variety_of.setdefault(r.parent, (r.item_code or "").lower())
+	anchor = next(
+		(r for r in rows if r.stock_entry_type in ("Grading", "Receiving", "Late Receipt")), rows[0]
+	)
+	variety = variety_of.get(anchor.name, "")
+	out = []
+	for r in rows:
+		if abs(frappe.utils.date_diff(anchor.posting_date, r.posting_date)) > window_days:
+			continue
+		v = variety_of.get(r.name, "")
+		if variety and v and v != variety:
+			continue
+		out.append(r)
+	return out
+
+
+@frappe.whitelist()
 def correctDetails():
 	data = frappe.request.get_json()
 	kind = (data.get("kind") or "").strip().lower()
@@ -135,19 +211,8 @@ def correctDetails():
 	new_variety = (data.get("variety") or "").strip()
 	new_stem_length = (data.get("stem_length") or "").strip()
 
-	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if kind not in ("bunch", "bucket"):
@@ -174,18 +239,12 @@ def correctDetails():
 							frappe.response["data"] = {"error": "bucket_id required for bunch corrections."}
 
 						if bucket_id:
-							session_prefix = bucket_id + "-"
-							gradings = frappe.get_all(
-								"Stock Entry",
-								filters={
-									"custom_bunch_id": bunch_id,
-									"stock_entry_type": "Grading",
-									"custom_harvest_batch_no": ["like", session_prefix + "%"],
-								},
-								fields=["name", "custom_harvest_batch_no", "custom_stem_length"],
-								order_by="creation desc",
-								limit=1,
-							)
+							session = _bucket_session_entries(bucket_id)
+							gradings = [
+								g
+								for g in session
+								if g.stock_entry_type == "Grading" and g.custom_bunch_id == bunch_id
+							][:1]
 
 							if not gradings:
 								frappe.response["http_status_code"] = 404
@@ -198,18 +257,9 @@ def correctDetails():
 
 							if gradings:
 								grading_name = gradings[0]["name"]
-								batch_no = gradings[0].get("custom_harvest_batch_no") or ""
-
-								harvest_rows = frappe.get_all(
-									"Stock Entry",
-									filters={
-										"custom_harvest_batch_no": batch_no,
-										"stock_entry_type": "Harvesting",
-									},
-									fields=["name"],
-									limit=1,
+								harvest_name = next(
+									(h.name for h in session if h.stock_entry_type == "Harvesting"), ""
 								)
-								harvest_name = harvest_rows[0]["name"] if harvest_rows else ""
 
 								if frappe.db.exists("Bunch QR Code", bunch_id):
 									bunch_doc = frappe.get_doc("Bunch QR Code", bunch_id)
@@ -252,59 +302,10 @@ def correctDetails():
 
 					if kind == "bucket":
 						bid = target_id
-						# Resolve current session by direct latest-SE lookup across
-						# both bucket fields (Receiving uses custom_bucket_id).
-						sixty_days_ago = frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-60)
-
-						def latest_se_for(field_name):
-							rows = frappe.get_all(
-								"Stock Entry",
-								filters={
-									field_name: bid,
-									"creation": [">=", str(sixty_days_ago)],
-								},
-								fields=[
-									"name",
-									"custom_harvest_batch_no",
-									"custom_bucket_id",
-									"posting_date",
-									"posting_time",
-									"creation",
-								],
-								order_by="posting_date desc, posting_time desc, creation desc",
-								limit=1,
-							)
-							return rows[0] if rows else None
-
-						candidates = []
-						for fld in ("custom_bucket_id",):
-							row = latest_se_for(fld)
-							if row and row.get("custom_harvest_batch_no"):
-								candidates.append(row)
-
-						def recency_key(r):
-							return (
-								str(r.get("posting_date") or ""),
-								str(r.get("posting_time") or ""),
-								str(r.get("creation") or ""),
-							)
-
-						target_session = ""
+						# The bucket's current round: its gradings and harvests.
 						canonical_bucket = bid
-						if candidates:
-							latest = candidates[0]
-							for c in candidates[1:]:
-								if recency_key(c) > recency_key(latest):
-									latest = c
-							bn = latest.get("custom_harvest_batch_no") or ""
-							canonical_bucket = (
-								latest.get("custom_bucket_id") or latest.get("custom_bucket_id") or bid
-							)
-							parts = bn.split("-") if bn else []
-							if len(parts) >= 6:
-								dd = parts[5].split(" ")[0]
-								target_session = "-".join(parts[0:5]) + "-" + dd
-
+						session = _bucket_session_entries(bid)
+						target_session = "current" if session else ""
 						if not target_session:
 							frappe.response["http_status_code"] = 404
 							frappe.response["data"] = {
@@ -312,47 +313,10 @@ def correctDetails():
 							}
 
 						if target_session:
-							narrow_date = ""
-							sparts = target_session.split("-")
-							if len(sparts) >= 6:
-								narrow_date = sparts[3] + "-" + sparts[4] + "-" + sparts[5]
-
-							# All Grading SEs in this session — one per bunch (sprays)
-							# or just one (standards).
-							grading_ses = frappe.get_all(
-								"Stock Entry",
-								filters={
-									"custom_harvest_batch_no": ["like", target_session + "%"],
-									"stock_entry_type": "Grading",
-									"posting_date": narrow_date,
-								},
-								fields=[
-									"name",
-									"custom_stem_length",
-									"custom_bunch_id",
-									"custom_harvest_batch_no",
-								],
-							)
-
-							# Paired Harvest SEs share exact batch_no with their grading.
-							# Match by batch_no rather than bucket_id to keep the pairing
-							# bunch-accurate.
-							batch_nos = []
-							for g in grading_ses:
-								bnv = g.get("custom_harvest_batch_no")
-								if bnv:
-									batch_nos.append(bnv)
-							harvest_ses = []
-							if batch_nos:
-								harvest_ses = frappe.get_all(
-									"Stock Entry",
-									filters={
-										"custom_harvest_batch_no": ["in", batch_nos],
-										"stock_entry_type": "Harvesting",
-										"posting_date": narrow_date,
-									},
-									fields=["name", "custom_stem_length", "custom_harvest_batch_no"],
-								)
+							# Earliest day of the round: the window for its receiving entry.
+							narrow_date = str(min(x.posting_date for x in session))
+							grading_ses = [x for x in session if x.stock_entry_type == "Grading"]
+							harvest_ses = [x for x in session if x.stock_entry_type == "Harvesting"]
 
 							# Helper: rewrite items[].item_code on a parent SE
 							def rewrite_se_items(parent_name, new_item):
@@ -563,7 +527,7 @@ def createDiscardEntry():
 		today = frappe.utils.today()
 		opl_items = frappe.get_all(
 			"Pick List Item",
-			filters={"custom_bucket": bucket_id, "parenttype": "Order Pick List", "docstatus": 1},
+			filters={"bucket": bucket_id, "parenttype": "Order Pick List", "docstatus": 1},
 			fields=["parent"],
 			limit=1,
 			order_by="creation desc",
@@ -1436,7 +1400,21 @@ def createShelvingEntry():
 			# the app is set to (the app on Simotwo at a Kapkolia shelf is a Kapkolia
 			# shelving — the arrival). Never refused; the correction is recorded.
 			req_farm = (data.get("farm") or "").strip()
-			if shelf_doc.farm and req_farm and shelf_doc.farm.lower() != req_farm.lower():
+			# Except a bucket already on its way from the app's own (remote) farm: the
+			# person is still at that farm, so a sales-farm shelf there is a mis-scan,
+			# not the arrival — refused, or it would mark the whole truck arrived.
+			from upande_packhouse.api.transfer_control import remote_shelving_block
+
+			try:
+				from upande_packhouse.api.transfer_control import hub_shelving_block
+			except ImportError:  # an upande_packhouse without it: no hub check
+				hub_shelving_block = None
+			left_here = remote_shelving_block(bucket_id, req_farm) if req_farm else None
+			if left_here:
+				result["passed"] = False
+				result["reason"] = "already_transferred"
+				result["message"] = left_here + " Shelve it at the sales farm."
+			elif shelf_doc.farm and req_farm and shelf_doc.farm.lower() != req_farm.lower():
 				data["farm"] = shelf_doc.farm
 				result["farm_corrected"] = {"app": req_farm, "shelf": shelf_doc.farm}
 				from upande_packhouse.api import transfer_control as tc
@@ -1452,6 +1430,25 @@ def createShelvingEntry():
 						req_farm, shelf_id, shelf_doc.farm
 					),
 				)
+
+			# Not transferred yet: shelved at its own farm as usual. Already transferred
+			# (on a trolley / truck, in transit, or its stock left the farm): only the
+			# sales farm can shelve it — a remote shelf is refused, and recorded.
+			if result["passed"]:
+				blocked = remote_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
+				if blocked:
+					result["passed"] = False
+					result["reason"] = "already_transferred"
+					result["message"] = blocked + " Shelve it at the sales farm."
+
+			# At the sales farm: a bucket still waiting at a remote farm that never went on
+			# a trolley / truck there never arrived — refused, not "self-healed" off its shelf.
+			if result["passed"] and hub_shelving_block:
+				never = hub_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
+				if never:
+					result["passed"] = False
+					result["reason"] = "not_transferred"
+					result["message"] = never
 
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
@@ -1541,6 +1538,29 @@ def createShelvingEntry():
 	# ---------------------------------------------------------
 	def fetch_latest_receiving(bucket_id, result):
 		result["receiving_doc"] = None
+		result["transfer_mismatch"] = None
+
+		# A bucket arriving on a transfer is what the transfer carries (its source
+		# farm and variety), not whatever this bucket id last held: ids are reused,
+		# and the latest receiving can be another farm's, another variety's.
+		transfer = frappe.get_all(
+			"Pick List Item",
+			filters={"bucket": bucket_id, "parenttype": "Order Pick List", "issued": 0},
+			or_filters={"awaiting_transfer": 1, "loaded_in_trolley": 1, "in_transit": 1},
+			fields=["parent", "item_code", "stem_length", "source_warehouse", "warehouse"],
+			order_by="creation desc",
+			limit=1,
+		)
+		expect = None
+		if transfer:
+			t = transfer[0]
+			wh = t.source_warehouse or t.warehouse or ""
+			expect = {
+				"farm": wh.split(" ", 1)[0] if wh else "",
+				"item_code": t.item_code,
+				"stem_length": t.stem_length or "",
+				"opl": t.parent,
+			}
 
 		entries = frappe.get_all(
 			"Stock Entry",
@@ -1549,10 +1569,30 @@ def createShelvingEntry():
 				"custom_bucket_id": bucket_id,
 				"docstatus": 1,
 			},
-			fields=["name"],
+			fields=["name", "farm"],
 			order_by="creation desc",
-			limit=1,
+			limit=20 if expect else 1,
 		)
+		if expect and entries:
+			items = {}
+			for r in frappe.get_all(
+				"Stock Entry Detail",
+				filters={"parent": ["in", [e.name for e in entries]]},
+				fields=["parent", "item_code"],
+			):
+				items.setdefault(r.parent, r.item_code)
+			match = [
+				e
+				for e in entries
+				if (not expect["farm"] or e.farm == expect["farm"])
+				and items.get(e.name) == expect["item_code"]
+			]
+			if not match:
+				latest = entries[0]
+				result["transfer_mismatch"] = dict(
+					expect, latest_farm=latest.farm or "", latest_item=items.get(latest.name) or ""
+				)
+			entries = match
 
 		if entries:
 			try:
@@ -1793,7 +1833,7 @@ def createShelvingEntry():
 				from upande_packhouse.api import transfer_control as tc
 
 				opls = tc.open_transfer_opls(data.get("bucket_id"))
-				if opls:
+				if opls or result.get("reason") == "already_transferred":
 					tc.log_transfer_event(
 						data.get("bucket_id"),
 						"Shelving refused",
@@ -1814,7 +1854,22 @@ def createShelvingEntry():
 			fetch_latest_receiving(bucket_id, result)
 			receiving_doc = result.get("receiving_doc")
 
-			if not receiving_doc:
+			mismatch = result.get("transfer_mismatch")
+			if not receiving_doc and mismatch:
+				# On a transfer, but no receiving of what the transfer carries:
+				# shelving it would record (and move the stock of) the wrong flowers.
+				frappe.response["data"] = {
+					"status": "failed",
+					"reason": "transfer_mismatch",
+					"message": (
+						f"{bucket_id} is on its way as {mismatch['item_code']} {mismatch['stem_length']} "
+						f"from {mismatch['farm']} ({mismatch['opl']}), but it has no receiving for that — "
+						f"its latest receiving is {mismatch['latest_item']} at {mismatch['latest_farm']}. "
+						f"Receive it at {mismatch['farm']} first, or replace it on the order."
+					),
+					"payload": {"bucket_id": bucket_id, "transfer": mismatch},
+				}
+			elif not receiving_doc:
 				frappe.log_error(
 					"Receiving Entry Not Found",
 					f"No Receiving or Late Receipt entry found for bucket {bucket_id}. Data: {data}",
@@ -2069,6 +2124,12 @@ def createShelvingEntry():
 							# submitted OPL, a retry after a failed post or a row without
 							# transfer flags must still get its sale (it is idempotent).
 							if at_arrival:
+								# Shelving at the hub has started: its truck has arrived.
+								from upande_packhouse.api.remote_transfer.transfer_scheduling import (
+									auto_arrive_for_bucket,
+								)
+
+								auto_arrive_for_bucket(bucket_id)
 								try:
 									result["sale_on_arrival"] = stock_movement.post_sale_on_arrival(
 										bucket_id, business_unit
@@ -2456,6 +2517,8 @@ def fetchAllocatedBuckets():
 		pli_filters = {
 			"awaiting_transfer": 1,
 			"in_transit": 0,
+			# Issued already (e.g. issued offline at the packhouse): nothing left to send.
+			"issued": 0,
 			"bucket": ["!=", ""],
 			# v16: warehouse is empty on pick rows. Warehouse names start with their farm
 			# ("Simotwo Receiving Cold Store - KR"): match that prefix, not any substring,
@@ -2484,6 +2547,9 @@ def fetchAllocatedBuckets():
 				"stem_length",
 				"sales_order",
 				"sales_order_item",
+				# 'ASAP': a quality-issue replacement the packhouse is waiting on
+				# (upande_packhouse.api.packing_quality) -- the app lists it first.
+				"transfer_priority",
 			],
 		)
 
@@ -2615,6 +2681,8 @@ def fetchAllocatedBuckets():
 						seen_bucket[dedupe_key]["qty"] = (seen_bucket[dedupe_key]["qty"] or 0) + (
 							item["qty"] or 0
 						)
+						if item.get("transfer_priority") == "ASAP":
+							seen_bucket[dedupe_key]["priority"] = "ASAP"
 						continue
 					harvest_info = bucket_harvest_map.get(bucket_id, {})
 					opl_info = opl_map.get(item["parent"], {})
@@ -2650,6 +2718,7 @@ def fetchAllocatedBuckets():
 							opl_info.get("sales_order") or item.get("sales_order")
 						)
 						or "",
+						"priority": item.get("transfer_priority") or None,
 					}
 					seen_bucket[dedupe_key] = row_out
 					result.append(row_out)
@@ -4995,6 +5064,31 @@ def getBoxTraceability():
 		frappe.response["message"] = {"success": False, "error": str(e)}
 
 
+def _with_user_names(obj, _cache=None):
+	"""Every "user" value in a traceability payload (a user id, or several joined
+	by ", ") as the people's full names: the app shows names, not emails."""
+	cache = {} if _cache is None else _cache
+
+	def name(uid):
+		uid = uid.strip()
+		if uid not in cache:
+			cache[uid] = frappe.utils.get_fullname(uid) if uid else ""
+		return cache[uid]
+
+	if isinstance(obj, dict):
+		return {
+			k: (
+				", ".join(name(u) for u in v.split(","))
+				if k == "user" and isinstance(v, str) and v
+				else _with_user_names(v, cache)
+			)
+			for k, v in obj.items()
+		}
+	if isinstance(obj, list):
+		return [_with_user_names(v, cache) for v in obj]
+	return obj
+
+
 @frappe.whitelist()
 def getTraceability():
 	# getTraceability — bucket/bunch journey for the mobile Traceability scan.
@@ -5252,7 +5346,7 @@ def getTraceability():
 			opl_rows = []
 			if bucket_id:
 				try:
-					opl_filters = {"custom_bucket": bucket_id}
+					opl_filters = {"bucket": bucket_id}
 					if session_start_date:
 						opl_filters["creation"] = [">=", session_start_date + " 00:00:00"]
 					opl_rows = frappe.get_all(
@@ -5262,10 +5356,10 @@ def getTraceability():
 							"name",
 							"owner",
 							"parent",
-							"custom_issued",
+							"issued",
 							"stock_qty",
 							"item_code",
-							"custom_stem_length",
+							"stem_length",
 							"creation",
 						],
 						order_by="creation desc",
@@ -5376,7 +5470,7 @@ def getTraceability():
 
 				issued_count = 0
 				for r in opl_rows:
-					if r.get("custom_issued") == 1:
+					if r.get("issued") == 1:
 						issued_count = issued_count + 1
 				on_opl = bool(opl_rows)
 				on_shelf = on_shelf_live
@@ -5592,7 +5686,7 @@ def getTraceability():
 					issued_users = set()
 					issued_opls = set()
 					for r in opl_rows:
-						if r.get("custom_issued") == 1:
+						if r.get("issued") == 1:
 							issued_qty_total = issued_qty_total + float(r.get("stock_qty") or 0)
 							if r.get("owner"):
 								issued_users.add(r.get("owner"))
@@ -5730,28 +5824,30 @@ def getTraceability():
 							)
 						)
 
-				frappe.response["data"] = {
-					"remote_transfers": remote_transfers,
-					"kind": kind,
-					"rose_type": rose_type,
-					"bucket_id": bucket_id or "",
-					"bunch_id": resolved_bunch_id,
-					"status": status,
-					"variety": variety,
-					"farm": farm,
-					"greenhouse": greenhouse,
-					"stem_length": stem_length,
-					"number_of_stems": number_of_stems,
-					"stems_rejected": quarantine_rejected_qty or 0,
-					"date": latest_date,
-					"batch_no": batch_no,
-					"session_size": len(bunches),
-					"bunch_info": bunch_info,
-					"bunches": bunches,
-					"stages": stages,
-					"warnings": warnings,
-					"allocation": allocation,
-				}
+				frappe.response["data"] = _with_user_names(
+					{
+						"remote_transfers": remote_transfers,
+						"kind": kind,
+						"rose_type": rose_type,
+						"bucket_id": bucket_id or "",
+						"bunch_id": resolved_bunch_id,
+						"status": status,
+						"variety": variety,
+						"farm": farm,
+						"greenhouse": greenhouse,
+						"stem_length": stem_length,
+						"number_of_stems": number_of_stems,
+						"stems_rejected": quarantine_rejected_qty or 0,
+						"date": latest_date,
+						"batch_no": batch_no,
+						"session_size": len(bunches),
+						"bunch_info": bunch_info,
+						"bunches": bunches,
+						"stages": stages,
+						"warnings": warnings,
+						"allocation": allocation,
+					}
+				)
 
 		except Exception as e:
 			frappe.log_error("getTraceability error: " + str(e))
@@ -5809,19 +5905,8 @@ def gradingReplacementOptions():
 		keyed.sort()
 		return [t[3] for t in keyed]
 
-	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not order_pick_list or not variety:
@@ -5851,15 +5936,15 @@ def gradingReplacementOptions():
 				if is_spray:
 					pli_filters = {"parent": order_pick_list, "item_code": variety}
 					if bucket_in:
-						pli_filters["custom_bucket"] = bucket_in
+						pli_filters["bucket"] = bucket_in
 					pli_rows = frappe.get_all(
 						"Pick List Item",
 						filters=pli_filters,
 						fields=[
 							"name",
-							"custom_stem_length",
-							"custom_shelf",
-							"custom_bucket",
+							"stem_length",
+							"shelf",
+							"bucket",
 							"warehouse",
 							"conversion_factor",
 						],
@@ -5888,9 +5973,9 @@ def gradingReplacementOptions():
 					if pli_rows:
 						pli = pli_rows[0]
 						pick_list_item = pli.get("name")
-						destination_bucket = pli.get("custom_bucket") or bucket_in or ""
-						stem_length = stem_length_in or (pli.get("custom_stem_length") or "")
-						shelf_name = pli.get("custom_shelf") or ""
+						destination_bucket = pli.get("bucket") or bucket_in or ""
+						stem_length = stem_length_in or (pli.get("stem_length") or "")
+						shelf_name = pli.get("shelf") or ""
 						conv = float(pli.get("conversion_factor") or 10) or 10.0
 
 						farm = ""
@@ -6039,16 +6124,16 @@ def listBucketOpls():
 			# Pick List Items referencing this bucket
 			pli_rows = frappe.get_all(
 				"Pick List Item",
-				filters={"custom_bucket": bucket_id},
+				filters={"bucket": bucket_id},
 				fields=[
 					"name",
 					"parent",
 					"item_code",
 					"stock_qty",
 					"qty",
-					"custom_issued",
+					"issued",
 					"custom_sale_order_item",
-					"custom_stem_length",
+					"stem_length",
 					"creation",
 				],
 				order_by="creation desc",
@@ -6065,11 +6150,11 @@ def listBucketOpls():
 					fields=[
 						"name",
 						"customer",
-						"custom_order_name",
+						"order_name",
 						"date_created",
 						"custom_total_stems",
-						"custom_status",
-						"custom_team",
+						"docstatus",
+						"team",
 						"custom_business_unit",
 						"sales_order",
 					],
@@ -6096,21 +6181,24 @@ def listBucketOpls():
 					{
 						"pick_list_item": r["name"],
 						"opl_name": parent,
-						"order_name": o.get("custom_order_name") or "",
+						"order_name": o.get("order_name") or "",
 						"customer": o.get("customer") or "",
-						"team": o.get("custom_team") or "",
+						"team": o.get("team") or "",
 						"date_created": str(o.get("date_created") or ""),
 						"total_stems": int(o.get("custom_total_stems") or 0)
 						if o.get("custom_total_stems")
 						else 0,
-						"opl_status": o.get("custom_status") or "",
+						# No status field on this schema: the document state stands in.
+						"opl_status": {0: "Draft", 1: "Submitted", 2: "Cancelled"}.get(
+							o.get("docstatus"), ""
+						),
 						"sales_order": o.get("sales_order") or "",
 						"sale_order_item": r.get("custom_sale_order_item") or "",
 						"item_code": r.get("item_code") or "",
-						"stem_length": r.get("custom_stem_length") or "",
+						"stem_length": r.get("stem_length") or "",
 						"stems_from_this_bucket": stems,
 						"bunches_from_this_bucket": bunches,
-						"issued": r.get("custom_issued") == 1,
+						"issued": r.get("issued") == 1,
 						"creation": str(r.get("creation") or ""),
 					}
 				)
@@ -6176,19 +6264,8 @@ def listBunchDestinations():
 		keyed.sort()
 		return [t[3] for t in keyed]
 
-	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not variety or not stem_length or not farm:
@@ -6305,7 +6382,7 @@ def _has_pending_source_bucket():
 @frappe.whitelist()
 def listPendingReshelving():
 	# No permission gate — viewing pending bunches is informational.
-	# Action (reshelving) goes through moveBunch which IS gated.
+	# Action (reshelving) goes through moveBunch.
 
 	try:
 		rows = frappe.get_all(
@@ -6322,7 +6399,6 @@ def listPendingReshelving():
 				*(["custom_pending_source_bucket"] if _has_pending_source_bucket() else []),
 				"custom_pending_since",
 				"custom_stem_length",
-				"custom_harvest_batch_no",
 				"farm",
 				"owner",
 				"modified_by",
@@ -6434,18 +6510,8 @@ def listReplacementCandidates():
 		return [t[3] for t in keyed]
 
 	# Permission check
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not bucket_id:
@@ -6456,8 +6522,8 @@ def listReplacementCandidates():
 			try:
 				pli_rows = frappe.get_all(
 					"Pick List Item",
-					filters={"custom_bucket": bucket_id},
-					fields=["item_code", "custom_stem_length", "custom_shelf", "warehouse"],
+					filters={"bucket": bucket_id},
+					fields=["item_code", "stem_length", "shelf", "warehouse"],
 					order_by="creation desc",
 					limit=1,
 				)
@@ -6467,8 +6533,8 @@ def listReplacementCandidates():
 				shelf_name = ""
 				if pli_rows:
 					variety = pli_rows[0].get("item_code") or ""
-					stem_length = pli_rows[0].get("custom_stem_length") or ""
-					shelf_name = pli_rows[0].get("custom_shelf") or ""
+					stem_length = pli_rows[0].get("stem_length") or ""
+					shelf_name = pli_rows[0].get("shelf") or ""
 
 				farm = ""
 				if shelf_name:
@@ -6707,19 +6773,8 @@ def moveBunch():
 	new_stem_length = (data.get("stem_length") or "").strip()
 	dest_bucket_id = (data.get("dest_bucket_id") or "").strip()
 
-	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not bunch_id or not source_bucket_id:
@@ -6729,24 +6784,12 @@ def moveBunch():
 		if bunch_id and source_bucket_id:
 			try:
 				# 1. Find the bunch's grading SE (must be in the source bucket's session)
-				source_prefix = source_bucket_id + "-"
-				grading_rows = frappe.get_all(
-					"Stock Entry",
-					filters={
-						"custom_bunch_id": bunch_id,
-						"stock_entry_type": "Grading",
-						"custom_harvest_batch_no": ["like", source_prefix + "%"],
-					},
-					fields=[
-						"name",
-						"custom_harvest_batch_no",
-						"custom_stem_length",
-						"farm",
-						"custom_pending_reshelving",
-					],
-					order_by="creation desc",
-					limit=1,
-				)
+				source_session = _bucket_session_entries(source_bucket_id)
+				grading_rows = [
+					g
+					for g in source_session
+					if g.stock_entry_type == "Grading" and g.custom_bunch_id == bunch_id
+				][:1]
 				if not grading_rows:
 					frappe.response["http_status_code"] = 404
 					frappe.response["data"] = {
@@ -6756,16 +6799,10 @@ def moveBunch():
 				if grading_rows:
 					grading = grading_rows[0]
 					grading_name = grading["name"]
-					source_batch = grading.get("custom_harvest_batch_no") or ""
-
-					# Paired harvest SE (for stem_length updates)
-					harvest_rows = frappe.get_all(
-						"Stock Entry",
-						filters={"custom_harvest_batch_no": source_batch, "stock_entry_type": "Harvesting"},
-						fields=["name"],
-						limit=1,
+					# The round's harvest entry (for stem_length updates)
+					harvest_name = next(
+						(h.name for h in source_session if h.stock_entry_type == "Harvesting"), ""
 					)
-					harvest_name = harvest_rows[0]["name"] if harvest_rows else ""
 
 					log = []
 
@@ -6834,8 +6871,8 @@ def moveBunch():
 					# 4. Determine the source PLI + farm + bunch_size
 					source_pli_rows = frappe.get_all(
 						"Pick List Item",
-						filters={"custom_bucket": source_bucket_id},
-						fields=["name", "parent", "qty", "stock_qty", "conversion_factor", "custom_shelf"],
+						filters={"bucket": source_bucket_id},
+						fields=["name", "parent", "qty", "stock_qty", "conversion_factor", "shelf"],
 						order_by="creation desc",
 						limit=1,
 					)
@@ -6843,10 +6880,10 @@ def moveBunch():
 
 					# Farm of the source bucket — preferred from OPL's shelf, else from harvest SE
 					source_farm = ""
-					if source_pli and source_pli.get("custom_shelf"):
+					if source_pli and source_pli.get("shelf"):
 						sh = frappe.get_all(
 							"Shelf",
-							filters={"name": source_pli["custom_shelf"]},
+							filters={"name": source_pli["shelf"]},
 							fields=["farm"],
 							limit=1,
 						)
@@ -7162,7 +7199,7 @@ def releaseFromQuarantine():
 			"stock_entry_type": stock_entry_type,
 			"purpose": purpose,
 			"custom_bucket_id": bucket_id_lower,
-			"custom_harvest_batch_no": entry.custom_harvest_batch_no or "",
+			"custom_harvest_batch_no": entry.get("custom_harvest_batch_no") or "",
 			"custom_receiving_batch_id": batch_no,
 			"company": entry.company or "",
 			"posting_date": frappe.utils.nowdate(),
@@ -7365,7 +7402,7 @@ def _resolve_bucket_quarantine(bucket_id, batch_no, action, stems_to_release):
 			"stock_entry_type": stock_entry_type,
 			"purpose": purpose,
 			"custom_bucket_id": bucket_id_lower,
-			"custom_harvest_batch_no": entry.custom_harvest_batch_no or "",
+			"custom_harvest_batch_no": entry.get("custom_harvest_batch_no") or "",
 			"custom_receiving_batch_id": batch_no,
 			"company": entry.company or "",
 			"posting_date": frappe.utils.nowdate(),
@@ -7586,18 +7623,8 @@ def replaceBucket():
 	requested_pli = (data.get("pick_list_item") or "").strip()
 
 	# Permission check via Has Role (same role as bunch correction)
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not bucket_id:
@@ -7610,7 +7637,7 @@ def replaceBucket():
 				#    If pick_list_item is given, scope to that exact row. Otherwise,
 				#    fall back to the latest — but require a single match. If multiple
 				#    PLIs exist and the caller didn't pick, return 409 with the list.
-				base_pli_filters = {"custom_bucket": bucket_id}
+				base_pli_filters = {"bucket": bucket_id}
 				if requested_pli:
 					base_pli_filters["name"] = requested_pli
 				pli_rows = frappe.get_all(
@@ -7629,16 +7656,13 @@ def replaceBucket():
 						"conversion_factor",
 						"stock_uom",
 						"warehouse",
-						"custom_stem_length",
-						"custom_shelf",
+						"stem_length",
+						"shelf",
 						"custom_sale_order_item",
 						"custom_box_id",
-						"custom_truck",
-						"custom_rate",
-						"custom_packrate",
 						"sales_order",
 						"sales_order_item",
-						"custom_issued",
+						"issued",
 						"creation",
 					],
 					order_by="creation desc",
@@ -7677,11 +7701,11 @@ def replaceBucket():
 					sale_order_item = pli.get("custom_sale_order_item")
 					so_name = pli.get("sales_order")
 					variety = pli.get("item_code") or ""
-					stem_length = pli.get("custom_stem_length") or ""
+					stem_length = pli.get("stem_length") or ""
 
 					# 2. Determine farm — prefer the shelf the bucket was picked from (OPL's source).
 					# This stays consistent even when the same bucket has been reused across farms.
-					shelf_name = pli.get("custom_shelf") or ""
+					shelf_name = pli.get("shelf") or ""
 					farm = ""
 					if shelf_name:
 						shelf_meta = frappe.get_all(
@@ -7791,10 +7815,10 @@ def replaceBucket():
 								"Pick List Item",
 								pli["name"],
 								{
-									"custom_bucket": new_bucket_id,
-									"custom_shelf": new_shelf,
+									"bucket": new_bucket_id,
+									"shelf": new_shelf,
 									"warehouse": new_warehouse,
-									"custom_issued": 1,
+									"issued": 1,
 								},
 							)
 
@@ -7880,18 +7904,8 @@ def replaceBunchInOpl():
 			pass
 		return 5
 
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not pick_list_item or not donor_bucket_id:
@@ -7910,9 +7924,9 @@ def replaceBunchInOpl():
 						"stock_qty",
 						"conversion_factor",
 						"item_code",
-						"custom_stem_length",
-						"custom_bucket",
-						"custom_shelf",
+						"stem_length",
+						"bucket",
+						"shelf",
 						"warehouse",
 					],
 					limit=1,
@@ -7925,7 +7939,7 @@ def replaceBunchInOpl():
 					pli = pli_rows[0]
 					opl_name = pli.get("parent") or ""
 					req_variety = pli.get("item_code") or ""
-					req_length = pli.get("custom_stem_length") or ""
+					req_length = pli.get("stem_length") or ""
 
 					conv = float(pli.get("conversion_factor") or 10) or 10.0
 					if stems_in is not None:
@@ -8099,7 +8113,7 @@ def replaceBunchInOpl():
 										"doctype": "Stem Replacement Log",
 										"pick_list_item": pli["name"],
 										"opl": opl_name,
-										"destination_bucket": pli.get("custom_bucket") or "",
+										"destination_bucket": pli.get("bucket") or "",
 										"donor_bucket": donor_bucket_id,
 										"donor_shelf": donor["shelf"] or "",
 										"variety": donor_variety or req_variety,
@@ -8127,7 +8141,7 @@ def replaceBunchInOpl():
 								+ ".",
 								"pick_list_item": pli["name"],
 								"opl": opl_name,
-								"destination_bucket": pli.get("custom_bucket") or "",
+								"destination_bucket": pli.get("bucket") or "",
 								"donor_bucket": donor_bucket_id,
 								"donor_shelf": donor["shelf"] or "",
 								"stems": stems,
@@ -8168,19 +8182,8 @@ def replaceStems():
 			pass
 		return 5
 
-	# Permission gate
-	has_role_rows = frappe.get_all(
-		"Has Role",
-		filters={"parent": frappe.session.user, "role": "Harvest Details Updater"},
-		fields=["name"],
-		limit=1,
-	)
-	is_admin = frappe.session.user == "Administrator"
-	user_has_role = bool(has_role_rows) or is_admin
-
-	if not user_has_role:
-		frappe.response["http_status_code"] = 403
-		frappe.response["data"] = {"error": "Role 'Harvest Details Updater' required."}
+	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
+	user_has_role = True
 
 	if user_has_role:
 		if not pick_list_item or not donor_bucket_id or stems <= 0:
@@ -8197,9 +8200,9 @@ def replaceStems():
 					[
 						"name",
 						"parent",
-						"custom_bucket",
+						"bucket",
 						"item_code",
-						"custom_stem_length",
+						"stem_length",
 						"custom_sale_order_item",
 					],
 					as_dict=True,
@@ -8212,7 +8215,7 @@ def replaceStems():
 					donor_shelf_items = frappe.db.sql(
 						"""
                         SELECT si.name AS shelf_item, si.parent AS shelf, si.stem_qty,
-                               si.variety, si.stem_length, s.farm,
+                               si.variety, si.stem_length, s.farm, si.warehouse,
                                COALESCE(bas.allocated_quantity, 0) AS allocated_qty,
                                (COALESCE(si.stem_qty, 0) - COALESCE(bas.allocated_quantity, 0)) AS available_qty,
                                COALESCE(bas.in_transit, 0) AS in_transit,
@@ -8325,19 +8328,36 @@ def replaceStems():
 							)
 							frappe.db.set_value("Shelf", donor["shelf"], "modified", now_ts)
 
+							# Stock: the donor's stems are sold to this line and issued to the
+							# packhouse, as a packing replacement's are. A leg that can't post
+							# raises and the whole replacement rolls back (below).
+							from upande_packhouse.api.packing_reject import post_donor_stock
+
+							post_donor_stock(
+								donor_bucket=donor_bucket_id,
+								variety=donor.get("variety") or pli.get("item_code"),
+								stem_length=donor.get("stem_length") or pli.get("stem_length") or "",
+								stems=stems,
+								warehouse=donor.get("warehouse"),
+								farm=donor.get("farm"),
+								sales_order=frappe.db.get_value(
+									"Order Pick List", pli.get("parent"), "sales_order"
+								),
+								so_item=pli.get("custom_sale_order_item") or "",
+								opl=pli.get("parent") or "",
+							)
+
 							log_name = ""
 							try:
 								log = frappe.new_doc("Stem Replacement Log")
 								log.pick_list_item = pick_list_item
 								log.opl = pli.get("parent") or ""
 								log.sale_order_item = pli.get("custom_sale_order_item") or ""
-								log.destination_bucket = pli.get("custom_bucket") or ""
+								log.destination_bucket = pli.get("bucket") or ""
 								log.donor_bucket = donor_bucket_id
 								log.donor_shelf = donor["shelf"]
 								log.variety = donor.get("variety") or pli.get("item_code") or ""
-								log.stem_length = (
-									donor.get("stem_length") or pli.get("custom_stem_length") or ""
-								)
+								log.stem_length = donor.get("stem_length") or pli.get("stem_length") or ""
 								log.stems = stems
 								log.replaced_at = now_ts
 								if reason:
@@ -8368,7 +8388,7 @@ def replaceStems():
 								"stems": stems,
 								"donor_remaining_stems": int(new_qty),
 								"donor_remaining_available": int(max(0, available - stems)),
-								"destination_bucket": pli.get("custom_bucket") or "",
+								"destination_bucket": pli.get("bucket") or "",
 								"opl": pli.get("parent") or "",
 							}
 
@@ -9262,7 +9282,7 @@ def setOfflineTrolleyFlags():
 							"""SELECT pli.name, pli.parent, pli.in_transit, pli.transit_truck, pli.shelved, pli.issued
 							FROM `tabPick List Item` pli
 							JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus < 2
-							WHERE pli.parenttype = 'Order Pick List' AND UPPER(pli.bucket) = UPPER(%(b)s)
+							WHERE pli.parenttype = 'Order Pick List' AND pli.bucket = %(b)s
 							  AND IFNULL(pli.not_found, 0) = 0
 							  AND (pli.parent = %(p)s OR (COALESCE(pli.farm, '') = COALESCE(%(f)s, '')
 							       AND (pli.awaiting_transfer = 1 OR pli.loaded_in_trolley = 1 OR pli.in_transit = 1)))""",
@@ -11802,6 +11822,9 @@ def getCurrentUserRoles():
 		roles = [r["role"] for r in rows if r.get("role")]
 		frappe.response["data"] = {
 			"user": user,
+			# The app shows people by name, and most users cannot read their own
+			# User record (only System Managers can), so the name comes from here.
+			"full_name": frappe.utils.get_fullname(user),
 			"roles": roles,
 		}
 	except Exception as e:
@@ -13701,7 +13724,7 @@ def fetchColdroomBucket():
 		"""
         SELECT si.warehouse, si.parent AS shelf
         FROM `tabShelf Item` si
-        WHERE UPPER(si.bucket_id) = UPPER(%s)
+        WHERE si.bucket_id = %s
         ORDER BY si.date_added DESC LIMIT 1
         """,
 		(bucket_id,),
@@ -13857,7 +13880,7 @@ def saveColdroomReject():
 		if is_shelved:
 			shelf = frappe.db.sql(
 				"SELECT si.parent AS shelf FROM `tabShelf Item` si"
-				" WHERE UPPER(si.bucket_id) = UPPER(%s) ORDER BY si.date_added DESC LIMIT 1",
+				" WHERE si.bucket_id = %s ORDER BY si.date_added DESC LIMIT 1",
 				(bucket_id,),
 				as_dict=True,
 			)
@@ -14575,7 +14598,7 @@ def replaceRequestedBucket():
 	# Bucket Requests app: swap a missing requested bucket for the matching one —
 	# updates the OPL rows, the Bucket Allocation Status and the stock entries.
 	# Payload: { "data": { "pick_list_item": "<name>", "new_bucket_id": "<previewed bucket>",
-	#                     "reason": "Missing|Damaged|Wrong variety|Other", "notes": "<optional>" } }
+	#                     "reason": "Missing|Damaged|Wrong variety|Issued offline|Other", "notes": "<optional>" } }
 	from upande_packhouse.upande_packhouse.page.sales_allocation import sales_allocation
 
 	data = _bucket_request_payload()
@@ -14586,6 +14609,91 @@ def replaceRequestedBucket():
 		notes=data.get("notes"),
 	)
 	frappe.response["message"] = dict(res, status="success" if res.get("success") else "error")
+
+
+def _requested_bucket_issue_info(pick_list_item):
+	"""Where the bucket on `pick_list_item` (a requested row) was issued: its own row,
+	or rows of the same bucket on other orders. A packing line is the OPL's team."""
+	row = frappe.db.get_value(
+		"Pick List Item", pick_list_item, ["name", "parent", "parenttype", "bucket", "issued"], as_dict=True
+	)
+	if not row or row.parenttype != "Order Pick List" or not row.bucket:
+		frappe.throw(_("Pick List Item {0} is not a requested bucket.").format(pick_list_item))
+	line = frappe.db.get_value("Order Pick List", row.parent, "team") or ""
+	issued = frappe.db.sql(
+		"""SELECT DISTINCT pli.parent AS opl, opl.order_name, IFNULL(opl.team, '') AS team
+		FROM `tabPick List Item` pli JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+		WHERE pli.parenttype = 'Order Pick List' AND pli.issued = 1 AND pli.bucket = %s""",
+		(row.bucket,),
+		as_dict=True,
+	)
+	for r in issued:
+		r["same_line"] = r.opl == row.parent or (bool(line) and r.team == line)
+	return row, line, issued
+
+
+@frappe.whitelist(methods=["POST"])
+def requestedBucketIssueInfo():
+	# Bucket Requests app, "Issued offline": which line (team) the requested bucket was
+	# issued to, and whether that is this order's own line.
+	# Payload: { "data": { "pick_list_item": "<name>" } }
+	data = _bucket_request_payload()
+	try:
+		row, line, issued = _requested_bucket_issue_info(data.get("pick_list_item"))
+	except frappe.ValidationError as e:
+		frappe.response["message"] = {"status": "error", "message": str(e)}
+		return
+	frappe.response["message"] = {
+		"status": "success",
+		"bucket": row.bucket,
+		"line": line,
+		"this_issued": bool(frappe.utils.cint(row.issued)),
+		"issued_to": issued,
+		"same_line": bool(frappe.utils.cint(row.issued)) or any(r["same_line"] for r in issued),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def markRequestedBucketIssued():
+	# Bucket Requests app: a requested bucket already issued offline to this order's own
+	# line needs no replacement — it is marked issued (through the issuing scan's own
+	# logic, so stock moves the same way). Issued to another line: refused, replace it.
+	# Payload: { "data": { "pick_list_item": "<name>" } }
+	from upande_packhouse.api import offline_issue
+
+	data = _bucket_request_payload()
+	try:
+		row, line, issued = _requested_bucket_issue_info(data.get("pick_list_item"))
+	except frappe.ValidationError as e:
+		frappe.response["message"] = {"status": "error", "message": str(e)}
+		return
+	if frappe.utils.cint(row.issued):
+		frappe.response["message"] = {
+			"status": "success",
+			"message": _("{0} is already issued.").format(row.bucket),
+		}
+		return
+	if not any(r["same_line"] for r in issued):
+		where = ", ".join("{0} ({1})".format(r.team or _("no team"), r.order_name or r.opl) for r in issued)
+		frappe.response["message"] = {
+			"status": "error",
+			"message": _("{0} was issued to {1}, not this line — replace it instead.").format(
+				row.bucket, where
+			)
+			if where
+			else _("{0} has not been issued anywhere — replace it or mark it not found.").format(row.bucket),
+		}
+		return
+	results = offline_issue._issue(row.bucket, row.parent)
+	ok = bool(results) and all(r["ok"] for r in results)
+	frappe.response["message"] = {
+		"status": "success" if ok else "error",
+		"message": _("{0} marked issued to {1}.").format(row.bucket, line or row.parent)
+		if ok
+		else _("Could not mark {0} issued: {1}").format(
+			row.bucket, "; ".join(str(r["message"]) for r in results if not r["ok"]) or _("nothing to issue")
+		),
+	}
 
 
 def _parse_scanned_at(raw, fallback):
@@ -14696,8 +14804,14 @@ def syncStockTakeBuckets():
 			shelf_items = frappe.get_all(
 				"Shelf Item",
 				filters={"bucket_id": ["in", list(real_buckets)]},
-				fields=["bucket_id", "parent", "variety", "stem_length", "harvest_date"],
+				fields=["bucket_id", "parent", "variety", "stem_length", "harvest_date", "stem_qty"],
 			)
+			# Stems in each shelved bucket: all of its Shelf Item rows together.
+			qty_by_bucket = {}
+			for si in shelf_items:
+				qty_by_bucket[si.bucket_id] = qty_by_bucket.get(si.bucket_id, 0) + frappe.utils.flt(
+					si.stem_qty
+				)
 			for si in shelf_items:
 				# A bucket's rows all share one shelf (it moves as one
 				# physical unit - see transferBucket's own docstring), so the
@@ -14708,6 +14822,7 @@ def syncStockTakeBuckets():
 		unshelved_ids = [b for b in real_buckets if b not in shelved_by_bucket]
 		harvest_by_bucket = {}
 		variety_by_se = {}
+		qty_by_se = {}
 		if unshelved_ids:
 			# creation is folded into the same MAX() key, not just
 			# posting_date/posting_time - an amended Stock Entry (the "-1"
@@ -14744,10 +14859,11 @@ def syncStockTakeBuckets():
 				details = frappe.get_all(
 					"Stock Entry Detail",
 					filters={"parent": ["in", se_names]},
-					fields=["parent", "item_code"],
+					fields=["parent", "item_code", "qty"],
 				)
 				for d in details:
 					variety_by_se.setdefault(d.parent, d.item_code)
+					qty_by_se[d.parent] = qty_by_se.get(d.parent, 0) + frappe.utils.flt(d.qty)
 
 		now_dt = frappe.utils.now_datetime()
 		name_guess = "{0}-{1}".format(coldstore, stock_take_date)
@@ -14778,6 +14894,7 @@ def syncStockTakeBuckets():
 			if si:
 				status, shelf = "Shelved", si.parent
 				variety, stem_length = si.variety, si.stem_length
+				qty = qty_by_bucket.get(bucket_id)
 				age_days = frappe.utils.date_diff(now_dt, si.harvest_date) if si.harvest_date else None
 			else:
 				he = harvest_by_bucket.get(bucket_id)
@@ -14794,6 +14911,7 @@ def syncStockTakeBuckets():
 				status, shelf = "Unshelved", None
 				stem_length = he.custom_stem_length
 				variety = variety_by_se.get(he.se_name)
+				qty = qty_by_se.get(he.se_name)
 				posting_dt = frappe.utils.get_datetime(
 					"{0} {1}".format(he.posting_date, he.posting_time or "00:00:00")
 				)
@@ -14808,6 +14926,7 @@ def syncStockTakeBuckets():
 			row.shelf = shelf
 			row.variety = variety
 			row.stem_length = stem_length
+			row.qty = qty
 			row.age_days = age_days
 			row.scanned_at = _parse_scanned_at(scanned_at_by_bucket.get(bucket_id), now_dt)
 
@@ -14820,6 +14939,7 @@ def syncStockTakeBuckets():
 						"shelf": shelf,
 						"variety": variety,
 						"stem_length": stem_length,
+						"qty": qty,
 						"age_days": age_days,
 					},
 				}
