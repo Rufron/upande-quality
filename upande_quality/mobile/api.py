@@ -182,10 +182,14 @@ def _bucket_session_entries(bucket_id, window_days=5):
 		return []
 	variety_of = {}
 	for r in frappe.get_all(
-		"Stock Entry Detail", filters={"parent": ["in", [x.name for x in rows]]}, fields=["parent", "item_code"]
+		"Stock Entry Detail",
+		filters={"parent": ["in", [x.name for x in rows]]},
+		fields=["parent", "item_code"],
 	):
 		variety_of.setdefault(r.parent, (r.item_code or "").lower())
-	anchor = next((r for r in rows if r.stock_entry_type in ("Grading", "Receiving", "Late Receipt")), rows[0])
+	anchor = next(
+		(r for r in rows if r.stock_entry_type in ("Grading", "Receiving", "Late Receipt")), rows[0]
+	)
 	variety = variety_of.get(anchor.name, "")
 	out = []
 	for r in rows:
@@ -237,7 +241,9 @@ def correctDetails():
 						if bucket_id:
 							session = _bucket_session_entries(bucket_id)
 							gradings = [
-								g for g in session if g.stock_entry_type == "Grading" and g.custom_bunch_id == bunch_id
+								g
+								for g in session
+								if g.stock_entry_type == "Grading" and g.custom_bunch_id == bunch_id
 							][:1]
 
 							if not gradings:
@@ -1578,7 +1584,8 @@ def createShelvingEntry():
 			match = [
 				e
 				for e in entries
-				if (not expect["farm"] or e.farm == expect["farm"]) and items.get(e.name) == expect["item_code"]
+				if (not expect["farm"] or e.farm == expect["farm"])
+				and items.get(e.name) == expect["item_code"]
 			]
 			if not match:
 				latest = entries[0]
@@ -5050,7 +5057,11 @@ def _with_user_names(obj, _cache=None):
 
 	if isinstance(obj, dict):
 		return {
-			k: (", ".join(name(u) for u in v.split(",")) if k == "user" and isinstance(v, str) and v else _with_user_names(v, cache))
+			k: (
+				", ".join(name(u) for u in v.split(","))
+				if k == "user" and isinstance(v, str) and v
+				else _with_user_names(v, cache)
+			)
 			for k, v in obj.items()
 		}
 	if isinstance(obj, list):
@@ -5793,28 +5804,30 @@ def getTraceability():
 							)
 						)
 
-				frappe.response["data"] = _with_user_names({
-					"remote_transfers": remote_transfers,
-					"kind": kind,
-					"rose_type": rose_type,
-					"bucket_id": bucket_id or "",
-					"bunch_id": resolved_bunch_id,
-					"status": status,
-					"variety": variety,
-					"farm": farm,
-					"greenhouse": greenhouse,
-					"stem_length": stem_length,
-					"number_of_stems": number_of_stems,
-					"stems_rejected": quarantine_rejected_qty or 0,
-					"date": latest_date,
-					"batch_no": batch_no,
-					"session_size": len(bunches),
-					"bunch_info": bunch_info,
-					"bunches": bunches,
-					"stages": stages,
-					"warnings": warnings,
-					"allocation": allocation,
-				})
+				frappe.response["data"] = _with_user_names(
+					{
+						"remote_transfers": remote_transfers,
+						"kind": kind,
+						"rose_type": rose_type,
+						"bucket_id": bucket_id or "",
+						"bunch_id": resolved_bunch_id,
+						"status": status,
+						"variety": variety,
+						"farm": farm,
+						"greenhouse": greenhouse,
+						"stem_length": stem_length,
+						"number_of_stems": number_of_stems,
+						"stems_rejected": quarantine_rejected_qty or 0,
+						"date": latest_date,
+						"batch_no": batch_no,
+						"session_size": len(bunches),
+						"bunch_info": bunch_info,
+						"bunches": bunches,
+						"stages": stages,
+						"warnings": warnings,
+						"allocation": allocation,
+					}
+				)
 
 		except Exception as e:
 			frappe.log_error("getTraceability error: " + str(e))
@@ -6156,7 +6169,9 @@ def listBucketOpls():
 						if o.get("custom_total_stems")
 						else 0,
 						# No status field on this schema: the document state stands in.
-						"opl_status": {0: "Draft", 1: "Submitted", 2: "Cancelled"}.get(o.get("docstatus"), ""),
+						"opl_status": {0: "Draft", 1: "Submitted", 2: "Cancelled"}.get(
+							o.get("docstatus"), ""
+						),
 						"sales_order": o.get("sales_order") or "",
 						"sale_order_item": r.get("custom_sale_order_item") or "",
 						"item_code": r.get("item_code") or "",
@@ -6751,7 +6766,9 @@ def moveBunch():
 				# 1. Find the bunch's grading SE (must be in the source bucket's session)
 				source_session = _bucket_session_entries(source_bucket_id)
 				grading_rows = [
-					g for g in source_session if g.stock_entry_type == "Grading" and g.custom_bunch_id == bunch_id
+					g
+					for g in source_session
+					if g.stock_entry_type == "Grading" and g.custom_bunch_id == bunch_id
 				][:1]
 				if not grading_rows:
 					frappe.response["http_status_code"] = 404
@@ -8303,7 +8320,9 @@ def replaceStems():
 								stems=stems,
 								warehouse=donor.get("warehouse"),
 								farm=donor.get("farm"),
-								sales_order=frappe.db.get_value("Order Pick List", pli.get("parent"), "sales_order"),
+								sales_order=frappe.db.get_value(
+									"Order Pick List", pli.get("parent"), "sales_order"
+								),
 								so_item=pli.get("custom_sale_order_item") or "",
 								opl=pli.get("parent") or "",
 							)
@@ -8318,9 +8337,7 @@ def replaceStems():
 								log.donor_bucket = donor_bucket_id
 								log.donor_shelf = donor["shelf"]
 								log.variety = donor.get("variety") or pli.get("item_code") or ""
-								log.stem_length = (
-									donor.get("stem_length") or pli.get("stem_length") or ""
-								)
+								log.stem_length = donor.get("stem_length") or pli.get("stem_length") or ""
 								log.stems = stems
 								log.replaced_at = now_ts
 								if reason:
@@ -14631,13 +14648,18 @@ def markRequestedBucketIssued():
 		frappe.response["message"] = {"status": "error", "message": str(e)}
 		return
 	if frappe.utils.cint(row.issued):
-		frappe.response["message"] = {"status": "success", "message": _("{0} is already issued.").format(row.bucket)}
+		frappe.response["message"] = {
+			"status": "success",
+			"message": _("{0} is already issued.").format(row.bucket),
+		}
 		return
 	if not any(r["same_line"] for r in issued):
 		where = ", ".join("{0} ({1})".format(r.team or _("no team"), r.order_name or r.opl) for r in issued)
 		frappe.response["message"] = {
 			"status": "error",
-			"message": _("{0} was issued to {1}, not this line — replace it instead.").format(row.bucket, where)
+			"message": _("{0} was issued to {1}, not this line — replace it instead.").format(
+				row.bucket, where
+			)
 			if where
 			else _("{0} has not been issued anywhere — replace it or mark it not found.").format(row.bucket),
 		}
@@ -14767,7 +14789,9 @@ def syncStockTakeBuckets():
 			# Stems in each shelved bucket: all of its Shelf Item rows together.
 			qty_by_bucket = {}
 			for si in shelf_items:
-				qty_by_bucket[si.bucket_id] = qty_by_bucket.get(si.bucket_id, 0) + frappe.utils.flt(si.stem_qty)
+				qty_by_bucket[si.bucket_id] = qty_by_bucket.get(si.bucket_id, 0) + frappe.utils.flt(
+					si.stem_qty
+				)
 			for si in shelf_items:
 				# A bucket's rows all share one shelf (it moves as one
 				# physical unit - see transferBucket's own docstring), so the

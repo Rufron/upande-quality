@@ -18,7 +18,9 @@ def execute():
 	for new in RENAMED:
 		old = "custom_" + new
 		if frappe.db.exists("Custom Field", {"dt": "Production Settings", "fieldname": old}):
-			frappe.delete_doc("Custom Field", "Production Settings-" + old, ignore_permissions=True, force=True)
+			frappe.delete_doc(
+				"Custom Field", "Production Settings-" + old, ignore_permissions=True, force=True
+			)
 		value = frappe.db.sql(
 			"SELECT value FROM `tabSingles` WHERE doctype = 'Production Settings' AND field = %s", old
 		)

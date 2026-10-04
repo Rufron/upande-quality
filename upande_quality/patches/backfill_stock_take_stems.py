@@ -44,7 +44,9 @@ def execute():
 				stems[r.bucket_id] = flt(r.qty)
 	for r in rows:
 		if r.bucket_id in stems:
-			frappe.db.set_value("Cold Store Stock Take Bucket", r.name, "qty", stems[r.bucket_id], update_modified=False)
+			frappe.db.set_value(
+				"Cold Store Stock Take Bucket", r.name, "qty", stems[r.bucket_id], update_modified=False
+			)
 
 	for name in frappe.get_all("Cold Store Stock Take", pluck="name"):
 		totals = frappe.db.sql(
