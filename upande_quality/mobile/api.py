@@ -1394,7 +1394,21 @@ def createShelvingEntry():
 			# the app is set to (the app on Simotwo at a Kapkolia shelf is a Kapkolia
 			# shelving — the arrival). Never refused; the correction is recorded.
 			req_farm = (data.get("farm") or "").strip()
-			if shelf_doc.farm and req_farm and shelf_doc.farm.lower() != req_farm.lower():
+			# Except a bucket already on its way from the app's own (remote) farm: the
+			# person is still at that farm, so a sales-farm shelf there is a mis-scan,
+			# not the arrival — refused, or it would mark the whole truck arrived.
+			from upande_packhouse.api.transfer_control import remote_shelving_block
+
+			try:
+				from upande_packhouse.api.transfer_control import hub_shelving_block
+			except ImportError:  # an upande_packhouse without it: no hub check
+				hub_shelving_block = None
+			left_here = remote_shelving_block(bucket_id, req_farm) if req_farm else None
+			if left_here:
+				result["passed"] = False
+				result["reason"] = "already_transferred"
+				result["message"] = left_here + " Shelve it at the sales farm."
+			elif shelf_doc.farm and req_farm and shelf_doc.farm.lower() != req_farm.lower():
 				data["farm"] = shelf_doc.farm
 				result["farm_corrected"] = {"app": req_farm, "shelf": shelf_doc.farm}
 				from upande_packhouse.api import transfer_control as tc
@@ -1415,13 +1429,20 @@ def createShelvingEntry():
 			# (on a trolley / truck, in transit, or its stock left the farm): only the
 			# sales farm can shelve it — a remote shelf is refused, and recorded.
 			if result["passed"]:
-				from upande_packhouse.api.transfer_control import remote_shelving_block
-
 				blocked = remote_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
 				if blocked:
 					result["passed"] = False
 					result["reason"] = "already_transferred"
 					result["message"] = blocked + " Shelve it at the sales farm."
+
+			# At the sales farm: a bucket still waiting at a remote farm that never went on
+			# a trolley / truck there never arrived — refused, not "self-healed" off its shelf.
+			if result["passed"] and hub_shelving_block:
+				never = hub_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
+				if never:
+					result["passed"] = False
+					result["reason"] = "not_transferred"
+					result["message"] = never
 
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
