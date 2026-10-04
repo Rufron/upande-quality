@@ -17,7 +17,15 @@
   "harvesting_section",
   "harvest_item_group_config",
   "scheduling_section",
-  "custom_takt_time"
+  "takt_time",
+  "remote_transfers_tab",
+  "transfer_hub_farm",
+  "column_break_ozyn",
+  "allow_hub_shelving_without_transfer",
+  "auto_transfer_section",
+  "auto_remote_transfer_scheduling",
+  "column_break_fgfp",
+  "auto_transfer_frequency"
  ],
  "fields": [
   {
@@ -61,7 +69,6 @@
    "label": "Harvesting"
   },
   {
-   "description": "Per-bucket stem cap enforced by both Harvesting (Standard Roses) and Grading (Spray Roses) on the mobile app. Keyed by Item Group -- the nearest configured ancestor group applies if an item's own leaf group isn't listed. Leave a group unset (or 0) for no cap.",
    "fieldname": "harvest_item_group_config",
    "fieldtype": "Table",
    "label": "Max Stems Per Bucket (by Item Group)",
@@ -74,18 +81,61 @@
   },
   {
    "default": "0",
-   "description": "Standard minutes to pack one box, used by the Packhouse Scheduler to estimate how long a team's queued orders will take.",
-   "fieldname": "custom_takt_time",
+   "fieldname": "takt_time",
    "fieldtype": "Float",
    "label": "Takt Time (Minutes per Box)"
+  },
+  {
+   "fieldname": "remote_transfers_tab",
+   "fieldtype": "Tab Break",
+   "label": "Remote Transfers"
+  },
+  {
+   "fieldname": "transfer_hub_farm",
+   "fieldtype": "Link",
+   "label": "Remote Transfer Hub Farm",
+   "options": "Farm"
+  },
+  {
+   "fieldname": "auto_transfer_section",
+   "fieldtype": "Section Break",
+   "label": "Automatic Scheduling"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_remote_transfer_scheduling",
+   "fieldtype": "Check",
+   "label": "Enable Automatic Remote Transfers Scheduling"
+  },
+  {
+   "default": "10",
+   "depends_on": "eval:doc.auto_remote_transfer_scheduling",
+   "fieldname": "auto_transfer_frequency",
+   "fieldtype": "Select",
+   "label": "Re-plan Every (Minutes)",
+   "options": "5\n10\n15\n20\n30\n60"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_hub_shelving_without_transfer",
+   "fieldtype": "Check",
+   "label": "Allow Shelving Buckets Not Transferred"
+  },
+  {
+   "fieldname": "column_break_ozyn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_fgfp",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-10 11:41:34.555829",
- "modified_by": "judah@upande.com",
+ "modified": "2026-10-04 23:12:58.629684",
+ "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
  "owner": "Administrator",
