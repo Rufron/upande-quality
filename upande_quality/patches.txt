@@ -8,3 +8,4 @@ upande_quality.patches.add_pending_reshelving_fields
 upande_quality.patches.add_bucket_transfer_indexes
 upande_quality.patches.enable_username_login
 upande_quality.patches.add_pending_reshelving_index
+upande_quality.patches.backfill_stock_take_stems

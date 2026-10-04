@@ -1511,6 +1511,29 @@ def createShelvingEntry():
 	# ---------------------------------------------------------
 	def fetch_latest_receiving(bucket_id, result):
 		result["receiving_doc"] = None
+		result["transfer_mismatch"] = None
+
+		# A bucket arriving on a transfer is what the transfer carries (its source
+		# farm and variety), not whatever this bucket id last held: ids are reused,
+		# and the latest receiving can be another farm's, another variety's.
+		transfer = frappe.get_all(
+			"Pick List Item",
+			filters={"bucket": bucket_id, "parenttype": "Order Pick List", "issued": 0},
+			or_filters={"awaiting_transfer": 1, "loaded_in_trolley": 1, "in_transit": 1},
+			fields=["parent", "item_code", "stem_length", "source_warehouse", "warehouse"],
+			order_by="creation desc",
+			limit=1,
+		)
+		expect = None
+		if transfer:
+			t = transfer[0]
+			wh = t.source_warehouse or t.warehouse or ""
+			expect = {
+				"farm": wh.split(" ", 1)[0] if wh else "",
+				"item_code": t.item_code,
+				"stem_length": t.stem_length or "",
+				"opl": t.parent,
+			}
 
 		entries = frappe.get_all(
 			"Stock Entry",
@@ -1519,10 +1542,29 @@ def createShelvingEntry():
 				"custom_bucket_id": bucket_id,
 				"docstatus": 1,
 			},
-			fields=["name"],
+			fields=["name", "farm"],
 			order_by="creation desc",
-			limit=1,
+			limit=20 if expect else 1,
 		)
+		if expect and entries:
+			items = {}
+			for r in frappe.get_all(
+				"Stock Entry Detail",
+				filters={"parent": ["in", [e.name for e in entries]]},
+				fields=["parent", "item_code"],
+			):
+				items.setdefault(r.parent, r.item_code)
+			match = [
+				e
+				for e in entries
+				if (not expect["farm"] or e.farm == expect["farm"]) and items.get(e.name) == expect["item_code"]
+			]
+			if not match:
+				latest = entries[0]
+				result["transfer_mismatch"] = dict(
+					expect, latest_farm=latest.farm or "", latest_item=items.get(latest.name) or ""
+				)
+			entries = match
 
 		if entries:
 			try:
@@ -1773,7 +1815,22 @@ def createShelvingEntry():
 			fetch_latest_receiving(bucket_id, result)
 			receiving_doc = result.get("receiving_doc")
 
-			if not receiving_doc:
+			mismatch = result.get("transfer_mismatch")
+			if not receiving_doc and mismatch:
+				# On a transfer, but no receiving of what the transfer carries:
+				# shelving it would record (and move the stock of) the wrong flowers.
+				frappe.response["data"] = {
+					"status": "failed",
+					"reason": "transfer_mismatch",
+					"message": (
+						f"{bucket_id} is on its way as {mismatch['item_code']} {mismatch['stem_length']} "
+						f"from {mismatch['farm']} ({mismatch['opl']}), but it has no receiving for that — "
+						f"its latest receiving is {mismatch['latest_item']} at {mismatch['latest_farm']}. "
+						f"Receive it at {mismatch['farm']} first, or replace it on the order."
+					),
+					"payload": {"bucket_id": bucket_id, "transfer": mismatch},
+				}
+			elif not receiving_doc:
 				frappe.log_error(
 					"Receiving Entry Not Found",
 					f"No Receiving or Late Receipt entry found for bucket {bucket_id}. Data: {data}",
