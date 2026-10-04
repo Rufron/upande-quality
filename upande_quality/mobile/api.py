@@ -1435,20 +1435,13 @@ def createShelvingEntry():
 			# (on a trolley / truck, in transit, or its stock left the farm): only the
 			# sales farm can shelve it — a remote shelf is refused, and recorded.
 			if result["passed"]:
+				from upande_packhouse.api.transfer_control import remote_shelving_block
+
 				blocked = remote_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
 				if blocked:
 					result["passed"] = False
 					result["reason"] = "already_transferred"
 					result["message"] = blocked + " Shelve it at the sales farm."
-
-			# At the sales farm: a bucket still waiting at a remote farm that never went on
-			# a trolley / truck there never arrived — refused, not "self-healed" off its shelf.
-			if result["passed"] and hub_shelving_block:
-				never = hub_shelving_block(bucket_id, data.get("farm") or shelf_doc.farm)
-				if never:
-					result["passed"] = False
-					result["reason"] = "not_transferred"
-					result["message"] = never
 
 			# duplicate_entry - CHECK CURRENT SHELF
 			if shelf_doc and shelf_doc.items:
