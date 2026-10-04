@@ -14565,7 +14565,7 @@ def replaceRequestedBucket():
 	# Bucket Requests app: swap a missing requested bucket for the matching one —
 	# updates the OPL rows, the Bucket Allocation Status and the stock entries.
 	# Payload: { "data": { "pick_list_item": "<name>", "new_bucket_id": "<previewed bucket>",
-	#                     "reason": "Missing|Damaged|Wrong variety|Other", "notes": "<optional>" } }
+	#                     "reason": "Missing|Damaged|Wrong variety|Issued offline|Other", "notes": "<optional>" } }
 	from upande_packhouse.upande_packhouse.page.sales_allocation import sales_allocation
 
 	data = _bucket_request_payload()
