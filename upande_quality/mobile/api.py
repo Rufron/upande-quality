@@ -2451,6 +2451,8 @@ def fetchAllocatedBuckets():
 		pli_filters = {
 			"awaiting_transfer": 1,
 			"in_transit": 0,
+			# Issued already (e.g. issued offline at the packhouse): nothing left to send.
+			"issued": 0,
 			"bucket": ["!=", ""],
 			# v16: warehouse is empty on pick rows. Warehouse names start with their farm
 			# ("Simotwo Receiving Cold Store - KR"): match that prefix, not any substring,
@@ -14576,6 +14578,86 @@ def replaceRequestedBucket():
 		notes=data.get("notes"),
 	)
 	frappe.response["message"] = dict(res, status="success" if res.get("success") else "error")
+
+
+def _requested_bucket_issue_info(pick_list_item):
+	"""Where the bucket on `pick_list_item` (a requested row) was issued: its own row,
+	or rows of the same bucket on other orders. A packing line is the OPL's team."""
+	row = frappe.db.get_value(
+		"Pick List Item", pick_list_item, ["name", "parent", "parenttype", "bucket", "issued"], as_dict=True
+	)
+	if not row or row.parenttype != "Order Pick List" or not row.bucket:
+		frappe.throw(_("Pick List Item {0} is not a requested bucket.").format(pick_list_item))
+	line = frappe.db.get_value("Order Pick List", row.parent, "team") or ""
+	issued = frappe.db.sql(
+		"""SELECT DISTINCT pli.parent AS opl, opl.order_name, IFNULL(opl.team, '') AS team
+		FROM `tabPick List Item` pli JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+		WHERE pli.parenttype = 'Order Pick List' AND pli.issued = 1 AND UPPER(pli.bucket) = UPPER(%s)""",
+		(row.bucket,),
+		as_dict=True,
+	)
+	for r in issued:
+		r["same_line"] = r.opl == row.parent or (bool(line) and r.team == line)
+	return row, line, issued
+
+
+@frappe.whitelist(methods=["POST"])
+def requestedBucketIssueInfo():
+	# Bucket Requests app, "Issued offline": which line (team) the requested bucket was
+	# issued to, and whether that is this order's own line.
+	# Payload: { "data": { "pick_list_item": "<name>" } }
+	data = _bucket_request_payload()
+	try:
+		row, line, issued = _requested_bucket_issue_info(data.get("pick_list_item"))
+	except frappe.ValidationError as e:
+		frappe.response["message"] = {"status": "error", "message": str(e)}
+		return
+	frappe.response["message"] = {
+		"status": "success",
+		"bucket": row.bucket,
+		"line": line,
+		"this_issued": bool(frappe.utils.cint(row.issued)),
+		"issued_to": issued,
+		"same_line": bool(frappe.utils.cint(row.issued)) or any(r["same_line"] for r in issued),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def markRequestedBucketIssued():
+	# Bucket Requests app: a requested bucket already issued offline to this order's own
+	# line needs no replacement — it is marked issued (through the issuing scan's own
+	# logic, so stock moves the same way). Issued to another line: refused, replace it.
+	# Payload: { "data": { "pick_list_item": "<name>" } }
+	from upande_packhouse.api import offline_issue
+
+	data = _bucket_request_payload()
+	try:
+		row, line, issued = _requested_bucket_issue_info(data.get("pick_list_item"))
+	except frappe.ValidationError as e:
+		frappe.response["message"] = {"status": "error", "message": str(e)}
+		return
+	if frappe.utils.cint(row.issued):
+		frappe.response["message"] = {"status": "success", "message": _("{0} is already issued.").format(row.bucket)}
+		return
+	if not any(r["same_line"] for r in issued):
+		where = ", ".join("{0} ({1})".format(r.team or _("no team"), r.order_name or r.opl) for r in issued)
+		frappe.response["message"] = {
+			"status": "error",
+			"message": _("{0} was issued to {1}, not this line — replace it instead.").format(row.bucket, where)
+			if where
+			else _("{0} has not been issued anywhere — replace it or mark it not found.").format(row.bucket),
+		}
+		return
+	results = offline_issue._issue(row.bucket, row.parent)
+	ok = bool(results) and all(r["ok"] for r in results)
+	frappe.response["message"] = {
+		"status": "success" if ok else "error",
+		"message": _("{0} marked issued to {1}.").format(row.bucket, line or row.parent)
+		if ok
+		else _("Could not mark {0} issued: {1}").format(
+			row.bucket, "; ".join(str(r["message"]) for r in results if not r["ok"]) or _("nothing to issue")
+		),
+	}
 
 
 def _parse_scanned_at(raw, fallback):
