@@ -3875,14 +3875,23 @@ def getFarmPlannedTrips():
 		# waiting -> loaded (on the truck) -> transit -> arrived (shelved at the packhouse).
 		opl_states = {}
 		if device_opls:
+			# A bucket shelved at the packhouse has its source moved to the packhouse's
+			# store; its origin still names this farm. Match either, or an arrived order
+			# would drop out of this farm's states instead of showing "arrived".
+			farm_match = {"source_warehouse": ["like", like]}
+			or_farm = None
+			if frappe.get_meta("Pick List Item").get_field("origin_warehouse"):
+				farm_match = {}
+				or_farm = [["source_warehouse", "like", like], ["origin_warehouse", "like", like]]
 			for r in frappe.get_all(
 				"Pick List Item",
 				filters={
 					"parent": ["in", device_opls],
 					"parenttype": "Order Pick List",
 					"bucket": ["!=", ""],
-					"source_warehouse": ["like", like],
+					**farm_match,
 				},
+				or_filters=or_farm,
 				fields=["parent", "loaded_in_trolley", "in_transit", "shelved", "transit_truck", "not_found"],
 				limit_page_length=0,
 			):
