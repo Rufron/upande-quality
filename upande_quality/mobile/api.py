@@ -1606,8 +1606,11 @@ def createShelvingEntry():
 			fields=["name", "parent"],
 		)
 		from upande_packhouse.api.transfer_control import transfer_hub
+		from upande_packhouse.roses_warehouse_map import source_warehouse_for_farm
 
 		hub = transfer_hub(required=False)
+		# Older sites may not have the field yet (it ships with upande_packhouse).
+		tracks_origin = bool(frappe.get_meta("Pick List Item").get_field("origin_warehouse"))
 		updated_opls = []
 		for r in rows:
 			opl_doc = frappe.get_doc("Order Pick List", r.parent)
@@ -1635,6 +1638,14 @@ def createShelvingEntry():
 							"shelved": 1,
 							"shelf": shelf_id,
 						}
+						# Arrived: issuing now draws the stems from the sales farm's own
+						# store, so that becomes the source -- and only now. Until here it
+						# stayed on the bucket's farm. The origin is kept for good.
+						arrived_wh = source_warehouse_for_farm(sales_farm) if sales_farm else None
+						if tracks_origin:
+							flags["origin_warehouse"] = row.get("origin_warehouse") or row.source_warehouse
+						if arrived_wh:
+							flags["source_warehouse"] = arrived_wh
 						if opl_doc.docstatus == 1:
 							# A submitted OPL can't be saved: set the row directly.
 							frappe.db.set_value("Pick List Item", row.name, flags)
@@ -3864,14 +3875,23 @@ def getFarmPlannedTrips():
 		# waiting -> loaded (on the truck) -> transit -> arrived (shelved at the packhouse).
 		opl_states = {}
 		if device_opls:
+			# A bucket shelved at the packhouse has its source moved to the packhouse's
+			# store; its origin still names this farm. Match either, or an arrived order
+			# would drop out of this farm's states instead of showing "arrived".
+			farm_match = {"source_warehouse": ["like", like]}
+			or_farm = None
+			if frappe.get_meta("Pick List Item").get_field("origin_warehouse"):
+				farm_match = {}
+				or_farm = [["source_warehouse", "like", like], ["origin_warehouse", "like", like]]
 			for r in frappe.get_all(
 				"Pick List Item",
 				filters={
 					"parent": ["in", device_opls],
 					"parenttype": "Order Pick List",
 					"bucket": ["!=", ""],
-					"source_warehouse": ["like", like],
+					**farm_match,
 				},
+				or_filters=or_farm,
 				fields=["parent", "loaded_in_trolley", "in_transit", "shelved", "transit_truck", "not_found"],
 				limit_page_length=0,
 			):
@@ -13985,7 +14005,7 @@ def getDriverBucketLogistics():
 	# clears awaiting_transfer, so trolley-loaded buckets dropped out of the screen.
 	fd = frappe.form_dict
 	delivery_date = fd.get("delivery_date") or frappe.utils.today()
-	FARM_EXPR = "SUBSTRING_INDEX(COALESCE(NULLIF(pli.source_warehouse,''), pli.warehouse), ' ', 1)"
+	FARM_EXPR = "SUBSTRING_INDEX(COALESCE(NULLIF(pli.origin_warehouse,''), NULLIF(pli.source_warehouse,''), pli.warehouse), ' ', 1)"
 	TRANSFER = (
 		"(pli.awaiting_transfer = 1 OR pli.loaded_in_trolley = 1 OR pli.in_transit = 1 OR pli.shelved = 1)"
 	)
