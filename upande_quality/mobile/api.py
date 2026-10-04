@@ -135,10 +135,8 @@ def correctDetails():
 	new_variety = (data.get("variety") or "").strip()
 	new_stem_length = (data.get("stem_length") or "").strip()
 
-	# Permission gate
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
-
 
 	if user_has_role:
 		if kind not in ("bunch", "bucket"):
@@ -5813,10 +5811,8 @@ def gradingReplacementOptions():
 		keyed.sort()
 		return [t[3] for t in keyed]
 
-	# Permission gate
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
-
 
 	if user_has_role:
 		if not order_pick_list or not variety:
@@ -6171,10 +6167,8 @@ def listBunchDestinations():
 		keyed.sort()
 		return [t[3] for t in keyed]
 
-	# Permission gate
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
-
 
 	if user_has_role:
 		if not variety or not stem_length or not farm:
@@ -6422,7 +6416,6 @@ def listReplacementCandidates():
 	# Permission check
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
-
 
 	if user_has_role:
 		if not bucket_id:
@@ -6684,10 +6677,8 @@ def moveBunch():
 	new_stem_length = (data.get("stem_length") or "").strip()
 	dest_bucket_id = (data.get("dest_bucket_id") or "").strip()
 
-	# Permission gate
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
-
 
 	if user_has_role:
 		if not bunch_id or not source_bucket_id:
@@ -7557,7 +7548,6 @@ def replaceBucket():
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
 
-
 	if user_has_role:
 		if not bucket_id:
 			frappe.response["http_status_code"] = 400
@@ -7842,7 +7832,6 @@ def replaceBunchInOpl():
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
 
-
 	if user_has_role:
 		if not pick_list_item or not donor_bucket_id:
 			frappe.response["http_status_code"] = 400
@@ -8118,10 +8107,8 @@ def replaceStems():
 			pass
 		return 5
 
-	# Permission gate
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
-
 
 	if user_has_role:
 		if not pick_list_item or not donor_bucket_id or stems <= 0:
