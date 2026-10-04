@@ -4981,6 +4981,27 @@ def getBoxTraceability():
 		frappe.response["message"] = {"success": False, "error": str(e)}
 
 
+def _with_user_names(obj, _cache=None):
+	"""Every "user" value in a traceability payload (a user id, or several joined
+	by ", ") as the people's full names: the app shows names, not emails."""
+	cache = {} if _cache is None else _cache
+
+	def name(uid):
+		uid = uid.strip()
+		if uid not in cache:
+			cache[uid] = frappe.utils.get_fullname(uid) if uid else ""
+		return cache[uid]
+
+	if isinstance(obj, dict):
+		return {
+			k: (", ".join(name(u) for u in v.split(",")) if k == "user" and isinstance(v, str) and v else _with_user_names(v, cache))
+			for k, v in obj.items()
+		}
+	if isinstance(obj, list):
+		return [_with_user_names(v, cache) for v in obj]
+	return obj
+
+
 @frappe.whitelist()
 def getTraceability():
 	# getTraceability — bucket/bunch journey for the mobile Traceability scan.
@@ -5714,7 +5735,7 @@ def getTraceability():
 							"Not found at {0} for {1} — left out of that transfer".format(tr["from_farm"], tr["order_name"])
 						)
 
-				frappe.response["data"] = {
+				frappe.response["data"] = _with_user_names({
 					"remote_transfers": remote_transfers,
 					"kind": kind,
 					"rose_type": rose_type,
@@ -5735,7 +5756,7 @@ def getTraceability():
 					"stages": stages,
 					"warnings": warnings,
 					"allocation": allocation,
-				}
+				})
 
 		except Exception as e:
 			frappe.log_error("getTraceability error: " + str(e))
@@ -11777,6 +11798,9 @@ def getCurrentUserRoles():
 		roles = [r["role"] for r in rows if r.get("role")]
 		frappe.response["data"] = {
 			"user": user,
+			# The app shows people by name, and most users cannot read their own
+			# User record (only System Managers can), so the name comes from here.
+			"full_name": frappe.utils.get_fullname(user),
 			"roles": roles,
 		}
 	except Exception as e:
