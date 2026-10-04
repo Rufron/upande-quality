@@ -9189,7 +9189,7 @@ def setOfflineTrolleyFlags():
 							"""SELECT pli.name, pli.parent, pli.in_transit, pli.transit_truck, pli.shelved, pli.issued
 							FROM `tabPick List Item` pli
 							JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus < 2
-							WHERE pli.parenttype = 'Order Pick List' AND UPPER(pli.bucket) = UPPER(%(b)s)
+							WHERE pli.parenttype = 'Order Pick List' AND pli.bucket = %(b)s
 							  AND IFNULL(pli.not_found, 0) = 0
 							  AND (pli.parent = %(p)s OR (COALESCE(pli.farm, '') = COALESCE(%(f)s, '')
 							       AND (pli.awaiting_transfer = 1 OR pli.loaded_in_trolley = 1 OR pli.in_transit = 1)))""",
@@ -13617,7 +13617,7 @@ def fetchColdroomBucket():
 		"""
         SELECT si.warehouse, si.parent AS shelf
         FROM `tabShelf Item` si
-        WHERE UPPER(si.bucket_id) = UPPER(%s)
+        WHERE si.bucket_id = %s
         ORDER BY si.date_added DESC LIMIT 1
         """,
 		(bucket_id,),
@@ -13773,7 +13773,7 @@ def saveColdroomReject():
 		if is_shelved:
 			shelf = frappe.db.sql(
 				"SELECT si.parent AS shelf FROM `tabShelf Item` si"
-				" WHERE UPPER(si.bucket_id) = UPPER(%s) ORDER BY si.date_added DESC LIMIT 1",
+				" WHERE si.bucket_id = %s ORDER BY si.date_added DESC LIMIT 1",
 				(bucket_id,),
 				as_dict=True,
 			)
@@ -14516,7 +14516,7 @@ def _requested_bucket_issue_info(pick_list_item):
 	issued = frappe.db.sql(
 		"""SELECT DISTINCT pli.parent AS opl, opl.order_name, IFNULL(opl.team, '') AS team
 		FROM `tabPick List Item` pli JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
-		WHERE pli.parenttype = 'Order Pick List' AND pli.issued = 1 AND UPPER(pli.bucket) = UPPER(%s)""",
+		WHERE pli.parenttype = 'Order Pick List' AND pli.issued = 1 AND pli.bucket = %s""",
 		(row.bucket,),
 		as_dict=True,
 	)
