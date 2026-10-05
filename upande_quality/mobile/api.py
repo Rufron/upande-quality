@@ -4475,6 +4475,29 @@ def getInTransitBuckets():
 			groups = groups + [g]
 			j = j + 1
 
+		# Shelved at the hub in the schedule's order, as everything else moves: each
+		# order's team and place on its latest Packhouse Schedule, listed in sequence
+		# steps (every team's #1, then #2 ...), the unscheduled after; the first order
+		# with a bucket still to shelve is "shelve next".
+		sched = {}
+		if groups:
+			for r in frappe.db.sql(
+				"""SELECT pso.order_pick_list, ps.team, pso.sequence FROM `tabPackhouse Schedule Order` pso
+				JOIN `tabPackhouse Schedule` ps ON ps.name = pso.parent
+				WHERE pso.order_pick_list IN %(o)s ORDER BY ps.schedule_date ASC, ps.modified ASC""",
+				{"o": tuple(g["opl_name"] for g in groups)},
+				as_dict=True,
+			):
+				sched[r.order_pick_list] = r
+		for g in groups:
+			sc = sched.get(g["opl_name"])
+			g["schedule"] = int(sc.sequence or 0) if sc else 0
+			g["team"] = (sc.team if sc else "") or ""
+		groups.sort(key=lambda g: (not g["schedule"], g["schedule"], g["team"], g["delivery_date"]))
+		first = next((g for g in groups if g["shelved_count"] < g["total"] and not g["issued_count"]), None)
+		for g in groups:
+			g["shelve_next"] = g is first
+
 		frappe.response["message"] = {
 			"status": "success",
 			"from_date": from_date,
@@ -9242,6 +9265,10 @@ def setOfflineTrolleyFlags():
 		pli_ids = data.get("pli_ids") or []
 		flag = data.get("flag") or ""
 		truck = data.get("truck") or ""
+		# keep_shelf: the Bucket Requests app flagging a trolley scan as it happens (so
+		# the bucket can't also be issued offline) -- the bucket is still at the farm,
+		# so its shelf row stays until Load to truck. A mis-scan then costs nothing.
+		keep_shelf = bool(frappe.utils.cint(data.get("keep_shelf")))
 
 		field = None
 		if flag == "loaded":
@@ -9357,9 +9384,10 @@ def setOfflineTrolleyFlags():
 					)
 					# The bucket has left the shelf now it's on the trolley/truck —
 					# remove its Shelf Item so the shelf reflects reality.
-					removed_shelves = removed_shelves + remove_bucket_from_shelf(
-						bucket, frappe.db.get_value("Pick List Item", name, "farm")
-					)
+					if not keep_shelf:
+						removed_shelves = removed_shelves + remove_bucket_from_shelf(
+							bucket, frappe.db.get_value("Pick List Item", name, "farm")
+						)
 					updated = updated + 1
 				else:
 					missing = missing + 1
