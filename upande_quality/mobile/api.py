@@ -502,16 +502,15 @@ def createDiscardEntry():
 	# ---------------------------------------------------------
 	# CHECK IF BUCKET IS ALREADY DISCARDED
 	# ---------------------------------------------------------
-	def is_bucket_discarded(bucket_id):
-		"""Check if bucket already has a discard entry"""
-		today = frappe.utils.today()
+	def is_bucket_discarded(bucket_id, receiving_doc):
+		"""Bucket IDs are reused, so only count discards made after its latest receiving."""
 		discard_entries = frappe.get_all(
 			"Stock Entry",
 			filters={
 				"stock_entry_type": "Discard",
 				"custom_bucket_id": bucket_id,
 				"docstatus": 1,
-				"posting_date": today,
+				"creation": [">", receiving_doc.creation],
 			},
 			fields=["name"],
 			limit=1,
@@ -615,6 +614,14 @@ def createDiscardEntry():
 		return len(allocated) > 0
 
 	# ---------------------------------------------------------
+	# SET FIELD ONLY IF IT EXISTS ON THE DOCTYPE
+	# ---------------------------------------------------------
+	def set_if_exists(doc, fieldname, value):
+		"""Set field only if it exists on the doctype meta. Skips silently otherwise."""
+		if value is not None and doc.meta.has_field(fieldname):
+			doc.set(fieldname, value)
+
+	# ---------------------------------------------------------
 	# CREATE DISCARD STOCK ENTRY
 	# ---------------------------------------------------------
 	def create_discard_entry(receiving_doc, result):
@@ -633,21 +640,32 @@ def createDiscardEntry():
 			discard_entry.posting_time = frappe.utils.now_datetime().time()
 			discard_entry.set_posting_time = 1
 
-			# Copy custom fields from receiving entry
-			discard_entry.farm = receiving_doc.farm
-			discard_entry.custom_location = receiving_doc.custom_location
-			discard_entry.custom_business_unit = receiving_doc.custom_business_unit
-			discard_entry.custom_greenhouse = receiving_doc.custom_greenhouse
-			discard_entry.custom_harvester = receiving_doc.custom_harvester
-			discard_entry.custom_harvester_payroll_number = receiving_doc.custom_harvester_payroll_number
-			discard_entry.custom_harvest_batch_no = receiving_doc.custom_harvest_batch_no
-			discard_entry.custom_bucket_id = receiving_doc.custom_bucket_id
-			discard_entry.custom_stem_length = receiving_doc.custom_stem_length
-			discard_entry.custom_graded_by = receiving_doc.custom_graded_by
-			discard_entry.custom_grader_payroll_number = receiving_doc.custom_grader_payroll_number
+			# Copy custom fields from receiving entry. Guarded: a field missing on this
+			# site's Stock Entry is skipped instead of failing the whole discard.
+			set_if_exists(discard_entry, "farm", receiving_doc.get("farm"))
+			set_if_exists(discard_entry, "business_unit", receiving_doc.get("business_unit"))
+			set_if_exists(discard_entry, "custom_business_unit", receiving_doc.get("custom_business_unit"))
+			set_if_exists(discard_entry, "custom_greenhouse", receiving_doc.get("custom_greenhouse"))
+			set_if_exists(discard_entry, "custom_harvester", receiving_doc.get("custom_harvester"))
+			set_if_exists(
+				discard_entry,
+				"custom_harvester_payroll_number",
+				receiving_doc.get("custom_harvester_payroll_number"),
+			)
+			set_if_exists(discard_entry, "custom_harvest_batch_no", receiving_doc.get("custom_harvest_batch_no"))
+			set_if_exists(discard_entry, "custom_harvest_date", receiving_doc.get("custom_harvest_date"))
+			set_if_exists(discard_entry, "custom_bucket_id", receiving_doc.get("custom_bucket_id"))
+			set_if_exists(discard_entry, "custom_stem_length", receiving_doc.get("custom_stem_length"))
+			set_if_exists(discard_entry, "custom_graded_by", receiving_doc.get("custom_graded_by"))
+			set_if_exists(
+				discard_entry,
+				"custom_grader_payroll_number",
+				receiving_doc.get("custom_grader_payroll_number"),
+			)
 
 			# Set warehouses
 			discard_entry.from_warehouse = recv_item.t_warehouse  # Taking from receiving warehouse
+			discard_entry.to_warehouse = "Rejects - KR"
 
 			# Add item to discard entry
 			discard_item = discard_entry.append("items", {})
@@ -664,11 +682,11 @@ def createDiscardEntry():
 			discard_item.cost_center = recv_item.cost_center
 			discard_item.allow_zero_valuation_rate = 1
 
-			# Copy custom fields from receiving item
-			discard_item.custom_grower = recv_item.custom_grower
-			discard_item.custom_harvester = recv_item.custom_harvester
-			discard_item.custom_bunched_by = recv_item.custom_bunched_by
-			discard_item.custom_number_of_stems = recv_item.custom_number_of_stems
+			# Copy custom fields from receiving item (guarded, as above)
+			set_if_exists(discard_item, "custom_grower", recv_item.get("custom_grower"))
+			set_if_exists(discard_item, "custom_harvester", recv_item.get("custom_harvester"))
+			set_if_exists(discard_item, "custom_bunched_by", recv_item.get("custom_bunched_by"))
+			set_if_exists(discard_item, "custom_number_of_stems", recv_item.get("custom_number_of_stems"))
 
 			# Insert and submit
 			discard_entry.insert(ignore_permissions=True)
@@ -795,7 +813,7 @@ def createDiscardEntry():
 				else:
 					# Already-discarded guard is kept even on the bypass path to avoid
 					# creating a duplicate Discard stock entry.
-					if is_bucket_discarded(bucket_id):
+					if is_bucket_discarded(bucket_id, receiving_doc):
 						frappe.response["data"] = {
 							"status": "failed",
 							"reason": "already_discarded",
@@ -871,6 +889,8 @@ def createDiscardEntry():
 		frappe.db.commit()
 
 	except Exception as e:
+		# Undo any partial work (e.g. a submitted discard whose follow-up step failed)
+		frappe.db.rollback()
 		frappe.log_error("Unexpected error in discard script", e)
 		frappe.response["data"] = {
 			"status": "error",
@@ -2896,25 +2916,106 @@ def fetchPackhouseQCFormData():
 		)
 		specifications_list = [dict(r) for r in spec_rows]
 
-		# ── 2. Active OPLs (draft + submitted), optionally filtered by team and/or the
-		# selected Specification. `team` filters straight on the Order Pick List
-		# (never read before, so team filtering did nothing). For a Specification
-		# the old FK path (Sales Order Item.custom_line) is blank on nearly all
-		# orders, so orders never appeared -- instead resolve the spec's customer
-		# and show that customer's active orders.
-		# Only TODAY's orders (created today) are shown in the OPL list.
+		# ── 2. Today's orders per Specification ─────────────────────────
+		# OPLs carry no spec FK (custom_line is blank), so an order matches a spec
+		# when it is for the spec's customer and its Packing Guide holds one of the
+		# spec's approved varieties AT the spec's length (the length lives in the
+		# spec name, e.g. "GULF PINK 52CM"). The same match drives the tick, the
+		# count and the orders listed when a spec is picked, so they always agree.
+		# "Today" = created today, or created earlier for a Sales Order delivering
+		# today (OPLs are raised the day before their delivery date).
+		def normlen(x):
+			if not x:
+				return ""
+			s = str(x).strip().lower().replace(" ", "")
+			if s.isdigit():
+				s = s + "cm"
+			return s
+
+		def speclen(name):
+			if not name:
+				return ""
+			cleaned = str(name).replace(",", " ").replace("-", " ")
+			for tok in cleaned.split(" "):
+				t = tok.strip().lower()
+				if len(t) > 2 and t.endswith("cm"):
+					num = t[:-2]
+					if num.isdigit():
+						return num + "cm"
+			return ""
+
+		today = frappe.utils.today()
+
+		def todays_orders_by_spec(specs):
+			"""Spec name -> set of today's OPL names matching it."""
+			matches = {}
+			for sp in specs:
+				matches[sp.get("name")] = set()
+			customers = list({sp.get("customer") for sp in specs if sp.get("customer")})
+			if not customers:
+				return matches
+			pg_rows = frappe.db.sql(
+				"SELECT opl.name AS opl, opl.customer AS customer, pg.variety AS variety, pg.length AS length"
+				" FROM `tabOrder Pick List` opl"
+				" INNER JOIN `tabPacking Guide` pg ON pg.parent = opl.name"
+				" LEFT JOIN `tabSales Order` so ON so.name = opl.sales_order"
+				" WHERE opl.docstatus < 2"
+				"   AND (opl.date_created = %(today)s OR so.delivery_date = %(today)s)"
+				"   AND opl.customer IN %(customers)s"
+				"   AND pg.variety IS NOT NULL AND pg.variety != ''",
+				{"today": today, "customers": tuple(customers)},
+				as_dict=1,
+			)
+			if not pg_rows:
+				return matches
+			approved = {}
+			for r in frappe.db.sql(
+				"SELECT parent AS spec, variety FROM `tabSpec Approved Variety`"
+				" WHERE parent IN %(specs)s AND variety IS NOT NULL AND variety != ''",
+				{"specs": tuple(matches)},
+				as_dict=1,
+			):
+				approved.setdefault(r.get("spec"), set()).add((r.get("variety") or "").strip())
+			for sp in specs:
+				sname = sp.get("name")
+				varieties = approved.get(sname)
+				if not varieties:
+					continue
+				slen = speclen(sp.get("spec_name") or sname)
+				for r in pg_rows:
+					if r.get("customer") != sp.get("customer"):
+						continue
+					if (r.get("variety") or "").strip() not in varieties:
+						continue
+					if slen and normlen(r.get("length")) != slen:
+						continue
+					matches[sname].add(r.get("opl"))
+			return matches
+
+		spec_matches = todays_orders_by_spec(specifications_list)
+		spec_order_counts = {name: len(opls) for name, opls in spec_matches.items()}
+		if spec_filter and spec_filter not in spec_matches:
+			# Picked spec isn't in the active list -- match it on its own.
+			fspec = frappe.db.get_value(
+				"Specifications", spec_filter, ["name", "spec_name", "customer"], as_dict=1
+			)
+			if fspec:
+				spec_matches.update(todays_orders_by_spec([dict(fspec)]))
+
+		# ── 2b. Active OPLs (draft + submitted), optionally filtered by team
+		# and/or the selected Specification (only that spec's matching orders).
 		team_filter = data.get("team", "").strip() if data.get("team") else ""
 		# Drafts are included (shown read-only in the app); cancelled are excluded.
 		opl_conds = ["docstatus < 2"]
-		opl_vals = []
+		opl_vals = {}
 		if spec_filter:
-			spec_customer = frappe.db.get_value("Specifications", spec_filter, "customer") or ""
-			if spec_customer:
-				opl_conds.append("customer = %s")
-				opl_vals.append(spec_customer)
+			# An empty tuple is invalid SQL, so a spec with no matches gets a
+			# name that can never exist.
+			opl_conds.append("name IN %(spec_opls)s")
+			opl_vals["spec_opls"] = tuple(spec_matches.get(spec_filter) or ("",))
 		if team_filter:
-			opl_conds.append("team = %s")
-			opl_vals.append(team_filter)
+			opl_conds.append("team = %(team)s")
+			opl_vals["team"] = team_filter
 		opl_rows = frappe.db.sql(
 			"SELECT name, customer, team, farm,"
 			" custom_total_stems, order_name, schedule_number, docstatus"
@@ -2966,103 +3067,6 @@ def fetchPackhouseQCFormData():
 					"docstatus": o.get("docstatus", 1),
 				}
 			)
-
-		# Which specs GENUINELY have orders today -> green tick in the spec picker.
-		# OPLs carry no spec FK (custom_line is blank), so match on customer +
-		# variety + length: a spec ticks only when a today OPL for its customer holds
-		# one of the spec's approved varieties AT the spec's length. The length lives
-		# in the spec name (e.g. "GULF PINK 52CM"); OPL length is on the Packing Guide.
-		def normlen(x):
-			if not x:
-				return ""
-			s = str(x).strip().lower().replace(" ", "")
-			if s.isdigit():
-				s = s + "cm"
-			return s
-
-		def speclen(name):
-			if not name:
-				return ""
-			cleaned = str(name).replace(",", " ").replace("-", " ")
-			for tok in cleaned.split(" "):
-				t = tok.strip().lower()
-				if len(t) > 2 and t.endswith("cm"):
-					num = t[:-2]
-					if num.isdigit():
-						return num + "cm"
-			return ""
-
-		# Default every spec to 0 (no order today).
-		spec_order_counts = {}
-		for sp in specifications_list:
-			spec_order_counts[sp.get("name")] = 0
-
-		# Only specs whose CUSTOMER has orders today can possibly match.
-		relevant = []
-		today_customers = {}
-		for sp in specifications_list:
-			c = sp.get("customer")
-			if c:
-				today_customers[c] = 1
-		if today_customers:
-			cust_esc = []
-			for c in today_customers:
-				cust_esc.append(frappe.db.escape(c))
-			cust_pairs = {}
-			cust_vars = {}
-			today_pg = frappe.db.sql(
-				"SELECT opl.customer AS customer, pg.variety AS variety, pg.length AS length"
-				" FROM `tabOrder Pick List` opl"
-				" INNER JOIN `tabPacking Guide` pg ON pg.parent = opl.name"
-				" WHERE opl.docstatus < 2 AND opl.creation >= CURDATE()"
-				"   AND opl.customer IN (" + ", ".join(cust_esc) + ")"
-				"   AND pg.variety IS NOT NULL AND pg.variety != ''",
-				as_dict=1,
-			)
-			for r in today_pg:
-				c = r.get("customer") or ""
-				if c not in cust_pairs:
-					cust_pairs[c] = {}
-					cust_vars[c] = {}
-				v = (r.get("variety") or "").strip()
-				l = normlen(r.get("length"))
-				cust_pairs[c][v + "||" + l] = 1
-				cust_vars[c][v] = 1
-			rnames = []
-			for sp in specifications_list:
-				if sp.get("customer") in cust_pairs:
-					relevant.append(sp)
-					rnames.append(sp.get("name"))
-			spec_varieties = {}
-			if rnames:
-				nesc = []
-				for n in rnames:
-					nesc.append(frappe.db.escape(n))
-				sav = frappe.db.sql(
-					"SELECT parent AS spec, variety FROM `tabSpec Approved Variety`"
-					" WHERE parent IN (" + ", ".join(nesc) + ")"
-					"   AND variety IS NOT NULL AND variety != ''",
-					as_dict=1,
-				)
-				for r in sav:
-					sp = r.get("spec")
-					if sp not in spec_varieties:
-						spec_varieties[sp] = []
-					spec_varieties[sp].append((r.get("variety") or "").strip())
-			for sp in relevant:
-				sname = sp.get("name")
-				scust = sp.get("customer")
-				slen = speclen(sp.get("spec_name") or sname)
-				pairs = cust_pairs.get(scust) or {}
-				ovars = cust_vars.get(scust) or {}
-				for v in spec_varieties.get(sname, []):
-					if slen:
-						if (v + "||" + slen) in pairs:
-							spec_order_counts[sname] = 1
-							break
-					elif v in ovars:
-						spec_order_counts[sname] = 1
-						break
 
 		# ── 3. Item locations + varieties + greenhouses for selected OPL ─
 		item_locations = []
@@ -12970,14 +12974,22 @@ def submitFlowerQualityAudit():
 
 		# Only the audit type's own measurements are written; the other columns
 		# stay empty so a Bud Count audit never carries stray weight figures.
+		# A reading the app didn't send is left unset, not written as 0 — a Stem
+		# Weight audit may cover only some lengths (e.g. just 42cm).
 		fields = FLOWER_AUDIT_FIELDS[audit_type]
 		for idx, s in enumerate(samples, start=1):
 			if not isinstance(s, dict):
 				continue
+			readings = {fn: num(s.get(fn)) for fn in fields if s.get(fn) not in (None, "")}
+			if not readings:
+				continue
 			row = doc.append("samples", {})
 			row.sample_number = int(num(s.get("sample_number")) or idx)
-			for fn in fields:
-				setattr(row, fn, num(s.get(fn)))
+			for fn, value in readings.items():
+				setattr(row, fn, value)
+
+		if not doc.samples:
+			frappe.throw("at least one sample with a reading is required")
 
 		doc.insert(ignore_permissions=True)
 		frappe.db.commit()
