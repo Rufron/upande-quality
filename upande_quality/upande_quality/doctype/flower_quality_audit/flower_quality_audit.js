@@ -27,6 +27,7 @@ function toggle_sample_columns(frm) {
 
 	ALL_MEASUREMENT_FIELDS.forEach((fieldname) => {
 		grid.set_column_disp(fieldname, visible.includes(fieldname));
+		grid.update_docfield_property(fieldname, "formatter", blank_zero_formatter);
 	});
 
 	// Not grid.refresh() -- refresh() never clears `visible_columns`, and
@@ -34,6 +35,13 @@ function toggle_sample_columns(frm) {
 	// column layout would stay frozen at whatever the first render produced.
 	// reset_grid() drops the cache and the rendered rows, then re-renders.
 	grid.reset_grid();
+}
+
+// Float columns can't hold NULL, so a reading that wasn't taken (e.g. a Stem
+// Weight audit of 42cm only) is stored as 0. Show it blank, not as a false 0.
+function blank_zero_formatter(value, df, options, doc) {
+	if (!value) return "";
+	return frappe.form.formatters.Float(value, df, options, doc);
 }
 
 // Only on an actual audit_type change -- never on refresh, or loading a saved

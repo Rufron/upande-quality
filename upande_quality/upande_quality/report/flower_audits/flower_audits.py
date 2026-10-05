@@ -110,8 +110,10 @@ def get_rows(audits, measurement_fields):
 				"sample_number": sample.sample_number,
 				"remarks": audit.remarks,
 			}
+			# Float columns store 0 for a reading that wasn't taken (e.g. a Stem
+			# Weight audit of 42cm only), so show those cells blank.
 			for fieldname in measurement_fields:
-				row[fieldname] = sample.get(fieldname)
+				row[fieldname] = sample.get(fieldname) or None
 			rows.append(row)
 
 	return rows
