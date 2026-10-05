@@ -652,7 +652,9 @@ def createDiscardEntry():
 				"custom_harvester_payroll_number",
 				receiving_doc.get("custom_harvester_payroll_number"),
 			)
-			set_if_exists(discard_entry, "custom_harvest_batch_no", receiving_doc.get("custom_harvest_batch_no"))
+			set_if_exists(
+				discard_entry, "custom_harvest_batch_no", receiving_doc.get("custom_harvest_batch_no")
+			)
 			set_if_exists(discard_entry, "custom_harvest_date", receiving_doc.get("custom_harvest_date"))
 			set_if_exists(discard_entry, "custom_bucket_id", receiving_doc.get("custom_bucket_id"))
 			set_if_exists(discard_entry, "custom_stem_length", receiving_doc.get("custom_stem_length"))
