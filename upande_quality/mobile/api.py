@@ -652,7 +652,9 @@ def createDiscardEntry():
 				"custom_harvester_payroll_number",
 				receiving_doc.get("custom_harvester_payroll_number"),
 			)
-			set_if_exists(discard_entry, "custom_harvest_batch_no", receiving_doc.get("custom_harvest_batch_no"))
+			set_if_exists(
+				discard_entry, "custom_harvest_batch_no", receiving_doc.get("custom_harvest_batch_no")
+			)
 			set_if_exists(discard_entry, "custom_harvest_date", receiving_doc.get("custom_harvest_date"))
 			set_if_exists(discard_entry, "custom_bucket_id", receiving_doc.get("custom_bucket_id"))
 			set_if_exists(discard_entry, "custom_stem_length", receiving_doc.get("custom_stem_length"))
@@ -4380,6 +4382,16 @@ def getInTransitBuckets():
 		if not to_date:
 			to_date = str(frappe.utils.add_days(frappe.utils.today(), 1))
 
+		# Only buckets that came from a remote farm on a truck. The hub (Kapkolia) and
+		# the other sales farms (Karen) pack their own stock: those pick rows carry a
+		# transit_truck too (the export truck/agent, e.g. "FLS", "DXB") and get issued,
+		# but were never shelved as a transfer -- they showed in Issued as "Not shelved".
+		ps = frappe.get_cached_doc("Production Settings")
+		sales_farms = {
+			r.farm for r in (ps.get("shelf_locations") or []) if r.enabled and r.sales_shelf and r.farm
+		}
+		if ps.get("transfer_hub_farm"):
+			sales_farms.add(ps.get("transfer_hub_farm"))
 		rows = frappe.db.sql(
 			"""
             SELECT pli.parent AS opl_name, pli.bucket AS bucket_id,
@@ -4399,9 +4411,12 @@ def getInTransitBuckets():
             WHERE so.delivery_date BETWEEN %(f)s AND %(t)s
               AND pli.transit_truck IS NOT NULL AND pli.transit_truck != ''
               AND (pli.in_transit = 1 OR pli.shelved = 1 OR pli.issued = 1)
+              AND COALESCE(NULLIF(pli.farm, ''),
+                           SUBSTRING_INDEX(COALESCE(NULLIF(pli.source_warehouse, ''), pli.warehouse), ' ', 1),
+                           '') NOT IN %(sales_farms)s
             ORDER BY so.delivery_date ASC, opl.creation DESC, pli.bucket ASC
             """,
-			{"f": from_date, "t": to_date},
+			{"f": from_date, "t": to_date, "sales_farms": tuple(sales_farms) or ("",)},
 			as_dict=True,
 		)
 
@@ -4465,6 +4480,29 @@ def getInTransitBuckets():
 			g["issued_count"] = len({str(b["bucket_id"]).upper() for b in g["buckets"] if b["issued"]})
 			groups = groups + [g]
 			j = j + 1
+
+		# Shelved at the hub in the schedule's order, as everything else moves: each
+		# order's team and place on its latest Packhouse Schedule, listed in sequence
+		# steps (every team's #1, then #2 ...), the unscheduled after; the first order
+		# with a bucket still to shelve is "shelve next".
+		sched = {}
+		if groups:
+			for r in frappe.db.sql(
+				"""SELECT pso.order_pick_list, ps.team, pso.sequence FROM `tabPackhouse Schedule Order` pso
+				JOIN `tabPackhouse Schedule` ps ON ps.name = pso.parent
+				WHERE pso.order_pick_list IN %(o)s ORDER BY ps.schedule_date ASC, ps.modified ASC""",
+				{"o": tuple(g["opl_name"] for g in groups)},
+				as_dict=True,
+			):
+				sched[r.order_pick_list] = r
+		for g in groups:
+			sc = sched.get(g["opl_name"])
+			g["schedule"] = int(sc.sequence or 0) if sc else 0
+			g["team"] = (sc.team if sc else "") or ""
+		groups.sort(key=lambda g: (not g["schedule"], g["schedule"], g["team"], g["delivery_date"]))
+		first = next((g for g in groups if g["shelved_count"] < g["total"] and not g["issued_count"]), None)
+		for g in groups:
+			g["shelve_next"] = g is first
 
 		frappe.response["message"] = {
 			"status": "success",
@@ -9233,6 +9271,10 @@ def setOfflineTrolleyFlags():
 		pli_ids = data.get("pli_ids") or []
 		flag = data.get("flag") or ""
 		truck = data.get("truck") or ""
+		# keep_shelf: the Bucket Requests app flagging a trolley scan as it happens (so
+		# the bucket can't also be issued offline) -- the bucket is still at the farm,
+		# so its shelf row stays until Load to truck. A mis-scan then costs nothing.
+		keep_shelf = bool(frappe.utils.cint(data.get("keep_shelf")))
 
 		field = None
 		if flag == "loaded":
@@ -9348,9 +9390,10 @@ def setOfflineTrolleyFlags():
 					)
 					# The bucket has left the shelf now it's on the trolley/truck —
 					# remove its Shelf Item so the shelf reflects reality.
-					removed_shelves = removed_shelves + remove_bucket_from_shelf(
-						bucket, frappe.db.get_value("Pick List Item", name, "farm")
-					)
+					if not keep_shelf:
+						removed_shelves = removed_shelves + remove_bucket_from_shelf(
+							bucket, frappe.db.get_value("Pick List Item", name, "farm")
+						)
 					updated = updated + 1
 				else:
 					missing = missing + 1
@@ -14603,16 +14646,43 @@ def replaceRequestedBucket():
 	# Bucket Requests app: swap a missing requested bucket for the matching one —
 	# updates the OPL rows, the Bucket Allocation Status and the stock entries.
 	# Payload: { "data": { "pick_list_item": "<name>", "new_bucket_id": "<previewed bucket>",
-	#                     "reason": "Missing|Damaged|Wrong variety|Issued offline|Other", "notes": "<optional>" } }
+	#                     "reason": "Missing|Damaged|Wrong variety|Issued offline|Other", "notes": "<optional>",
+	#                     "variety": "<real variety>", "stem_length": "<real length>" } }
+	# Wrong variety: the old bucket is there, just mislabelled -- it stays on its shelf
+	# and its record is corrected to the variety / stem length the farm entered
+	# (offline_issue._correct, the same correction Issue Offline makes).
 	from upande_packhouse.upande_packhouse.page.sales_allocation import sales_allocation
 
 	data = _bucket_request_payload()
+	wrong_variety = data.get("reason") == "Wrong variety"
+	variety = (data.get("variety") or "").strip()
+	stem_length = (data.get("stem_length") or "").strip()
+	if wrong_variety and not (variety or stem_length):
+		frappe.response["message"] = {
+			"status": "error",
+			"success": False,
+			"message": _("Enter what the bucket really holds: its variety or stem length."),
+		}
+		return
+	old_bucket = frappe.db.get_value("Pick List Item", data.get("pick_list_item"), "bucket")
 	res = sales_allocation.replace_requested_bucket(
 		data.get("pick_list_item"),
 		new_bucket_id=data.get("new_bucket_id"),
 		reason=data.get("reason"),
 		notes=data.get("notes"),
+		keep_old_on_shelf=wrong_variety,
 	)
+	if res.get("success") and wrong_variety and old_bucket:
+		from upande_packhouse.api import offline_issue
+
+		correction = offline_issue._correct(old_bucket, variety, stem_length)
+		res["correction"] = correction
+		res["message"] = "{0} {1}".format(
+			res.get("message") or "",
+			_("{0} corrected to {1}.").format(old_bucket, " · ".join(x for x in (variety, stem_length) if x))
+			if correction.get("ok")
+			else _("Correcting {0} failed: {1}").format(old_bucket, correction.get("message")),
+		).strip()
 	frappe.response["message"] = dict(res, status="success" if res.get("success") else "error")
 
 
