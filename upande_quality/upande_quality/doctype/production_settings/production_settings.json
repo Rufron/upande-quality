@@ -25,6 +25,7 @@
   "allow_shelving_in_transit",
   "hub_buckets_per_shelf",
   "allow_issue_out_of_sequence",
+  "allow_pack_out_of_sequence",
   "column_break_jthd",
   "auto_transfer_section",
   "auto_remote_transfer_scheduling",
@@ -140,9 +141,17 @@
   },
   {
    "default": "0",
+   "description": "Off: a team issues its schedule in order (#2 waits until #1 is fully issued), and remote farms load a team's orders in the same order. On: issue and load in any order.",
    "fieldname": "allow_issue_out_of_sequence",
    "fieldtype": "Check",
    "label": "Allow Issuing Out of Schedule Order"
+  },
+  {
+   "default": "0",
+   "description": "Off: a team packs its schedule in order (#2 waits until #1 is fully packed). On: pack in any order.",
+   "fieldname": "allow_pack_out_of_sequence",
+   "fieldtype": "Check",
+   "label": "Allow Packing Out of Schedule Order"
   },
   {
    "fieldname": "column_break_ozyn",
@@ -161,7 +170,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-05 20:10:00.000000",
+ "modified": "2026-10-06 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
