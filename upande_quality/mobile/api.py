@@ -2036,6 +2036,18 @@ def createShelvingEntry():
 							# ---------------------------------------------------------
 							# CHECK IF BUCKET WAS IN TRANSIT → update OPL
 							# ---------------------------------------------------------
+							# At the hub, a bucket whose truck load never reached the server
+							# goes on the trip that planned it first (same as shelveBucket).
+							try:
+								from upande_packhouse.api import transfer_control as tc
+
+								result["load_recorded_on_arrival"] = tc.record_planned_load_on_arrival(
+									bucket_id, farm
+								)
+							except Exception:
+								frappe.log_error(
+									"Record planned load on arrival failed", frappe.get_traceback()
+								)
 							update_transit_status(bucket_id, shelf_id, result, farm)
 
 							# ---------------------------------------------------------
@@ -2287,6 +2299,19 @@ def createShelvingEntry():
 							# ─────────────────────────────────────────────────────
 							check_and_submit_opl(bucket_id, result)
 
+							# The truck's trip ticks the bucket off and ends once all it carried
+							# is shelved -- now, not at the next scheduler pass (as shelveBucket).
+							try:
+								from upande_packhouse.api.transfer_control import (
+									auto_receive_trucks_for_bucket,
+								)
+
+								result["trips_received"] = auto_receive_trucks_for_bucket(bucket_id)
+							except Exception:
+								frappe.log_error(
+									"Auto-receive trip on shelving failed", frappe.get_traceback()
+								)
+
 							# Traceability: where this shelving left the transfer.
 							try:
 								from upande_packhouse.api import transfer_control as tc
@@ -2507,17 +2532,16 @@ def fetchAllocatedBuckets():
 		farm_name = payload["farm"]
 		opl_name = payload.get("opl_name")  # Optional: filter by specific OPL
 
-		# Delivery-date window: [today, day-after-tomorrow]. Today is included: an order
-		# due today whose buckets are still at the farm has to reach the farm's list
-		# (it used to start at tomorrow, so same-day orders never downloaded).
-		# Overridable via payload from_date/to_date. A specific opl_name request ignores
-		# the window.
+		# Delivery-date window: [today, tomorrow] -- the orders being packed now. Today is
+		# included: an order due today whose buckets are still at the farm has to reach
+		# the farm's list. Overridable via payload from_date/to_date. A specific opl_name
+		# request ignores the window.
 		from_date = payload.get("from_date")
 		to_date = payload.get("to_date")
 		if not from_date:
 			from_date = str(frappe.utils.today())
 		if not to_date:
-			to_date = str(frappe.utils.add_days(frappe.utils.today(), 2))
+			to_date = str(frappe.utils.add_days(frappe.utils.today(), 1))
 
 		vehicles = frappe.get_all(
 			"Vehicle",
@@ -2627,8 +2651,22 @@ def fetchAllocatedBuckets():
 						kept[n] = opl_map[n]
 				opl_map = kept
 
-			# Drop items whose parent OPL is out-of-window / cancelled / missing.
-			pick_list_items = [it for it in pick_list_items if it["parent"] in opl_map]
+			# Drop items whose parent OPL is out-of-window / cancelled / missing. A remote
+			# farm works draft OPLs (waiting on its transfer); a submitted one is the sales
+			# farm's to issue -- except a replacement it asked this farm for (ASAP).
+			# Only orders on the Packhouse Schedule are sent (an ASAP replacement always).
+			from upande_packhouse.api.transfer_control import _schedule_map
+
+			on_schedule = _schedule_map()
+			pick_list_items = [
+				it
+				for it in pick_list_items
+				if it["parent"] in opl_map
+				and (
+					(it.get("transfer_priority") or "") == "ASAP"
+					or (not int(opl_map[it["parent"]].get("docstatus") or 0) and it["parent"] in on_schedule)
+				)
+			]
 
 			if not pick_list_items:
 				frappe.response["message"] = (
@@ -3904,18 +3942,21 @@ def getFarmPlannedTrips():
 		# but not yet on a trip is not tagged "Unscheduled" in the app.
 		from upande_packhouse.api.transfer_control import _schedule_map
 
-		waiting_opls = frappe.get_all(
-			"Pick List Item",
-			filters={
-				"parenttype": "Order Pick List",
-				"awaiting_transfer": 1,
-				"in_transit": 0,
-				"bucket": ["!=", ""],
-				"source_warehouse": ["like", like],
-			},
-			distinct=True,
-			pluck="parent",
-		)
+		# Draft orders only (waiting on this farm's transfer); a submitted one is the
+		# sales farm's to issue -- except a replacement it asked this farm for (ASAP).
+		waiting_opls = [
+			r.parent
+			for r in frappe.db.sql(
+				"""SELECT DISTINCT pli.parent FROM `tabPick List Item` pli
+				JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+				WHERE pli.parenttype = 'Order Pick List' AND pli.awaiting_transfer = 1
+				  AND pli.in_transit = 0 AND IFNULL(pli.bucket, '') != ''
+				  AND pli.source_warehouse LIKE %(like)s
+				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND IFNULL(pli.transfer_priority, '') = 'ASAP'))""",
+				{"like": like},
+				as_dict=True,
+			)
+		]
 		# OPLs the app already holds (Requests / Trolley / In Transit) keep their team,
 		# schedule number and live state while they move through the tabs.
 		device_opls = [o for o in (payload.get("opls") or []) if o] if isinstance(payload, dict) else []
@@ -3988,11 +4029,16 @@ def getFarmPlannedTrips():
 			gone = {}
 			for op, st in opl_states.items():
 				left = any(gone.setdefault(t, farm_departed(t, farm_name)) for t in st["trucks"])
+				# "loaded" = every bucket is ON THE TRUCK (in transit, or already shelved):
+				# a bucket only in a trolley is still at the farm. The app reads "loaded"
+				# as on the truck, so counting trolleys here showed In Transit on the app
+				# while the dashboard and the pick list said "in trolley".
+				on_truck = st["transit"] + st["shelved"] == st["total"]
 				if st["shelved"] == st["total"]:
 					opl_states[op] = "arrived"
-				elif st["transit"] + st["shelved"] == st["total"] and left:
+				elif on_truck and left:
 					opl_states[op] = "transit"
-				elif st["moved"] == st["total"]:
+				elif on_truck:
 					opl_states[op] = "loaded"
 				else:
 					opl_states[op] = "waiting"
@@ -4017,6 +4063,11 @@ def getFarmPlannedTrips():
 				"data": [],
 				"farm": farm_name,
 				"schedules": schedules_for(waiting_opls + device_opls),
+				# Off: the farm loads each team's orders in schedule order (Production
+				# Settings > Allow Issuing Out of Schedule Order also frees loading).
+				"allow_out_of_sequence": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("allow_issue_out_of_sequence")
+				),
 				"opl_states": opl_states,
 			}
 		else:
@@ -4138,6 +4189,11 @@ def getFarmPlannedTrips():
 						st["awaiting"] = st["awaiting"] + 1
 					p = p + 1
 
+			# Orders the Requests tab lists: on a Packhouse Schedule (the farm works only
+			# scheduled orders). A trip row for one that isn't, or for an OPL that no longer
+			# exists, has nothing for the farm to load.
+			on_schedule = _schedule_map()
+
 			# Group order rows by trip.
 			by_trip = {}
 			i = 0
@@ -4183,6 +4239,9 @@ def getFarmPlannedTrips():
 					if dd_row and dd_row < today_s and not int(r.get("loaded_buckets") or 0):
 						j = j + 1
 						continue
+					if (r.get("order_pick_list") or "") not in opl_delivery:
+						j = j + 1
+						continue  # the OPL was deleted or cancelled
 					# A load nothing planned shows what went on the truck.
 					pb = max(int(r.get("buckets") or 0), int(r.get("loaded_buckets") or 0))
 					fm["planned"] = fm["planned"] + pb
@@ -4198,6 +4257,17 @@ def getFarmPlannedTrips():
 					dd = opl_delivery.get(r.get("order_pick_list") or "", "")
 					if is_my_farm and dd and dd < today_s:
 						is_my_farm = False  # delivery date passed: not this farm's job any more
+					if is_my_farm and not (
+						ps
+						and ps["total"]
+						and (
+							r.get("order_pick_list") in on_schedule
+							or ps["loaded"]
+							or ps["transit"]
+							or ps["shelved"]
+						)
+					):
+						is_my_farm = False  # nothing of it to load here (not scheduled / no buckets here)
 					if is_my_farm:
 						your_orders.append(
 							{
@@ -4352,6 +4422,11 @@ def getFarmPlannedTrips():
 				"data": data,
 				"farm": farm_name,
 				"schedules": schedules_for(waiting_opls + device_opls + trip_opls),
+				# Off: the farm loads each team's orders in schedule order (Production
+				# Settings > Allow Issuing Out of Schedule Order also frees loading).
+				"allow_out_of_sequence": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("allow_issue_out_of_sequence")
+				),
 				"opl_states": opl_states,
 			}
 
@@ -9384,7 +9459,11 @@ def setOfflineTrolleyFlags():
 
 					tc.log_transfer_event(
 						bucket,
-						"Loaded on truck" if flag == "loaded" else "In transit",
+						# A trolley scan sends "loaded" with no truck: the bucket is in a
+						# trolley at the farm, not on a truck yet.
+						("Loaded on truck" if truck else "Loaded in trolley")
+						if flag == "loaded"
+						else "In transit",
 						opl=parent,
 						vehicle=truck or frappe.db.get_value("Pick List Item", name, "transit_truck"),
 					)
