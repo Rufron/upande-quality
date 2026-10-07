@@ -12730,12 +12730,12 @@ def transferBucket():
 def createOfflineIssuingEntry():
 	"""Report that a bucket was physically removed from its shelf for a reason
 	other than a normal sales issue or a Discard-Request-driven discard (e.g.
-	damage, quality hold, internal use). Posts a real stock-ledger movement
-	(Stock Entry Type "Offline Issuing") from the CURRENT Shelf Item quantities
-	(not the original receiving quantities -- a bucket may already have been
-	partially issued), then clears the shelf and closes the Shelving Log.
-	Blocked outright if the bucket is currently allocated to a sales order --
-	use normal issuing for that instead."""
+	damage, quality hold, loaded on a truck by hand). Takes the bucket off the shelf
+	only: its Shelf Item rows are cleared and the Shelving Log closed with the
+	reason. No stock is written off -- the stems stay where the ledger has them (a
+	Material Issue here wrote off stock that was still moving, e.g. a bucket trucked
+	to Kapkolia then arriving with no stock behind it). Blocked outright if the
+	bucket is allocated to a sales order -- use normal issuing for that instead."""
 	try:
 		data = frappe.request.get_json() or {}
 		bucket_id = data.get("bucket_id")
@@ -12803,103 +12803,7 @@ def createOfflineIssuingEntry():
 			}
 			return
 
-		# frappe.defaults.get_global_default("company") is unreliable -- this site
-		# has no Global Defaults.default_company configured, so it silently
-		# returns None (Stock Entry then fails validation on submit). Deriving
-		# from the shelf item's own Farm is more correct anyway (multi-company
-		# safe) and always set, since every Shelf Item carries its farm.
-		entry = frappe.new_doc("Stock Entry")
-		entry.stock_entry_type = "Offline Issuing"
-		entry.purpose = "Material Issue"
-		entry.company = frappe.db.get_value("Farm", shelf_items[0].farm, "company")
-		entry.posting_date = frappe.utils.now_datetime().date()
-		entry.posting_time = frappe.utils.now_datetime().time()
-		entry.set_posting_time = 1
-		entry.custom_bucket_id = bucket_id
-		entry.remarks = reason
-
-		# Issue from where the ledger holds THIS bucket's stems, not blindly from the
-		# shelf row: remote shelving used to stamp rows with Kapkolia Receiving while the
-		# stems stayed at the farm (and the reverse), so issuing from the row's warehouse
-		# drained the wrong farm's stock.
-		from upande_packhouse import stock_movement
-
-		def stock_home(si):
-			farm_wh = None
-			shelf_farm = frappe.db.get_value("Shelf", si.parent, "farm")
-			mapped = stock_movement.mapping_row_for_farm(shelf_farm, "Roses") if shelf_farm else None
-			if mapped:
-				farm_wh = mapped.source_warehouse
-			candidates = [w for w in dict.fromkeys([si.warehouse, farm_wh]) if w]
-			for w in list(candidates):
-				candidates += [
-					h["to"]
-					for h in stock_movement.resolve_route(w, "Roses", upto=stock_movement.ARRIVAL_STAGE)
-				]
-			best, best_qty = si.warehouse, -1
-			for w in dict.fromkeys(candidates):
-				have = stock_movement.bucket_balance(bucket_id, si.variety, w)
-				if have + stock_movement.QTY_TOLERANCE >= (si.stem_qty or 0):
-					return w
-				if have > best_qty:
-					best, best_qty = w, have
-			return best
-
-		homes = {si.name: stock_home(si) for si in shelf_items}
-		# Never issue more than the bucket still has: a repeated report (or a second shelf
-		# row of an already issued bucket) used to issue it again and drive the store negative.
-		issue_qty = {
-			si.name: max(
-				0,
-				min(
-					frappe.utils.flt(si.stem_qty),
-					stock_movement.bucket_balance(bucket_id, si.variety, homes[si.name]),
-				),
-			)
-			for si in shelf_items
-		}
-		entry.from_warehouse = homes[shelf_items[0].name]
-
-		total_qty = 0
-		for si in shelf_items:
-			if issue_qty[si.name] <= stock_movement.QTY_TOLERANCE:
-				continue
-			item_meta = frappe.db.get_value(
-				"Item", si.variety, ["item_name", "description", "item_group", "stock_uom"], as_dict=True
-			)
-			recv_row = frappe.db.sql(
-				"""
-                SELECT sed.expense_account, sed.cost_center
-                FROM `tabStock Entry Detail` sed
-                JOIN `tabStock Entry` se ON se.name = sed.parent
-                WHERE se.stock_entry_type IN ('Receiving', 'Late Receipt')
-                  AND se.custom_bucket_id = %s AND se.docstatus = 1
-                  AND sed.item_code = %s
-                ORDER BY se.creation DESC LIMIT 1
-                """,
-				(bucket_id, si.variety),
-				as_dict=True,
-			)
-			row = entry.append("items", {})
-			row.item_code = si.variety
-			row.item_name = item_meta.item_name if item_meta else si.variety
-			row.description = item_meta.description if item_meta else None
-			row.item_group = item_meta.item_group if item_meta else None
-			row.qty = issue_qty[si.name]
-			row.uom = item_meta.stock_uom if item_meta else None
-			row.stock_uom = item_meta.stock_uom if item_meta else None
-			row.conversion_factor = 1
-			row.s_warehouse = homes[si.name]
-			row.allow_zero_valuation_rate = 1
-			if recv_row:
-				row.expense_account = recv_row[0].expense_account
-				row.cost_center = recv_row[0].cost_center
-			total_qty += issue_qty[si.name]
-
-		# Nothing of it left in stock (already issued): just clear the shelf.
-		if entry.items:
-			entry.insert(ignore_permissions=True)
-			entry.submit()
+		total_qty = sum(frappe.utils.flt(si.stem_qty) for si in shelf_items)
 
 		for si in shelf_items:
 			frappe.delete_doc("Shelf Item", si.name, force=1, ignore_permissions=True)
@@ -12918,14 +12822,15 @@ def createOfflineIssuingEntry():
 					{"removed_on": frappe.utils.now(), "reason": "Offline Issuing"},
 					update_modified=False,
 				)
+				frappe.get_doc("Shelving Log", open_log).add_comment(
+					"Info", "Removed from shelf offline: {0}".format(reason)
+				)
 
 		frappe.db.commit()
 		frappe.response["data"] = {
 			"status": "success",
-			"message": "Bucket {0} reported removed offline ({1} stems). Stock entry {2}.".format(
-				bucket_id, total_qty, entry.name
-			),
-			"payload": {"bucket_id": bucket_id, "stems": total_qty, "stock_entry": entry.name},
+			"message": "Bucket {0} removed from its shelf ({1} stems).".format(bucket_id, int(total_qty)),
+			"payload": {"bucket_id": bucket_id, "stems": total_qty},
 		}
 	except Exception as e:
 		frappe.db.rollback()
