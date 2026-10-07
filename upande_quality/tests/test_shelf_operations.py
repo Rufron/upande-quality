@@ -33,7 +33,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		# so a failed assertion mid-test can't leave a live allocation behind --
 		# a leftover Bucket Allocation Status row (allocated_quantity=15,
 		# uncancelled/unissued) would spuriously fail
-		# test_offline_issuing_creates_stock_entry_and_clears_shelf on a later
+		# test_offline_issuing_clears_shelf_without_writing_off_stock on a later
 		# run, since alphabetical test ordering runs the "blocked" test first.
 		for bas_name in frappe.get_all(
 			"Bucket Allocation Status", filters={"bucket_id": self.bucket_id}, pluck="name"
@@ -323,7 +323,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		still_on_a = frappe.get_all("Shelf Item", filters={"parent": shelf_a, "bucket_id": self.bucket_id})
 		self.assertEqual(len(still_on_a), 1)
 
-	def test_offline_issuing_creates_stock_entry_and_clears_shelf(self):
+	def test_offline_issuing_clears_shelf_without_writing_off_stock(self):
 		shelf_a = "TEST-SHELF-A"
 		if not frappe.db.exists("Shelf", shelf_a):
 			frappe.get_doc({"doctype": "Shelf", "shelf_id": shelf_a, "farm": self.farm}).insert(
@@ -434,11 +434,15 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		createOfflineIssuingEntry()
 
 		self.assertEqual(frappe.response["data"]["status"], "success")
-		stock_entry_name = frappe.response["data"]["payload"]["stock_entry"]
-		se = frappe.get_doc("Stock Entry", stock_entry_name)
-		self.assertEqual(se.stock_entry_type, "Offline Issuing")
-		self.assertEqual(se.docstatus, 1)
-		self.assertEqual(se.remarks, "Damaged in transit")
+		# Off the shelf only: nothing written off, the stems stay in stock.
+		self.assertFalse(
+			frappe.db.exists(
+				"Stock Entry", {"custom_bucket_id": self.bucket_id, "stock_entry_type": "Offline Issuing"}
+			)
+		)
+		self.assertEqual(
+			frappe.db.get_value("Bin", {"item_code": "Reflex", "warehouse": warehouse}, "actual_qty"), 15
+		)
 
 		remaining = frappe.get_all("Shelf Item", filters={"bucket_id": self.bucket_id})
 		self.assertEqual(len(remaining), 0)
@@ -446,10 +450,16 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		log = frappe.get_all(
 			"Shelving Log",
 			filters={"bucket_id": self.bucket_id, "reason": "Offline Issuing"},
-			fields=["removed_on"],
+			fields=["name", "removed_on"],
 		)
 		self.assertEqual(len(log), 1)
 		self.assertTrue(log[0].removed_on)
+		self.assertTrue(
+			frappe.db.exists(
+				"Comment",
+				{"reference_doctype": "Shelving Log", "content": ["like", "%Damaged in transit%"]},
+			)
+		)
 
 	def test_offline_issuing_blocked_when_allocated(self):
 		shelf_a = "TEST-SHELF-A"
