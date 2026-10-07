@@ -4042,13 +4042,14 @@ def getFarmPlannedTrips():
 					opl_states[op] = "loaded"
 				else:
 					opl_states[op] = "waiting"
-		# Trips (not yet dispatched) that include at least one order row from this farm.
+		# Trips on their way to this farm: dispatched from the hub (Scheduled -- only a full
+		# trip is), or a draft already being loaded, with an order row from this farm.
 		name_rows = frappe.db.sql(
 			"""
             SELECT DISTINCT t.name AS name
             FROM `tabBucket Request Trip` t
             INNER JOIN `tabBucket Request Trip Order` o ON o.parent = t.name
-            WHERE t.status IN ('Draft', 'Scheduled')
+            WHERE (t.status = 'Scheduled' OR (t.status = 'Draft' AND IFNULL(t.loaded_buckets, 0) > 0))
               AND ( t.trip_date >= %(today)s OR IFNULL(t.loaded_buckets, 0) > 0 )
               AND ( o.farm = %(farm)s OR o.farm LIKE %(like)s OR %(farm)s LIKE CONCAT('%%', o.farm, '%%') )
         """,
