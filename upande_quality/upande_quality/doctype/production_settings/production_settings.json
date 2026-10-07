@@ -30,7 +30,8 @@
   "auto_transfer_section",
   "auto_remote_transfer_scheduling",
   "column_break_fgfp",
-  "auto_transfer_frequency"
+  "auto_transfer_frequency",
+  "auto_dispatch_full_trips"
  ],
  "fields": [
   {
@@ -122,6 +123,12 @@
   },
   {
    "default": "0",
+   "fieldname": "auto_dispatch_full_trips",
+   "fieldtype": "Check",
+   "label": "Dispatch Full Trips Automatically"
+  },
+  {
+   "default": "0",
    "fieldname": "allow_hub_shelving_without_transfer",
    "fieldtype": "Check",
    "label": "Allow Shelving Buckets Not Transferred"
@@ -170,7 +177,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-06 16:00:00.000000",
+ "modified": "2026-10-07 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
