@@ -10,6 +10,7 @@
  "engine": "InnoDB",
  "field_order": [
   "parameter_name",
+  "category",
   "active"
  ],
  "fields": [
@@ -23,6 +24,15 @@
    "unique": 1
   },
   {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Category",
+   "options": "\nPest & Diseases\nPhysical Damage\nPetal Disorders\nFoliage Disorders\nStem & Neck\nAgeing\nOther",
+   "description": "Groups this reason in the mobile Add Failure Reason picker. Blank = guessed from the name."
+  },
+  {
    "default": "1",
    "fieldname": "active",
    "fieldtype": "Check",
@@ -33,7 +43,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-14 14:23:35.513271",
+ "modified": "2026-10-08 16:17:13.646971",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Vaselife Parameter",

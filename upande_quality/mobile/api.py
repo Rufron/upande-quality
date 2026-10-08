@@ -11231,6 +11231,88 @@ def update_submitted_field():
 		frappe.response["message"] = {"success": False, "error": str(e)}
 
 
+# Picker order for the Vaselife "Add Failure Reason" sections.
+VASELIFE_FAILURE_CATEGORIES = [
+	"Pest & Diseases",
+	"Physical Damage",
+	"Petal Disorders",
+	"Foliage Disorders",
+	"Stem & Neck",
+	"Ageing",
+	"Other",
+]
+
+# Fallback when a Vaselife Parameter has no Category set: first keyword hit wins.
+_VASELIFE_CATEGORY_KEYWORDS = [
+	(
+		"Pest & Diseases",
+		(
+			"botrytis", "mildew", "thrip", "mite", "aphid", "pest", "disease",
+			"fung", "mould", "mold", "rot", "downy", "caterpillar", "insect",
+		),
+	),
+	("Stem & Neck", ("neck", "stem", "bent", "droop")),
+	("Foliage Disorders", ("leaf", "leaves", "foliage", "yellow")),
+	("Physical Damage", ("damage", "bruis", "broken", "crush", "torn", "mechanical")),
+	(
+		"Petal Disorders",
+		("petal", "blue", "blacken", "burn", "edge", "spot", "discolo", "colour", "color", "fad"),
+	),
+	("Ageing", ("age", "aging", "ageing", "wilt", "open", "blown", "senesc", "drop", "dry")),
+]
+
+
+def _guess_vaselife_category(reason):
+	text = (reason or "").lower()
+	for category, words in _VASELIFE_CATEGORY_KEYWORDS:
+		if any(w in text for w in words):
+			return category
+	return "Other"
+
+
+def _todays_order_pick_lists():
+	"""Today's Order Pick Lists for the Vaselife Line Code picker. Optional columns
+	differ between sites, so only ask for the ones this site has."""
+	meta = frappe.get_meta("Order Pick List")
+	fields = ["name"] + [f for f in ("customer", "order_name", "team") if meta.has_field(f)]
+	rows = frappe.get_all(
+		"Order Pick List",
+		filters={"date_created": frappe.utils.today(), "docstatus": ["<", 2]},
+		fields=fields,
+		order_by="creation desc",
+		limit=500,
+	)
+	return [
+		{
+			"name": r.name,
+			"customer": r.get("customer") or "",
+			"order_name": r.get("order_name") or "",
+			"team": r.get("team") or "",
+		}
+		for r in rows
+	]
+
+
+def _bucket_order_pick_list(bucket_id):
+	"""The Order Pick List created today that this bucket is allocated to, if any."""
+	rows = frappe.db.sql(
+		"""
+        SELECT pli.parent AS opl, pli.stem_length AS stem_length
+        FROM `tabPick List Item` pli
+        JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+        WHERE pli.parenttype = 'Order Pick List'
+          AND pli.bucket = %s
+          AND opl.docstatus < 2
+          AND opl.date_created = %s
+        ORDER BY pli.creation DESC
+        LIMIT 1
+    """,
+		(bucket_id, frappe.utils.today()),
+		as_dict=1,
+	)
+	return rows[0] if rows else None
+
+
 @frappe.whitelist()
 def fetchVaselifeFormData():
 	frappe.response["message"] = {"success": False, "error": "Script failed"}
@@ -11611,21 +11693,39 @@ def fetchVaselifeFormData():
 
 		# Failure reasons come from the Vaselife Parameter doctype (active only),
 		# so QC can maintain them from the desk without touching this script.
+		# Each carries its picker category: the Category field when set, else a
+		# guess from the name, so the picker stays grouped before QC fills them in.
+		has_category = frappe.get_meta("Vaselife Parameter").has_field("category")
 		failure_reasons = [
-			r.get("name")
+			{
+				"name": r.name,
+				"category": (r.get("category") if has_category else None)
+				or _guess_vaselife_category(r.name),
+			}
 			for r in frappe.get_all(
 				"Vaselife Parameter",
 				filters={"active": 1},
-				fields=["name"],
+				fields=["name", "category"] if has_category else ["name"],
 				order_by="name asc",
 			)
 		]
+
+		# Existing samples for the Observation sample-code picker (and its Du Date
+		# guard). A vase-life run lasts weeks, so look back well past that.
+		samples = frappe.get_all(
+			"Vaselife Sample",
+			filters={"sampling_date": [">=", frappe.utils.add_days(frappe.utils.today(), -120)]},
+			fields=["name", "variety", "sampling_date", "du_date"],
+			order_by="sampling_date desc, creation desc",
+			limit=1000,
+		)
 
 		# Items live in child groups (e.g. "Spray Roses - Regular"), so match every
 		# descendant of the two parent trees via the Item Group nested set (lft/rgt).
 		varieties_raw = frappe.db.sql(
 			"""
-            SELECT i.name AS name, i.item_name AS item_name, i.item_group AS item_group
+            SELECT i.name AS name, i.item_name AS item_name, i.item_group AS item_group,
+                   p.name AS root_group
             FROM `tabItem` i
             JOIN `tabItem Group` g ON i.item_group = g.name
             JOIN `tabItem Group` p ON g.lft >= p.lft AND g.rgt <= p.rgt
@@ -11650,6 +11750,8 @@ def fetchVaselifeFormData():
 					"variety": vname,
 					"breeder": breeder,
 					"item_group": v.get("item_group") or "",
+					# Crop follows the variety's root group; the app fills Crop from it.
+					"crop": "Spray Rose" if v.get("root_group") == "Spray Roses" else "Rose",
 				}
 			)
 
@@ -11657,10 +11759,21 @@ def fetchVaselifeFormData():
 			"success": True,
 			"breeders": [{"name": b} for b in BREEDER_LIST],
 			"varieties": varieties,
+			"order_pick_lists": _todays_order_pick_lists(),
 			"crops": [{"name": x} for x in crops],
 			"commercial_statuses": [{"name": x} for x in commercial_statuses],
 			"cut_stages": [{"name": x} for x in cut_stages],
-			"failure_reasons": [{"name": x} for x in failure_reasons],
+			"failure_reasons": failure_reasons,
+			"failure_categories": [{"name": c} for c in VASELIFE_FAILURE_CATEGORIES],
+			"samples": [
+				{
+					"name": sm.name,
+					"variety": sm.variety or "",
+					"sampling_date": str(sm.sampling_date or ""),
+					"du_date": str(sm.du_date or ""),
+				}
+				for sm in samples
+			],
 		}
 
 	except Exception as e:
@@ -11697,10 +11810,18 @@ def getVaselifeBucket():
 		if not bucket_id:
 			frappe.response["message"] = {"success": False, "error": "bucket_id is required."}
 		else:
+			# custom_stem_length is a site custom field; read it only where it exists.
+			length_col = (
+				", custom_stem_length"
+				if frappe.get_meta("Stock Entry").has_field("custom_stem_length")
+				else ""
+			)
 			entry = frappe.db.sql(
 				"""
                 SELECT posting_date, posting_time,
-                       farm, custom_greenhouse
+                       farm, custom_greenhouse"""
+				+ length_col
+				+ """
                 FROM `tabStock Entry`
                 WHERE custom_bucket_id = %s
                   AND stock_entry_type = 'Harvesting'
@@ -11719,6 +11840,7 @@ def getVaselifeBucket():
 				}
 			else:
 				e = entry[0]
+				opl = _bucket_order_pick_list(bucket_id)
 				frappe.response["message"] = {
 					"success": True,
 					"bucket_id": bucket_id,
@@ -11726,7 +11848,9 @@ def getVaselifeBucket():
 					"harvest_time": extract_time_string(e.posting_time),
 					"farm": e.farm or "",
 					"greenhouse": e.custom_greenhouse or "",
-					"length": "",
+					# Harvest length first; the pick list row's length if harvest has none.
+					"length": e.get("custom_stem_length") or (opl.stem_length if opl else "") or "",
+					"order_pick_list": opl.opl if opl else "",
 				}
 
 	except Exception as e:
