@@ -8,10 +8,6 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# Quality Reporting / Corrective Action Report link to Farm, which is now
-# provided by upande_core (previously upande_kaitet, since retired).
-# required_apps = ["upande_core"]
-
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
 # 	{
@@ -25,39 +21,9 @@ app_license = "mit"
 
 # Fixtures
 # ------------------
-# The Upande Quality workspace renders the "QC" Custom HTML Block; that block
-# lives only in the DB unless exported here, so ship it so the workspace is not
-# blank on deployed sites.
 fixtures = [
-	{"doctype": "Custom HTML Block", "filters": [["name", "in", ["QC", "Upande Quality"]]]},
-	# Workspace Sidebar (new-style left nav tree; standard=0 so it does NOT ship
-	# with the workspace's module JSON). Carries the dashboard URL links + grouped
-	# DocType/Report links. Child rows (Workspace Sidebar Item) export with it.
-	{"doctype": "Workspace Sidebar", "filters": [["name", "in", ["Upande Quality"]]]},
-	# QC Control Point master (seeded control points: Intake, Packhouse) — the
-	# control_point Link on Quality Reporting / CAR resolves against these.
+	# QC Control Point master — Bila Shaka only inspects at the Packhouse (grading).
 	{"doctype": "QC Control Point"},
-	# Field-visibility gating (eval depends_on) for the QC intake stages on the
-	# shared Stock Entry doctype. Filtered to property in (depends_on, reqd) so
-	# ONLY our customizations ship, not other apps' Stock Entry property setters.
-	# NOTE: Quality Reporting's own fields (incl. the former custom_* packhouse
-	# fields) and their depends_on/field_order now live directly in the doctype
-	# JSON — nothing to ship here for it.
-	{
-		"doctype": "Property Setter",
-		"filters": [
-			["doc_type", "in", ["Stock Entry"]],
-			["property", "in", ["depends_on", "reqd"]],
-		],
-	},
-	# API Server Scripts backing the www/ dashboards (fetchIntakeFtrOverview,
-	# fetchSolutionMixingOverview, etc.). They live only in the DB, so ship them
-	# as fixtures — all carry module "Upande Quality", so this filter grabs exactly
-	# them. Requires `server_script_enabled: true` in common_site_config.json.
-	{"doctype": "Server Script", "filters": [["module", "=", "Upande Quality"]]},
-	# Farm Distance.via_farms — filled by transfer_events.compute_farm_distance_via_farms
-	# (the field exists on kaitet-group live; Farm Distance itself is upande_packhouse's).
-	{"doctype": "Custom Field", "filters": [["name", "in", ["Farm Distance-via_farms"]]]},
 ]
 
 # Includes in <head>
@@ -83,8 +49,6 @@ fixtures = [
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
-# Client Script "Bucket Logistics Route Vehicle Filter" from kaitet-group live.
-doctype_js = {"Bucket Logistics Route": "public/js/bucket_logistics_route.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -187,20 +151,10 @@ doctype_js = {"Bucket Logistics Route": "public/js/bucket_logistics_route.js"}
 # 	}
 # }
 
-# DocType-event Server Scripts ported from kaitet-group live (see transfer_events.py).
-doc_events = {
-	"Farm Distance": {"before_save": "upande_quality.transfer_events.compute_farm_distance_via_farms"},
-	"Stock Entry": {"on_submit": "upande_quality.transfer_events.material_transfer_transit_notification"},
-}
-
 # Scheduled Tasks
 # ---------------
 
-scheduler_events = {
-	"cron": {
-		"0 0 * * *": ["upande_quality.tasks.auto_discard_request"],
-	},
-}
+# scheduler_events = {}
 
 # Testing
 # -------

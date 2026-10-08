@@ -6,48 +6,13 @@
  "engine": "InnoDB",
  "field_order": [
   "control_point",
-  "farm",
-  "ghouse",
-  "column_break_1",
-  "harvest_time",
-  "arrival_time",
-  "transit_time",
-  "section_solution",
-  "stems_received",
   "stems_checked",
-  "stems_per_bucket",
-  "solution_level",
-  "solution_hygeine",
-  "solution_ph",
-  "chlorine_ppm",
   "control_action",
   "variety",
-  "quarantined_stems",
   "stems_accepted",
   "stems_rejected",
-  "stems_affected",
-  "unit_manager",
   "corrective_action_report",
   "amended_from",
-  "section_packhouse",
-  "inspection_type",
-  "inspection_mode",
-  "order_pick_list",
-  "box_label",
-  "item_group",
-  "specification",
-  "column_break_2",
-  "customer",
-  "team",
-  "control_area",
-  "length",
-  "packhouse_information",
-  "bunches_allocated",
-  "bunches_sampled",
-  "bunches_affected",
-  "boxes_checked",
-  "boxes_staged",
-  "boxes_quarantined",
   "section_qparams",
   "quality_parameters"
  ],
@@ -58,58 +23,8 @@
    "in_list_view": 1,
    "label": "Control Point",
    "options": "QC Control Point",
-   "reqd": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "farm",
-   "fieldtype": "Link",
-   "label": "Farm",
-   "options": "Farm"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "ghouse",
-   "fieldtype": "Data",
-   "label": "Greenhouse"
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "harvest_time",
-   "fieldtype": "Data",
-   "label": "Harvest Time",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "arrival_time",
-   "fieldtype": "Data",
-   "label": "Arrival Time",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "transit_time",
-   "fieldtype": "Data",
-   "label": "Transit Time",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point != 'Packhouse' || doc.control_area == 'Airport Returns'",
-   "fieldname": "section_solution",
-   "fieldtype": "Section Break",
-   "label": "Solution Details"
-  },
-  {
-   "depends_on": "eval:doc.control_point != 'Packhouse'",
-   "fieldname": "stems_received",
-   "fieldtype": "Int",
-   "label": "Stems Received",
-   "print_hide": 1
+   "reqd": 1,
+   "default": "Packhouse"
   },
   {
    "fieldname": "stems_checked",
@@ -117,42 +32,6 @@
    "label": "Stems Checked"
   },
   {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "stems_per_bucket",
-   "fieldtype": "Int",
-   "label": "Stems Per Bucket",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "solution_level",
-   "fieldtype": "Int",
-   "label": "Solution Level",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "solution_hygeine",
-   "fieldtype": "Data",
-   "label": "Solution Hygiene",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "solution_ph",
-   "fieldtype": "Data",
-   "label": "Solution PH",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "chlorine_ppm",
-   "fieldtype": "Int",
-   "label": "Chlorine PPM",
-   "print_hide": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake' || doc.control_point=='Packhouse'",
    "fieldname": "control_action",
    "fieldtype": "Select",
    "label": "Control Action",
@@ -163,28 +42,6 @@
    "fieldtype": "Link",
    "label": "Variety",
    "options": "Item"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "item_group",
-   "fieldtype": "Link",
-   "label": "Item Group",
-   "options": "Item Group",
-   "read_only": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "fieldname": "quarantined_stems",
-   "fieldtype": "Int",
-   "label": "Quarantined Stems"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Intake'",
-   "description": "The farm's unit manager (User) at time of intake.",
-   "fieldname": "unit_manager",
-   "fieldtype": "Link",
-   "label": "Unit Manager",
-   "options": "User"
   },
   {
    "fieldname": "amended_from",
@@ -201,24 +58,10 @@
    "label": "Quality Parameters"
   },
   {
-   "depends_on": "eval:doc.control_point=='Intake' || doc.control_point=='Packhouse'",
    "fieldname": "quality_parameters",
    "fieldtype": "Table",
    "label": "Quality Parameters",
    "options": "Quality Parameter"
-  },
-  {
-   "fieldname": "section_packhouse",
-   "fieldtype": "Section Break",
-   "label": "Packhouse"
-  },
-  {
-   "fieldname": "column_break_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "packhouse_information",
-   "fieldtype": "Section Break"
   },
   {
    "fieldname": "stems_accepted",
@@ -231,117 +74,10 @@
    "label": "Stems Rejected"
   },
   {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Reject Recorder\"",
-   "fieldname": "stems_affected",
-   "fieldtype": "Int",
-   "label": "Stems Affected"
-  },
-  {
-   "depends_on": "eval:doc.control_action==\"Quarantined\" || doc.control_action==\"Rejected\"",
    "fieldname": "corrective_action_report",
    "fieldtype": "Link",
    "label": "Corrective Action Report",
    "options": "Corrective Action Report"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "inspection_type",
-   "fieldtype": "Data",
-   "label": "Inspection Type"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "inspection_mode",
-   "fieldtype": "Data",
-   "label": "Inspection Mode"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "box_label",
-   "fieldtype": "Link",
-   "label": "Box Label",
-   "options": "Box Label"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "specification",
-   "fieldtype": "Link",
-   "label": "Specification",
-   "options": "Specifications"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "label": "Customer",
-   "options": "Customer"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "team",
-   "fieldtype": "Link",
-   "label": "Team",
-   "options": "Packing Teams"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "control_area",
-   "fieldtype": "Data",
-   "label": "Control Area"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse' & 'Intake'",
-   "fieldname": "length",
-   "fieldtype": "Link",
-   "label": "Stem Length",
-   "options": "Stem Length"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
-   "description": "Total bunches in the linked Order Pick List.",
-   "fieldname": "bunches_allocated",
-   "fieldtype": "Int",
-   "label": "Bunches Allocated",
-   "non_negative": 1,
-   "read_only": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
-   "fieldname": "bunches_sampled",
-   "fieldtype": "Int",
-   "label": "Bunches Sampled",
-   "non_negative": 1
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Online QC\" && doc.custom_inspection_mode==\"Grading QC\"",
-   "fieldname": "bunches_affected",
-   "fieldtype": "Int",
-   "label": "Bunches Affected"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "boxes_checked",
-   "fieldtype": "Int",
-   "label": "Boxes Checked"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "boxes_staged",
-   "fieldtype": "Int",
-   "label": "Boxes Staged"
-  },
-  {
-   "depends_on": "eval:doc.control_point==\"Packhouse\" && doc.custom_inspection_type==\"Final QC\"",
-   "fieldname": "boxes_quarantined",
-   "fieldtype": "Int",
-   "label": "Boxes Quarantined"
-  },
-  {
-   "depends_on": "eval:doc.control_point=='Packhouse'",
-   "fieldname": "order_pick_list",
-   "fieldtype": "Link",
-   "label": "Order Pick List",
-   "options": "Order Pick List"
   }
  ],
  "is_submittable": 1,

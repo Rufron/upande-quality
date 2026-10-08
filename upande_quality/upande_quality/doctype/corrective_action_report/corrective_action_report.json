@@ -9,7 +9,6 @@
   "variety",
   "issue",
   "date_of_incident",
-  "farm",
   "requested_by",
   "column_break_1",
   "control_point",
@@ -49,12 +48,6 @@
    "fieldtype": "Date",
    "in_list_view": 1,
    "label": "Date of Incident"
-  },
-  {
-   "fieldname": "farm",
-   "fieldtype": "Link",
-   "label": "Farm",
-   "options": "Farm"
   },
   {
    "fieldname": "column_break_1",

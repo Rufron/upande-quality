@@ -10,12 +10,6 @@ frappe.query_reports["Quality Assessment"] = {
 			options: "QC Control Point",
 		},
 		{
-			fieldname: "farm",
-			label: __("Farm"),
-			fieldtype: "Link",
-			options: "Farm",
-		},
-		{
 			fieldname: "control_action",
 			label: __("Control Action"),
 			fieldtype: "Select",

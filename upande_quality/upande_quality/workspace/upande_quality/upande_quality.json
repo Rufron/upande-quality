@@ -1,14 +1,9 @@
 {
  "app": "upande_quality",
  "charts": [],
- "content": "[{\"id\": \"KwrOYtVRCH\", \"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Upande Quality\", \"col\": 12}}]",
+ "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Quality</b></span>\", \"col\": 12}}, {\"id\": \"card0\", \"type\": \"card\", \"data\": {\"card_name\": \"Quality Records\", \"col\": 4}}, {\"id\": \"card1\", \"type\": \"card\", \"data\": {\"card_name\": \"Reports\", \"col\": 4}}, {\"id\": \"card2\", \"type\": \"card\", \"data\": {\"card_name\": \"Configuration\", \"col\": 4}}]",
  "creation": "2026-07-21 13:58:06",
- "custom_blocks": [
-  {
-   "custom_block_name": "Upande Quality",
-   "label": "Upande Quality"
-  }
- ],
+ "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
  "hide_custom": 0,
@@ -19,245 +14,119 @@
  "label": "Upande Quality",
  "links": [
   {
+   "type": "Card Break",
+   "label": "Quality Records",
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Quality Records",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
+   "link_count": 3,
+   "onboard": 0
   },
   {
-   "hidden": 0,
-   "is_query_report": 0,
+   "type": "Link",
    "label": "Quality Reporting",
-   "link_count": 0,
    "link_to": "Quality Reporting",
    "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Corrective Action Report",
    "link_count": 0,
+   "onboard": 0,
+   "dependencies": ""
+  },
+  {
+   "type": "Link",
+   "label": "Corrective Action Report",
    "link_to": "Corrective Action Report",
    "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Corrective Action Resolution",
    "link_count": 0,
+   "onboard": 0,
+   "dependencies": ""
+  },
+  {
+   "type": "Link",
+   "label": "Corrective Action Resolution",
    "link_to": "Corrective Action Resolution",
    "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
+   "link_count": 0,
+   "onboard": 0,
+   "dependencies": ""
+  },
+  {
+   "type": "Card Break",
    "label": "Reports",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
+   "link_count": 2,
+   "onboard": 0
+  },
+  {
+   "type": "Link",
    "label": "Quality Assessment",
-   "link_count": 0,
    "link_to": "Quality Assessment",
    "link_type": "Report",
+   "hidden": 0,
+   "is_query_report": 1,
+   "link_count": 0,
    "onboard": 0,
-   "report_ref_doctype": "Quality Reporting",
-   "type": "Link"
+   "dependencies": ""
   },
   {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Field Rejects Report",
-   "link_count": 0,
-   "link_to": "Field Rejects Report",
+   "type": "Link",
+   "label": "Corrective Action Report Status",
+   "link_to": "Corrective Action Report Status",
    "link_type": "Report",
-   "onboard": 0,
-   "report_ref_doctype": "Stock Entry",
-   "type": "Link"
-  },
-  {
    "hidden": 0,
-   "is_query_report": 0,
-   "label": "Post-Harvest & Coldroom",
+   "is_query_report": 1,
    "link_count": 0,
-   "link_type": "DocType",
    "onboard": 0,
-   "type": "Card Break"
+   "dependencies": ""
   },
   {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Solution Mix",
-   "link_count": 0,
-   "link_to": "Solution Mix",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Post Harvest Mixing Tank",
-   "link_count": 0,
-   "link_to": "Post Harvest Mixing Tank",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Post Harvest Chemicals",
-   "link_count": 0,
-   "link_to": "Post Harvest Chemicals",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Cold Store Temperature Log",
-   "link_count": 0,
-   "link_to": "Cold Store Temperature Log",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Coldroom Cleaning Record",
-   "link_count": 0,
-   "link_to": "Coldroom Cleaning Record",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Coldroom Inspection Log",
-   "link_count": 0,
-   "link_to": "Coldroom Inspection Log",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Packhouse Cleaning Record",
-   "link_count": 0,
-   "link_to": "Packhouse Cleaning Record",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Packhouse Glass Inspection",
-   "link_count": 0,
-   "link_to": "Packhouse Glass Inspection",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Packhouse Inspection Log",
-   "link_count": 0,
-   "link_to": "Packhouse Inspection Log",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
+   "type": "Card Break",
    "label": "Configuration",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Production Settings",
-   "link_count": 0,
-   "link_to": "Production Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
+   "link_count": 3,
+   "onboard": 0
   },
   {
-   "hidden": 0,
-   "is_query_report": 0,
+   "type": "Link",
    "label": "QC Parameters",
-   "link_count": 0,
    "link_to": "QC Parameters",
    "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "QC Control Point",
    "link_count": 0,
+   "onboard": 0,
+   "dependencies": ""
+  },
+  {
+   "type": "Link",
+   "label": "QC Control Point",
    "link_to": "QC Control Point",
    "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Packhouse Condition",
    "link_count": 0,
-   "link_to": "Packhouse Condition",
-   "link_type": "DocType",
    "onboard": 0,
-   "type": "Link"
+   "dependencies": ""
   },
   {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Packhouse Component",
-   "link_count": 0,
-   "link_to": "Packhouse Component",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
+   "type": "Link",
    "label": "Packhouse Rejection Reason",
-   "link_count": 0,
    "link_to": "Packhouse Rejection Reason",
    "link_type": "DocType",
+   "hidden": 0,
+   "is_query_report": 0,
+   "link_count": 0,
    "onboard": 0,
-   "type": "Link"
+   "dependencies": ""
   }
  ],
- "modified": "2026-08-19 08:12:08.008936",
+ "modified": "2026-10-07 16:56:17.350941",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Upande Quality",

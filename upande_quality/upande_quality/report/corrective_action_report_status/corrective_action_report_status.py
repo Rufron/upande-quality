@@ -23,7 +23,7 @@ def execute(filters=None):
 	where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
 	data = frappe.db.sql(
-		"SELECT name, date_of_incident, control_point, farm, custom_greenhouse, variety,"
+		"SELECT name, date_of_incident, control_point, custom_greenhouse, variety,"
 		" issue, requested_by, assigned_to, status, target_date, actual_completion_date"
 		" FROM `tabCorrective Action Report` "
 		+ where
@@ -48,8 +48,7 @@ def execute(filters=None):
 			"options": "QC Control Point",
 			"width": 110,
 		},
-		{"label": "Farm", "fieldname": "farm", "fieldtype": "Link", "options": "Farm", "width": 95},
-		{"label": "Greenhouse", "fieldname": "custom_greenhouse", "fieldtype": "Data", "width": 150},
+		{"label": "Greenhouse", "fieldname": "custom_greenhouse", "fieldtype": "Link", "options": "Warehouse", "width": 150},
 		{"label": "Variety", "fieldname": "variety", "fieldtype": "Link", "options": "Item", "width": 140},
 		{"label": "Issue", "fieldname": "issue", "fieldtype": "Data", "width": 230},
 		{
