@@ -2516,6 +2516,43 @@ def _farm_pick_rows(farm, filters, starts_with=False, **kwargs):
 	return rows
 
 
+def _row_farm(r):
+	"""The farm a pick row's bucket is at: the row's own farm (the shelf it was
+	allocated from), else the first word of its warehouse. Reused bucket ids leave an
+	old farm's store on the row, so the warehouse alone sent buckets to the wrong farm."""
+	farm = (r.get("farm") or "").strip()
+	if farm:
+		return farm
+	wh = r.get("origin_warehouse") or r.get("source_warehouse") or r.get("warehouse") or ""
+	return wh.split(" ")[0]
+
+
+def _farm_trip_opls(farm_name, opls, on_road=False):
+	"""The OPLs among `opls` on a trip planned to this farm (Draft or Scheduled, from
+	today, or loaded): what the farm app shows. `on_road`: trips on their way to the
+	hub (Dispatched) count too."""
+	if not opls:
+		return set()
+	return set(
+		frappe.db.sql_list(
+			"""SELECT DISTINCT o.order_pick_list
+			FROM `tabBucket Request Trip Order` o
+			INNER JOIN `tabBucket Request Trip` t ON t.name = o.parent
+			WHERE ( (t.status IN ('Draft', 'Requested', 'Scheduled')
+			          AND ( t.trip_date >= %(today)s OR IFNULL(t.loaded_buckets, 0) > 0 ))
+			        OR (%(road)s AND t.status = 'Dispatched') )
+			  AND ( o.farm = %(farm)s OR %(farm)s LIKE CONCAT('%%', o.farm, '%%') )
+			  AND o.order_pick_list IN %(opls)s""",
+			{
+				"today": frappe.utils.today(),
+				"farm": farm_name,
+				"opls": tuple(opls),
+				"road": 1 if on_road else 0,
+			},
+		)
+	)
+
+
 @frappe.whitelist()
 def fetchAllocatedBuckets():
 	# Frappe Server Script (Type: API), api_method = fetchAllocatedBuckets
@@ -2559,18 +2596,17 @@ def fetchAllocatedBuckets():
 			# Issued already (e.g. issued offline at the packhouse): nothing left to send.
 			"issued": 0,
 			"bucket": ["!=", ""],
-			# v16: warehouse is empty on pick rows. Warehouse names start with their farm
-			# ("Simotwo Receiving Cold Store - KR"): match that prefix, not any substring,
-			# so one farm never downloads another farm's buckets.
-			"source_warehouse": ["like", farm_name + " %"],
 			"parenttype": "Order Pick List",
 		}
 		if opl_name:
 			pli_filters["parent"] = opl_name
 
+		# This farm's rows: its own farm on the row, or (no farm recorded) a warehouse
+		# named for it -- the prefix, never a substring. Narrowed by _row_farm below.
 		pick_list_items = frappe.get_all(
 			"Pick List Item",
 			filters=pli_filters,
+			or_filters=[["farm", "=", farm_name], ["source_warehouse", "like", farm_name + " %"]],
 			fields=[
 				"name",
 				"parent",
@@ -2591,6 +2627,7 @@ def fetchAllocatedBuckets():
 				"transfer_priority",
 			],
 		)
+		pick_list_items = [it for it in pick_list_items if _row_farm(it) == farm_name]
 
 		if not pick_list_items:
 			frappe.response["message"] = "No remote buckets awaiting transfer found for farm: " + farm_name
@@ -2643,28 +2680,30 @@ def fetchAllocatedBuckets():
 					)
 					for sr in so_rows:
 						in_window_so[sr["name"]] = 1
-				# Rebuild opl_map to only OPLs whose SO is in the delivery window.
+				# An OPL on a trip planned to this farm is sent whatever its delivery date:
+				# the planner tops trucks up with later days' orders.
+				on_trip = _farm_trip_opls(farm_name, list(opl_map))
+				# Rebuild opl_map to only OPLs whose SO is in the delivery window, or on a trip.
 				kept = {}
 				for n in opl_map:
 					so = opl_map[n].get("sales_order")
-					if so and so in in_window_so:
+					if (so and so in in_window_so) or n in on_trip:
 						kept[n] = opl_map[n]
 				opl_map = kept
 
 			# Drop items whose parent OPL is out-of-window / cancelled / missing. A remote
 			# farm works draft OPLs (waiting on its transfer); a submitted one is the sales
 			# farm's to issue -- except a replacement it asked this farm for (ASAP).
-			# Only orders on the Packhouse Schedule are sent (an ASAP replacement always).
-			from upande_packhouse.api.transfer_control import _schedule_map
-
-			on_schedule = _schedule_map()
+			# Only orders on a trip planned to this farm are sent (an ASAP replacement
+			# always): the farm sees an order once it is scheduled onto a truck, not before.
+			on_farm_trip = _farm_trip_opls(farm_name, list(opl_map))
 			pick_list_items = [
 				it
 				for it in pick_list_items
 				if it["parent"] in opl_map
 				and (
 					(it.get("transfer_priority") or "") == "ASAP"
-					or (not int(opl_map[it["parent"]].get("docstatus") or 0) and it["parent"] in on_schedule)
+					or (not int(opl_map[it["parent"]].get("docstatus") or 0) and it["parent"] in on_farm_trip)
 				)
 			]
 
@@ -3951,9 +3990,9 @@ def getFarmPlannedTrips():
 				JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
 				WHERE pli.parenttype = 'Order Pick List' AND pli.awaiting_transfer = 1
 				  AND pli.in_transit = 0 AND IFNULL(pli.bucket, '') != ''
-				  AND pli.source_warehouse LIKE %(like)s
+				  AND COALESCE(NULLIF(pli.farm, ''), SUBSTRING_INDEX(pli.source_warehouse, ' ', 1)) = %(farm)s
 				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND IFNULL(pli.transfer_priority, '') = 'ASAP'))""",
-				{"like": like},
+				{"farm": farm_name},
 				as_dict=True,
 			)
 		]
@@ -3984,28 +4023,46 @@ def getFarmPlannedTrips():
 		# waiting -> loaded (on the truck) -> transit -> arrived (shelved at the packhouse).
 		opl_states = {}
 		if device_opls:
-			# A bucket shelved at the packhouse has its source moved to the packhouse's
-			# store; its origin still names this farm. Match either, or an arrived order
-			# would drop out of this farm's states instead of showing "arrived".
-			farm_match = {"source_warehouse": ["like", like]}
-			or_farm = None
-			if frappe.get_meta("Pick List Item").get_field("origin_warehouse"):
-				farm_match = {}
-				or_farm = [["source_warehouse", "like", like], ["origin_warehouse", "like", like]]
+			# This farm's rows (_row_farm): the row's own farm, else its warehouse. A bucket
+			# shelved at the packhouse has its source moved to the packhouse's store; its
+			# origin still names this farm, so an arrived order still shows "arrived".
+			has_origin = bool(frappe.get_meta("Pick List Item").get_field("origin_warehouse"))
+			transfer_trucks = set(
+				frappe.get_all("Vehicle", filters={"custom_dispatch_truck": ["!=", 1]}, pluck="name")
+			)
+			or_farm = [["farm", "=", farm_name], ["source_warehouse", "like", like]]
+			fields = [
+				"parent",
+				"farm",
+				"source_warehouse",
+				"loaded_in_trolley",
+				"in_transit",
+				"shelved",
+				"transit_truck",
+				"not_found",
+			]
+			if has_origin:
+				or_farm.append(["origin_warehouse", "like", like])
+				fields.append("origin_warehouse")
 			for r in frappe.get_all(
 				"Pick List Item",
 				filters={
 					"parent": ["in", device_opls],
 					"parenttype": "Order Pick List",
 					"bucket": ["!=", ""],
-					**farm_match,
 				},
 				or_filters=or_farm,
-				fields=["parent", "loaded_in_trolley", "in_transit", "shelved", "transit_truck", "not_found"],
+				fields=fields,
 				limit_page_length=0,
 			):
+				if _row_farm(r) != farm_name:
+					continue
 				if int(r.not_found or 0):
 					continue  # not in the cold room, no replacement: left out of the transfer
+				# On a transfer truck: in transit (dispatched), or loaded on it and waiting
+				# for the supervisor's Dispatch.
+				truck_row = r.transit_truck if r.transit_truck in transfer_trucks else ""
+				on_truck_row = int(r.in_transit or 0) or (int(r.loaded_in_trolley or 0) and truck_row)
 				st = opl_states.setdefault(
 					r.parent,
 					{"total": 0, "loaded": 0, "transit": 0, "shelved": 0, "moved": 0, "trucks": set()},
@@ -4013,11 +4070,11 @@ def getFarmPlannedTrips():
 				# A row can carry several flags at once; "moved" counts it once.
 				if int(r.loaded_in_trolley or 0) or int(r.in_transit or 0) or int(r.shelved or 0):
 					st["moved"] += 1
-				if int(r.in_transit or 0) and r.transit_truck:
+				if on_truck_row and r.transit_truck:
 					st["trucks"].add(r.transit_truck)
 				st["total"] += 1
 				st["loaded"] += 1 if int(r.loaded_in_trolley or 0) else 0
-				st["transit"] += 1 if int(r.in_transit or 0) else 0
+				st["transit"] += 1 if on_truck_row else 0
 				st["shelved"] += 1 if int(r.shelved or 0) else 0
 			# Buckets go in_transit as they are loaded, but the order is only "transit"
 			# once its truck's trip is dispatched from the dashboard — until then it is
@@ -4042,14 +4099,22 @@ def getFarmPlannedTrips():
 					opl_states[op] = "loaded"
 				else:
 					opl_states[op] = "waiting"
-		# Trips on their way to this farm: dispatched from the hub (Scheduled -- only a full
-		# trip is), or a draft already being loaded, with an order row from this farm.
+			# Only what a trip backs is reported: an order on a trip planned to this farm
+			# or on the road from it, or one that arrived (the app then drops it). A
+			# "loaded" / "in transit" flag left on pick rows with no such trip (an old
+			# run, a copied site) kept the order on the phone for good.
+			on_farm_trip = _farm_trip_opls(farm_name, list(opl_states), on_road=True)
+			for op in [o for o, v in opl_states.items() if v != "arrived" and o not in on_farm_trip]:
+				del opl_states[op]
+		# Trips with an order row from this farm, from the moment they are planned: a
+		# trip still filling (Draft) shows too, so the farm sees its orders before the
+		# truck is full; the app marks it Planned until it is dispatched (Scheduled).
 		name_rows = frappe.db.sql(
 			"""
             SELECT DISTINCT t.name AS name
             FROM `tabBucket Request Trip` t
             INNER JOIN `tabBucket Request Trip Order` o ON o.parent = t.name
-            WHERE (t.status = 'Scheduled' OR (t.status = 'Draft' AND IFNULL(t.loaded_buckets, 0) > 0))
+            WHERE t.status IN ('Draft', 'Requested', 'Scheduled')
               AND ( t.trip_date >= %(today)s OR IFNULL(t.loaded_buckets, 0) > 0 )
               AND ( o.farm = %(farm)s OR o.farm LIKE %(like)s OR %(farm)s LIKE CONCAT('%%', o.farm, '%%') )
         """,
@@ -6819,7 +6884,9 @@ def loadTrolleyInTruck():
 				doc = frappe.get_doc("Order Pick List", opl_name)
 				for loc_row in doc.get("table_ytkc") or doc.get("locations") or []:
 					if loc_row.name in child_names:
-						loc_row.in_transit = 1
+						# On the truck, not yet in transit: the bucket logistics supervisor's
+						# Dispatch (packhouse app) puts the trip's buckets in transit.
+						loc_row.loaded_in_trolley = 1
 						loc_row.transit_truck = transit_truck
 						loc_row.shelf = ""
 						updated_count += 1
@@ -9356,7 +9423,9 @@ def setOfflineTrolleyFlags():
 		if flag == "loaded":
 			field = "loaded_in_trolley"
 		elif flag == "transit":
-			field = "in_transit"
+			# Loaded on the truck. In transit only once the trip is dispatched (the
+			# bucket logistics supervisor's Dispatch in the packhouse app).
+			field = "loaded_in_trolley"
 
 		if not field:
 			frappe.response["message"] = {
@@ -9444,15 +9513,15 @@ def setOfflineTrolleyFlags():
 					# Additive only: set the one flag to 1, leave everything else.
 					for sib in sibs:
 						cur = frappe.db.get_value("Pick List Item", sib["name"], [field, "idx"], as_dict=True)
+						if flag == "transit":
+							went_in_transit.append(sib["name"])
 						if not (cur and cur.get(field)):
-							if field == "in_transit":
-								went_in_transit.append(sib["name"])
 							flag_changes.setdefault(sib.get("parent") or parent, []).append(
 								["table_ytkc", (cur or {}).get("idx"), sib["name"], [[field, 0, 1]]]
 							)
 						frappe.db.set_value("Pick List Item", sib["name"], field, 1, update_modified=True)
 						# On load, also stamp the chosen truck onto the row (Data field).
-						if flag == "loaded" and truck:
+						if truck:
 							frappe.db.set_value(
 								"Pick List Item", sib["name"], "transit_truck", truck, update_modified=True
 							)
@@ -9462,9 +9531,7 @@ def setOfflineTrolleyFlags():
 						bucket,
 						# A trolley scan sends "loaded" with no truck: the bucket is in a
 						# trolley at the farm, not on a truck yet.
-						("Loaded on truck" if truck else "Loaded in trolley")
-						if flag == "loaded"
-						else "In transit",
+						"Loaded on truck" if (truck or flag == "transit") else "Loaded in trolley",
 						opl=parent,
 						vehicle=truck or frappe.db.get_value("Pick List Item", name, "transit_truck"),
 					)
@@ -11247,8 +11314,20 @@ _VASELIFE_CATEGORY_KEYWORDS = [
 	(
 		"Pest & Diseases",
 		(
-			"botrytis", "mildew", "thrip", "mite", "aphid", "pest", "disease",
-			"fung", "mould", "mold", "rot", "downy", "caterpillar", "insect",
+			"botrytis",
+			"mildew",
+			"thrip",
+			"mite",
+			"aphid",
+			"pest",
+			"disease",
+			"fung",
+			"mould",
+			"mold",
+			"rot",
+			"downy",
+			"caterpillar",
+			"insect",
 		),
 	),
 	("Stem & Neck", ("neck", "stem", "bent", "droop")),
@@ -11699,8 +11778,7 @@ def fetchVaselifeFormData():
 		failure_reasons = [
 			{
 				"name": r.name,
-				"category": (r.get("category") if has_category else None)
-				or _guess_vaselife_category(r.name),
+				"category": (r.get("category") if has_category else None) or _guess_vaselife_category(r.name),
 			}
 			for r in frappe.get_all(
 				"Vaselife Parameter",
