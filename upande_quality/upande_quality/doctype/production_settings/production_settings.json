@@ -23,15 +23,18 @@
   "column_break_ozyn",
   "allow_hub_shelving_without_transfer",
   "allow_shelving_in_transit",
-  "hub_buckets_per_shelf",
   "allow_issue_out_of_sequence",
   "allow_pack_out_of_sequence",
+  "show_unscheduled_in_issuing",
+  "show_unscheduled_in_packing",
+  "show_unscheduled_in_scheduler",
   "column_break_jthd",
   "auto_transfer_section",
   "auto_remote_transfer_scheduling",
   "column_break_fgfp",
   "auto_transfer_frequency",
-  "auto_dispatch_full_trips"
+  "auto_dispatch_full_trips",
+  "release_trips_without_confirmation"
  ],
  "fields": [
   {
@@ -129,6 +132,12 @@
   },
   {
    "default": "0",
+   "fieldname": "release_trips_without_confirmation",
+   "fieldtype": "Check",
+   "label": "Release Trips Without Request and Confirmation"
+  },
+  {
+   "default": "0",
    "fieldname": "allow_hub_shelving_without_transfer",
    "fieldtype": "Check",
    "label": "Allow Shelving Buckets Not Transferred"
@@ -138,13 +147,6 @@
    "fieldname": "allow_shelving_in_transit",
    "fieldtype": "Check",
    "label": "Allow Shelving Buckets In Transit"
-  },
-  {
-   "default": "0",
-   "fieldname": "hub_buckets_per_shelf",
-   "fieldtype": "Int",
-   "label": "Buckets per Shelf at the Hub",
-   "non_negative": 1
   },
   {
    "default": "0",
@@ -159,6 +161,24 @@
    "fieldname": "allow_pack_out_of_sequence",
    "fieldtype": "Check",
    "label": "Allow Packing Out of Schedule Order"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_unscheduled_in_issuing",
+   "fieldtype": "Check",
+   "label": "Show Unscheduled OPLs in Issuing"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_unscheduled_in_packing",
+   "fieldtype": "Check",
+   "label": "Show Unscheduled OPLs in Packing"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_unscheduled_in_scheduler",
+   "fieldtype": "Check",
+   "label": "Show Unscheduled OPLs in the App Scheduler"
   },
   {
    "fieldname": "column_break_ozyn",
@@ -177,7 +197,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-07 22:00:00.000000",
+ "modified": "2026-10-09 02:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
