@@ -320,5 +320,28 @@
   "reference_doctype": null,
   "script": "farm = frappe.form_dict.get('farm') or ''\ndate_from = frappe.form_dict.get('date_from') or frappe.utils.today()\ndate_to = frappe.form_dict.get('date_to') or frappe.utils.today()\n\n# Harvest is attributed to a farm via the greenhouse's Warehouse.custom_farm\n# (Stock Entry.custom_farm is unused) \u2014 same derivation as the Production Dashboard.\ncond = \"\"\nparams = {'df': date_from, 'dt': date_to}\nfarms = [f.strip() for f in farm.split(',') if f.strip()] if farm else []\nif farms:\n    cond = \" AND FIND_IN_SET(wh.custom_farm, %(fcsv)s)\"\n    params['fcsv'] = \",\".join(farms)\n\nrows = frappe.db.sql(\n    \"SELECT COALESCE(SUM(sed.qty),0) AS total \"\n    \"FROM `tabStock Entry` se \"\n    \"JOIN `tabStock Entry Detail` sed ON sed.parent = se.name \"\n    \"LEFT JOIN `tabWarehouse` wh ON wh.name = se.custom_greenhouse \"\n    \"WHERE se.docstatus = 1 AND se.stock_entry_type = 'Harvesting' \"\n    \"AND se.posting_date BETWEEN %(df)s AND %(dt)s\" + cond,\n    params, as_dict=1)\nharvested = (rows[0]['total'] if rows else 0) or 0\nfrappe.response['message'] = {'harvested': harvested, 'date_from': date_from, 'date_to': date_to}\n",
   "script_type": "API"
+ },
+ {
+  "allow_guest": 0,
+  "api_method": "get_coldroom_occupancy",
+  "creation": "2026-10-10 22:49:34.793661",
+  "cron_format": null,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Server Script",
+  "doctype_event": "Before Insert",
+  "enable_rate_limit": 0,
+  "event_frequency": "All",
+  "idx": 0,
+  "modified": "2026-10-10 23:09:00.491914",
+  "modified_by": "brian@upande.com",
+  "module": "Upande Quality",
+  "name": "Cold Room Occupancy",
+  "owner": "brian@upande.com",
+  "rate_limit_count": 5,
+  "rate_limit_seconds": 86400,
+  "reference_doctype": null,
+  "script": "CAP = 2\nOLD_DAYS = 5\n\nfarm = frappe.form_dict.get('farm') or ''\nfarms = [f.strip() for f in farm.split(',') if f.strip()] if farm else []\nparams = {}\nfarm_cond = \"\"\nif farms:\n    farm_cond = \" WHERE FIND_IN_SET(s.farm, %(fcsv)s)\"\n    params['fcsv'] = \",\".join(farms)\n\nshelf_rows = frappe.db.sql(\n    \"SELECT s.name AS shelf, s.shelf_id AS shelf_id, s.farm AS farm, \"\n    \"COUNT(CASE WHEN IFNULL(si.bucket_id,'')<>'' THEN 1 END) AS buckets, \"\n    \"COALESCE(SUM(si.stem_qty),0) AS stems, \"\n    \"GROUP_CONCAT(DISTINCT NULLIF(si.bucket_id,'') ORDER BY si.bucket_id SEPARATOR ', ') AS bucket_ids, \"\n    \"MIN(COALESCE(si.harvest_date, DATE(si.date_added))) AS oldest, \"\n    \"DATEDIFF(CURDATE(), MIN(COALESCE(si.harvest_date, DATE(si.date_added)))) AS oldest_days \"\n    \"FROM `tabShelf` s LEFT JOIN `tabShelf Item` si ON si.parent = s.name\"\n    + farm_cond +\n    \" GROUP BY s.name, s.shelf_id, s.farm\", params, as_dict=1)\n\nalloc_rows = frappe.db.sql(\n    \"SELECT shelf_location AS shelf, \"\n    \"SUM(CASE WHEN total_quantity>0 AND available_quantity<=0 THEN 1 ELSE 0 END) AS fully_allocated, \"\n    \"COALESCE(SUM(allocated_quantity),0) AS allocated_qty \"\n    \"FROM `tabBucket Allocation Status` WHERE IFNULL(shelf_location,'')<>'' \"\n    \"GROUP BY shelf_location\", as_dict=1)\nalloc_map = {}\nfor a in alloc_rows:\n    alloc_map[a['shelf']] = a\n\nfarm_agg = {}\noverall = {'shelves':0,'occupied':0,'buckets':0,'free':0,'old':0,'freeing':0}\nold_list = []\nfreeing_list = []\nfor r in shelf_rows:\n    fm = r['farm'] or 'Unassigned'\n    if fm not in farm_agg:\n        farm_agg[fm] = {'farm':fm,'shelves':0,'occupied':0,'buckets':0,'free':0,'old':0,'freeing':0}\n    fa = farm_agg[fm]\n    b = int(r['buckets'] or 0)\n    fa['shelves'] = fa['shelves'] + 1\n    overall['shelves'] = overall['shelves'] + 1\n    fa['buckets'] = fa['buckets'] + b\n    overall['buckets'] = overall['buckets'] + b\n    if b > 0:\n        fa['occupied'] = fa['occupied'] + 1\n        overall['occupied'] = overall['occupied'] + 1\n    else:\n        fa['free'] = fa['free'] + 1\n        overall['free'] = overall['free'] + 1\n    od = int(r['oldest_days'] or 0)\n    if b > 0 and od >= OLD_DAYS:\n        fa['old'] = fa['old'] + 1\n        overall['old'] = overall['old'] + 1\n        old_list.append({'shelf':r['shelf_id'] or r['shelf'],'farm':fm,'buckets':b,'stems':int(r['stems'] or 0),'oldest':str(r['oldest']) if r['oldest'] else '','age':od,'bucket_ids':r['bucket_ids'] or ''})\n    a = alloc_map.get(r['shelf'])\n    fully = int(a['fully_allocated']) if a else 0\n    if b > 0 and fully >= b:\n        fa['freeing'] = fa['freeing'] + 1\n        overall['freeing'] = overall['freeing'] + 1\n        freeing_list.append({'shelf':r['shelf_id'] or r['shelf'],'farm':fm,'buckets':b,'allocated_qty':float(a['allocated_qty']) if a else 0,'bucket_ids':r['bucket_ids'] or ''})\n\noverall['capacity'] = overall['shelves'] * CAP\noverall['occupancy_pct'] = round(overall['buckets']*100.0/overall['capacity'],1) if overall['capacity'] else 0\nby_farm = []\nfor fa in farm_agg.values():\n    fa['capacity'] = fa['shelves'] * CAP\n    fa['occupancy_pct'] = round(fa['buckets']*100.0/fa['capacity'],1) if fa['capacity'] else 0\n    by_farm.append(fa)\nby_farm.sort(key=lambda x: -x['occupancy_pct'])\nold_list.sort(key=lambda x: -x['age'])\nfreeing_list.sort(key=lambda x: -x['buckets'])\n\nfrappe.response['message'] = {\n    'capacity_per_shelf': CAP, 'old_days': OLD_DAYS,\n    'overall': overall, 'by_farm': by_farm,\n    'old_stock': old_list[:400], 'freeing_soon': freeing_list[:400],\n}\n",
+  "script_type": "API"
  }
 ]
