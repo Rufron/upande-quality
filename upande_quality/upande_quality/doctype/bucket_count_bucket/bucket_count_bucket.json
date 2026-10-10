@@ -1,0 +1,49 @@
+{
+ "actions": [],
+ "creation": "2026-10-09 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bucket_id",
+  "location",
+  "scanned_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "bucket_id",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Bucket",
+   "options": "Bucket QR Code",
+   "reqd": 1
+  },
+  {
+   "description": "Where this bucket was found at scan time - a bucket counted more than once the same day carries wherever it was LAST seen.",
+   "fieldname": "location",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Location",
+   "options": "Bucket Count Location",
+   "reqd": 1
+  },
+  {
+   "default": "Now",
+   "fieldname": "scanned_at",
+   "fieldtype": "Datetime",
+   "label": "Scanned At"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-09 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Bucket Count Bucket",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

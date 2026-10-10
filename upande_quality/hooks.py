@@ -58,6 +58,10 @@ fixtures = [
 	# Farm Distance.via_farms — filled by transfer_events.compute_farm_distance_via_farms
 	# (the field exists on kaitet-group live; Farm Distance itself is upande_packhouse's).
 	{"doctype": "Custom Field", "filters": [["name", "in", ["Farm Distance-via_farms"]]]},
+	# Bucket Count's fixed location master list (Packhouse, Washing Area,
+	# Greenhouse, Coldroom) — seeded so every site gets them on migrate; a new
+	# location can still be added later from the Desk without a code change.
+	{"doctype": "Bucket Count Location"},
 ]
 
 # Includes in <head>

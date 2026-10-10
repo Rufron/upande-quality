@@ -15223,3 +15223,169 @@ def syncStockTakeBuckets():
 			"reason": "unknown_error",
 			"message": "An unexpected error occurred: {0}".format(str(e)),
 		}
+
+
+@frappe.whitelist()
+def syncBucketCountScans():
+	"""Bulk-persist a locally-queued batch of Bucket Count scans in one round
+	trip - the empty-bucket counterpart of syncStockTakeBuckets, same
+	offline-first batch-sync shape (karen-bucket-count-db.ts, expo-sqlite),
+	but much simpler: these buckets are empty, so there is no shelf/harvest
+	lookup to resolve, just "is this a real bucket" plus wherever it was seen.
+
+	Payload: {farm, count_date, buckets: [{bucket_id, location, scanned_at},
+	...]}. One Bucket Count doc (per farm per day, name "{farm}-{count_date}")
+	is loaded ONCE and every bucket in this batch is appended/updated on it in
+	memory, then saved ONCE - same reasoning as syncStockTakeBuckets: never
+	reload-and-resave per bucket.
+
+	Re-syncing a bucket already in today's document UPDATES its location in
+	place rather than leaving the old one - unlike stock take, a bucket here
+	can genuinely move between zones (Greenhouse -> Washing Area -> Packhouse)
+	within the same day, and the count should reflect wherever it was LAST
+	seen.
+
+	A bucket whose real current status is "In Use" (i.e. not actually empty)
+	still records - the operator may be counting ahead of a stems update, or
+	simply scanned a full bucket by mistake - but is flagged back with
+	warning="already_in_use" so the app can show it, same spirit as
+	syncStockTakeBuckets's per-row failures: never silently swallowed, never
+	a hard stop that blocks the rest of the batch."""
+	try:
+		data = frappe.form_dict.get("data")
+		if isinstance(data, str):
+			data = frappe.parse_json(data)
+		if not data:
+			frappe.throw("data is required")
+
+		farm = data.get("farm")
+		count_date = data.get("count_date") or frappe.utils.nowdate()
+		scans = data.get("buckets") or []
+
+		if not farm:
+			frappe.response["data"] = {
+				"status": "failed",
+				"reason": "farm_not_null",
+				"message": "Farm is missing.",
+			}
+			return
+		if not scans:
+			frappe.response["data"] = {
+				"status": "failed",
+				"reason": "buckets_not_null",
+				"message": "No buckets to sync.",
+			}
+			return
+
+		bucket_ids = []
+		scan_by_bucket = {}
+		for s in scans:
+			bid = s.get("bucket_id")
+			if not bid:
+				continue
+			bucket_ids.append(bid)
+			scan_by_bucket[bid] = s  # last one in the batch wins if duplicated
+
+		# Which of these are real, recognised buckets - anything else is
+		# reported back as a per-bucket failure, not a whole-batch one. Status
+		# is fetched in the same bulk query so an "In Use" bucket can be
+		# flagged without a second round trip.
+		bucket_status = {
+			r.name: r.status
+			for r in frappe.get_all(
+				"Bucket QR Code", filters={"name": ["in", bucket_ids]}, fields=["name", "status"]
+			)
+		}
+
+		now_dt = frappe.utils.now_datetime()
+		name_guess = "{0}-{1}".format(farm, count_date)
+		if frappe.db.exists("Bucket Count", name_guess):
+			doc = frappe.get_doc("Bucket Count", name_guess)
+		else:
+			doc = frappe.new_doc("Bucket Count")
+			doc.farm = farm
+			doc.count_date = count_date
+
+		existing_row_by_bucket = {r.bucket_id: r for r in doc.buckets}
+
+		results = []
+		for bucket_id in bucket_ids:
+			if bucket_id not in bucket_status:
+				results.append(
+					{
+						"bucket_id": bucket_id,
+						"status": "failed",
+						"reason": "bucket_not_found",
+						"message": "Not a recognised bucket.",
+					}
+				)
+				continue
+
+			s = scan_by_bucket[bucket_id]
+			location = s.get("location")
+			if not location:
+				results.append(
+					{
+						"bucket_id": bucket_id,
+						"status": "failed",
+						"reason": "location_not_null",
+						"message": "Location is missing.",
+					}
+				)
+				continue
+
+			row = existing_row_by_bucket.get(bucket_id)
+			if not row:
+				row = doc.append("buckets", {})
+				existing_row_by_bucket[bucket_id] = row
+			row.bucket_id = bucket_id
+			row.location = location
+			row.scanned_at = _parse_scanned_at(s.get("scanned_at"), now_dt)
+
+			warning = "already_in_use" if bucket_status.get(bucket_id) == "In Use" else None
+			result = {
+				"bucket_id": bucket_id,
+				"status": "success",
+				"payload": {"location": location},
+			}
+			if warning:
+				result["warning"] = warning
+			results.append(result)
+
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+		frappe.response["data"] = {
+			"status": "success",
+			"message": "Synced {0} bucket(s).".format(len(results)),
+			"payload": {"bucket_count": doc.name, "results": results},
+		}
+	except Exception as e:
+		frappe.db.rollback()
+		frappe.log_error(frappe.get_traceback(), "syncBucketCountScans Error")
+		frappe.response["data"] = {
+			"status": "error",
+			"reason": "unknown_error",
+			"message": "An unexpected error occurred: {0}".format(str(e)),
+		}
+
+
+@frappe.whitelist()
+def getBucketCountLocations():
+	"""The Bucket Count location picker for the app: every Bucket Count Location, so a
+	location added from the Desk shows up without an app release."""
+	try:
+		locations = frappe.get_all(
+			"Bucket Count Location", fields=["name as location"], order_by="creation asc, name asc"
+		)
+		frappe.response["data"] = {
+			"status": "success",
+			"payload": {"locations": [r.location for r in locations]},
+		}
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), "getBucketCountLocations Error")
+		frappe.response["data"] = {
+			"status": "error",
+			"reason": "unknown_error",
+			"message": "An unexpected error occurred: {0}".format(str(e)),
+		}

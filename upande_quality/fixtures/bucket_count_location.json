@@ -1,0 +1,26 @@
+[
+ {
+  "doctype": "Bucket Count Location",
+  "docstatus": 0,
+  "name": "Packhouse",
+  "location_name": "Packhouse"
+ },
+ {
+  "doctype": "Bucket Count Location",
+  "docstatus": 0,
+  "name": "Washing Area",
+  "location_name": "Washing Area"
+ },
+ {
+  "doctype": "Bucket Count Location",
+  "docstatus": 0,
+  "name": "Greenhouse",
+  "location_name": "Greenhouse"
+ },
+ {
+  "doctype": "Bucket Count Location",
+  "docstatus": 0,
+  "name": "Coldroom",
+  "location_name": "Coldroom"
+ }
+]
