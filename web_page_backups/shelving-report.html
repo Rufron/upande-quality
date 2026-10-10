@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shelving Report | Quality Dashboard</title>
+<script src="/assets/frappe/js/frappe-web.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a0a0a;--ink-1:#1a1a18;--ink-2:#2a2a26;--ink-3:#3a3a34;--ink-4:#5a5a52;
+  --ink-mute:#8a8780;--ink-faint:#b8b6ae;
+  --bg:#f4f3ef;--bg-card:#ffffff;--surface:#fafaf6;
+  --bg-hover:rgba(10,10,10,0.03);--bg-muted:rgba(10,10,10,0.05);
+  --border:rgba(10,10,10,0.06);--border-2:rgba(10,10,10,0.12);--hairline:rgba(10,10,10,0.06);
+  --text:#0a0a0a;--text-2:#3a3a34;--text-3:#5a5a52;--text-4:#8a8780;
+  --accent:#0a0a0a;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;--plan:#d1cfc7;--signal:#228883;
+  --shadow-sm:0 1px 0 rgba(10,10,10,0.04),0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-md:0 1px 0 rgba(10,10,10,0.06),0 24px 48px -24px rgba(10,10,10,0.18);
+  --f:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --display:'Fraunces',Georgia,serif;
+  --mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
+}
+
+/* ── Frappe chrome kill ───────────────────────────────────────────────── */
+.navbar,header,.page-breadcrumbs,.page-header,.page-header-wrapper,.web-footer,footer,
+.website-edit-button,.btn-edit-page,.edit-page-btn,.scroll-to-top,.back-to-top,
+.website-banner,.call-to-action,.frappe-chat,#frappe-chat,.telegram-share,.share-buttons,
+.web-page-edit,.published-edit{display:none!important}
+
+html,body{margin:0!important;padding:0!important;height:100vh!important;overflow:hidden!important}
+body{background:var(--bg)!important;font-family:var(--f);color:var(--text)}
+
+*{box-sizing:border-box}
+.aph *{box-sizing:border-box;margin:0;padding:0}
+.aph{position:fixed;inset:0;z-index:2147483000;background:var(--bg);
+  font-family:var(--f);font-size:13px;line-height:1.5;color:var(--text-2);
+  -webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Topbar ───────────────────────────────────────────────────────────── */
+.uqtop{flex-shrink:0;display:flex;align-items:center;gap:14px;background:#fff;
+  padding:14px 40px;border-bottom:1px solid var(--hairline);position:relative;z-index:50}
+.uqbrand{display:flex;align-items:center;gap:11px;flex-shrink:0}
+.uqmark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#0a0a0a,#3a3a34);
+  color:#fafaf6;display:grid;place-items:center;font:700 13px var(--f)}
+.uqp{font:600 14px var(--f);color:#0a0a0a;line-height:1.1;letter-spacing:-.2px}
+.uqp small{display:block;font:500 10px var(--f);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute);margin-top:1px}
+.uqnav{display:flex;gap:4px;margin-left:24px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0}
+.uqnav::-webkit-scrollbar{display:none}
+.uqnav a{padding:8px 14px;font:500 13px var(--f);color:var(--ink-4);text-decoration:none;
+  border-radius:999px;white-space:nowrap;transition:all .2s}
+.uqnav a:hover{background:rgba(10,10,10,.04);color:#0a0a0a;text-decoration:none}
+.uqnav a.on{background:#0a0a0a;color:#fafaf6}
+.uqsep{width:1px;height:22px;background:var(--hairline);margin:0 8px;flex-shrink:0;align-self:center}
+
+/* ── Scrolling main ───────────────────────────────────────────────────── */
+.aph-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;width:100%;display:flex;flex-direction:column}
+.aph-content{padding:40px;flex:1}
+
+/* ── Filter bar ───────────────────────────────────────────────────────── */
+.aph-topbar{background:#fff;border-bottom:1px solid var(--hairline);padding:12px 40px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0}
+.aph-topbar h1{font-family:var(--f);font-weight:600;letter-spacing:-.3px;color:var(--ink);font-size:18px;white-space:nowrap}
+.aph-topbar .crumb{color:var(--ink-mute);font-size:11px;font-weight:500;padding-left:12px;
+  border-left:1px solid var(--hairline);height:18px;line-height:18px}
+.aph-topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-group{display:flex;align-items:center;gap:5px}
+.filter-label{font-size:11px;color:var(--ink-mute);white-space:nowrap;font-weight:500}
+.form-control{border:1px solid var(--border-2);border-radius:8px;padding:4px 8px;
+  font-size:12px;font-family:var(--f);background:#fff;color:var(--text);height:30px;outline:none}
+.form-control:focus{border-color:#666}
+.date-pill{display:inline-flex;align-items:center;border:1px solid var(--border-2);
+  border-radius:8px;background:#fff;overflow:hidden;height:30px}
+.date-pill input{border:0;padding:0 7px;font-size:12px;font-family:var(--f);
+  background:transparent;outline:0;width:110px;color:var(--text)}
+.date-pill .sep{padding:0 3px;color:var(--ink-mute);font-size:12px}
+.date-pill .clr{padding:0 10px;color:var(--ink-mute);font-size:14px;cursor:pointer;
+  border-left:1px solid var(--hairline);height:100%;display:flex;align-items:center;user-select:none}
+.date-pill .clr:hover{background:var(--bg-hover);color:var(--ink)}
+.search-box{border:1px solid var(--border-2);border-radius:8px;padding:4px 10px;font-size:12px;
+  font-family:var(--f);background:#fff;color:var(--text);height:30px;outline:none;width:170px}
+.search-box:focus{border-color:#666}
+.refresh-btn{padding:0 12px;height:30px;border:1px solid var(--border-2);border-radius:999px;
+  font-size:12px;font-weight:500;background:#fff;color:var(--ink-3);cursor:pointer;
+  display:flex;align-items:center;gap:6px;white-space:nowrap;transition:background .15s,color .15s}
+.refresh-btn:hover{background:var(--bg-hover);color:var(--ink)}
+.rdot{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block}
+.rec-count{font-size:11px;color:var(--ink-mute);font-family:var(--mono);white-space:nowrap}
+
+/* ── Page header ──────────────────────────────────────────────────────── */
+.aph-page-hd{margin-bottom:32px}
+.aph-page-hd .ttl{font-family:var(--f);font-weight:600;font-size:40px;letter-spacing:-1.2px;
+  color:var(--ink);line-height:1.05}
+.aph-page-hd .sub{font-size:15px;color:var(--ink-4);margin-top:6px}
+
+/* ── KPI cards ────────────────────────────────────────────────────────── */
+.aph-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:18px;margin-bottom:32px}
+.aph-kpi{background:#fff;border:0;border-radius:20px;padding:26px 28px;
+  box-shadow:var(--shadow-sm);transition:transform .25s,box-shadow .25s;overflow:hidden}
+.aph-kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+.aph-kpi .lbl{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--ink-mute);
+  font-weight:500;margin-bottom:16px}
+.aph-kpi .val{font-family:var(--f);font-size:42px;font-weight:600;letter-spacing:-1.4px;
+  color:var(--ink);line-height:1;margin-top:0}
+.aph-kpi .sub{color:var(--ink-mute);margin-top:10px;font-size:12px}
+
+/* ── Table section ────────────────────────────────────────────────────── */
+.tbl-section{background:#fff;border-radius:24px;box-shadow:var(--shadow-sm);overflow:hidden}
+.tbl-hd{display:flex;align-items:center;gap:10px;padding:22px 28px;border-bottom:1px solid var(--hairline)}
+.tbl-hd .ttl{font-family:var(--f);font-weight:600;font-size:17px;letter-spacing:-.4px;color:var(--ink)}
+.tbl-hd .cnt{font-size:11px;font-family:var(--mono);color:var(--ink-mute);
+  background:var(--bg-muted);padding:2px 9px;border-radius:9px}
+.tbl-wrap{overflow-x:auto}
+.tbl-wrap table{width:100%;border-collapse:collapse;font-size:12px;min-width:1000px}
+.tbl-wrap thead tr{background:#fff}
+.tbl-wrap th{padding:12px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--ink-mute);
+  letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+  border-bottom:1px solid var(--hairline);cursor:pointer;user-select:none}
+.tbl-wrap th:hover{color:var(--ink)}
+.tbl-wrap th.sorted{color:var(--ink)}
+.tbl-wrap td{padding:10px 14px;border-bottom:1px solid var(--hairline);color:var(--ink-3);vertical-align:middle;white-space:nowrap}
+.tbl-wrap tr:last-child td{border-bottom:0}
+.tbl-wrap tbody tr:hover td{background:var(--bg-hover)}
+.tbl-wrap td.num{font-family:var(--mono);text-align:right}
+.tbl-wrap td.bold{font-weight:600;color:var(--ink)}
+
+/* ── Status badges ────────────────────────────────────────────────────── */
+.sbadge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;
+  font-size:11px;font-weight:600;white-space:nowrap}
+.sbadge .d{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sg{background:#dcfce7;color:#15803d}.sg .d{background:#16a34a}
+.so{background:#ffedd5;color:#9a3412}.so .d{background:#ea580c}
+.sr{background:#fee2e2;color:#b91c1c}.sr .d{background:#dc2626}
+.su{background:var(--bg-muted);color:var(--ink-mute)}.su .d{background:var(--ink-faint)}
+
+/* ── Load more ────────────────────────────────────────────────────────── */
+.lm-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 0}
+.lm-info{font-size:12px;color:var(--ink-mute)}
+.lm-btn{padding:9px 26px;border:1.5px solid var(--accent);border-radius:999px;
+  background:transparent;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;
+  transition:background .15s,color .15s}
+.lm-btn:hover{background:var(--accent);color:#fff}
+.lm-rem{font-weight:400;opacity:.7;margin-left:4px}
+
+/* ── Loading ──────────────────────────────────────────────────────────── */
+.aph-loading{display:flex;align-items:center;justify-content:center;min-height:300px;
+  color:var(--ink-mute);font-size:13px;gap:10px}
+.spin{width:18px;height:18px;border:2px solid var(--border-2);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── Multiselect ──────────────────────────────────────────────────────── */
+.ms{position:relative;display:inline-block;min-width:140px;font-size:12px;vertical-align:middle}
+.ms-trigger{display:flex;align-items:center;gap:6px;border:1px solid var(--border-2);
+  border-radius:8px;padding:4px 10px;background:#fff;cursor:pointer;height:30px;min-width:140px;user-select:none}
+.ms-trigger:hover{border-color:#999}
+.ms-val{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-size:12px}
+.ms-val.ph{color:var(--ink-mute)}
+.ms-arr{color:var(--ink-mute);font-size:10px;flex-shrink:0;transition:transform .15s}
+.ms.open .ms-arr{transform:rotate(180deg)}
+.ms-panel{position:absolute;z-index:9999;top:calc(100% + 4px);left:0;min-width:210px;
+  background:#fff;border:1px solid var(--border-2);border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);display:none;flex-direction:column;max-height:280px}
+.ms.open .ms-panel{display:flex}
+.ms-search{padding:8px;border-bottom:1px solid var(--hairline)}
+.ms-search input{width:100%;border:1px solid var(--border-2);border-radius:6px;padding:5px 8px;
+  font-size:12px;font-family:var(--f);background:var(--bg-muted);outline:none;color:var(--text)}
+.ms-list{overflow-y:auto;flex:1;padding:4px}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+  cursor:pointer;font-size:12px;color:var(--ink-3)}
+.ms-opt:hover{background:var(--bg-hover);color:var(--ink)}
+.ms-opt input[type=checkbox]{accent-color:var(--accent);width:13px;height:13px;flex-shrink:0}
+.ms-foot{padding:8px;border-top:1px solid var(--hairline);display:flex;gap:6px}
+.ms-foot button{flex:1;padding:5px 0;border:1px solid var(--border-2);border-radius:6px;
+  font-size:11px;font-weight:500;cursor:pointer;background:#fff;color:var(--ink-3);font-family:var(--f)}
+.ms-foot button:hover{background:var(--bg-hover);color:var(--ink)}
+
+@media(max-width:900px){
+  .aph-content{padding:16px}
+  .aph-topbar{padding:10px 16px}
+  .uqtop{padding:12px 16px}
+  .aph-page-hd .ttl{font-size:28px}
+}
+</style>
+<style>
+.cr-tabs{display:flex;gap:6px;padding:16px 40px 0}
+.cr-tab{padding:8px 18px;border:1px solid var(--border-2);background:#fff;border-radius:999px;font:500 13px var(--f);color:var(--ink-4);cursor:pointer}
+.cr-tab.on{background:#0a0a0a;color:#fafaf6;border-color:#0a0a0a}
+.cr-barwrap{background:var(--bg-muted);border-radius:5px;overflow:hidden;width:110px;display:inline-block;vertical-align:middle;margin-right:8px}
+.cr-barwrap .bar{display:block;height:8px;border-radius:5px}
+.cr-two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.cr-two{grid-template-columns:1fr}.cr-tabs{padding:12px 16px 0}}
+</style>
+<style>
+.cr-sec-hd{display:flex;align-items:baseline;gap:12px;margin:30px 2px 15px}
+.cr-sec-hd h2{font-family:var(--display);font-weight:600;font-size:20px;letter-spacing:-.3px;color:var(--ink);margin:0}
+.cr-sec-hd .note{font-size:12px;color:var(--ink-mute)}
+.cr-farms{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+.cr-farm{background:var(--bg-card);border-radius:18px;padding:20px 20px 18px;box-shadow:var(--shadow-sm);transition:transform .22s,box-shadow .22s}
+.cr-farm:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.cr-farm.empty{box-shadow:none;border:1px dashed var(--border-2);background:transparent}
+.cr-ftop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px}
+.cr-fname{font-weight:600;font-size:15.5px;color:var(--ink)}
+.cr-fname small{display:block;font-weight:400;font-size:11.5px;color:var(--ink-mute);margin-top:2px;font-variant-numeric:tabular-nums}
+.cr-fpct{font-family:var(--display);font-weight:600;font-size:30px;letter-spacing:-1px;color:var(--ink);line-height:.9;font-variant-numeric:tabular-nums}
+.cr-farm.empty .cr-fpct{color:var(--ink-faint)}
+.cr-track{height:9px;border-radius:6px;background:var(--bg-muted);overflow:hidden;margin-bottom:16px}
+.cr-fill{height:100%;border-radius:6px}
+.cr-fstats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.cr-st{display:flex;flex-direction:column;gap:2px;padding:7px 2px;border-radius:9px}
+.cr-st b{font-size:16px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}
+.cr-st span{font-size:10px;letter-spacing:.3px;text-transform:uppercase;color:var(--ink-mute)}
+.cr-st.warn b{color:var(--warn)}
+.cr-st.teal b{color:var(--signal)}
+.cr-panels{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:28px}
+@media(max-width:860px){.cr-panels{grid-template-columns:1fr}}
+.cr-panel{background:var(--bg-card);border-radius:20px;box-shadow:var(--shadow-sm);overflow:hidden}
+.cr-phd{display:flex;align-items:center;gap:11px;padding:18px 22px;border-bottom:1px solid var(--hairline)}
+.cr-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.cr-panel-old .cr-dot{background:var(--bad)}
+.cr-panel-free .cr-dot{background:var(--good)}
+.cr-pttl{font-weight:600;font-size:14.5px;color:var(--ink);flex:1}
+.cr-psub{display:block;font-weight:400;font-size:11.5px;color:var(--ink-mute);margin-top:1px}
+.cr-pill{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;padding:4px 11px;border-radius:999px;background:var(--bg-muted);color:var(--ink-3)}
+.acc-farm{width:100%;display:flex;align-items:center;gap:11px;padding:13px 22px;background:none;border:0;border-top:1px solid var(--hairline);cursor:pointer;font:500 13px var(--f);color:var(--ink);text-align:left}
+.acc-farm:hover{background:var(--bg-hover)}
+.acc-farm .arr{width:9px;color:var(--ink-mute);transition:transform .2s;flex:none}
+.acc-farm.open .arr{transform:rotate(90deg)}
+.acc-farm .nm{flex:1;font-weight:600}
+.acc-farm .mi{font-size:11.5px;color:var(--ink-mute);font-variant-numeric:tabular-nums}
+.acc-body{background:var(--surface)}
+.srow{display:flex;align-items:center;gap:12px;padding:9px 22px 9px 42px;flex-wrap:wrap}
+.srow+.srow{border-top:1px solid var(--hairline)}
+.sid{font-family:var(--mono);font-weight:500;font-size:11.5px;color:var(--ink);min-width:86px}
+.age{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px;font-variant-numeric:tabular-nums}
+.age.hi{background:#f8ddda;color:var(--bad)}
+.age.mid{background:#fbeccd;color:var(--warn)}
+.srow .rm{font-size:11.5px;color:var(--ink-4);font-variant-numeric:tabular-nums}
+.chips{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.chip{font-family:var(--mono);font-size:10px;padding:2px 8px;border:1px solid var(--border-2);border-radius:7px;color:var(--ink-4);background:var(--bg-card)}
+.acc-empty{padding:22px;text-align:center;color:var(--ink-mute);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="aph">
+  <div class="uqtop">
+    <div class="uqbrand">
+      <div class="uqmark">UQ</div>
+      <div class="uqp">Upande Quality<small>Shelving</small></div>
+    </div>
+    <div class="uqnav">
+      <a href="app/upande-quality">Home</a><span class="uqsep"></span>
+      <a href="intake-ftr-overview">Intake FTR</a>
+      <a href="packhouse-overview">Packhouse</a>
+      <a href="rejects">Rejects</a>
+      <a href="solution-mixing-overview">Solution Mixing</a>
+      <a href="coldroom-overview">Coldroom</a>
+      <span class="uqsep"></span>
+      <a href="quality-trends">Trends</a>
+      <a href="quality-raw-data">Raw Data</a>
+      <a href="transit-time">Transit Time</a>
+      <a href="shelving-report" class="on">Shelving</a>
+    </div>
+  </div>
+
+  <div class="aph-main">
+    <div class="aph-topbar">
+      <h1>Shelving Report</h1>
+      <span class="crumb">Analytics</span>
+      <div class="right">
+        <div class="filter-group"><span class="filter-label">Farm</span><div id="msFarm"></div></div>
+        <div class="filter-group">
+          <span class="filter-label">Status</span>
+          <select class="form-control" id="fStatus" style="min-width:150px">
+            <option value="">All Status</option>
+            <option value="green">&#x1F7E2; Fresh (&le;3 days)</option>
+            <option value="orange">&#x1F7E0; Ageing (4 days)</option>
+            <option value="red">&#x1F534; Old (&ge;5 days)</option>
+          </select>
+        </div>
+        <div class="filter-group"><span class="filter-label">Variety</span><div id="msVariety"></div></div>
+        <div class="filter-group">
+          <div class="date-pill">
+            <input type="date" id="fFrom">
+            <span class="sep">&#x2192;</span>
+            <input type="date" id="fTo">
+            <span class="clr" id="clrDates">&#x00d7;</span>
+          </div>
+        </div>
+        <input type="text" class="search-box" id="fSearch" placeholder="Search variety, shelf&#x2026;">
+        <span class="rec-count" id="recCount">&#x2014; records</span>
+        <button class="refresh-btn" id="btnRefresh"><span class="rdot"></span>Refresh</button>
+      </div>
+    </div>
+
+    <div class="cr-tabs">
+      <button type="button" class="cr-tab on" id="tabDetail">Shelf Detail</button>
+      <button type="button" class="cr-tab" id="tabCold">Cold Room</button>
+    </div>
+    <div class="aph-content" id="aphContent">
+      <div class="aph-loading"><div class="spin"></div>Loading shelving data&#x2026;</div>
+    </div>
+    <div class="aph-content" id="crContent" style="display:none">
+      <div class="aph-loading"><div class="spin"></div>Loading cold-room data&#x2026;</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+var allData = [];
+var crData=null, crLoading=false, activeTab='detail', crFarmSig=null;
+var harvestedToday = 0;
+var harvestedCurrent = 0;
+var _hv;
+var filtered = [];
+var sortCol = 'date_added';
+var sortDir = -1;
+var PAGE = 20;
+var visibleCount = 20;
+var _sorted = [];
+var msInst = {};
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ var t=String(s==null?'':s);
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function num(n){ return n==null?'&#x2014;':Number(n).toLocaleString(); }
+function todayStr(){ var d=new Date(), m=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2); return d.getFullYear()+'-'+m+'-'+dd; }
+function harvestScope(){ var f=(el('fFrom')||{}).value||'', t2=(el('fTo')||{}).value||'', t=todayStr(); return {from:f||t, to:t2||t, custom:!!(f||t2)}; }
+function harvestSub(){ var sc=harvestScope(); if(!sc.custom) return 'Stems harvested today'; return sc.from===sc.to ? ('Harvested '+sc.from) : ('Harvested '+sc.from+' \u2192 '+sc.to); }
+function refreshHarvested(){
+  clearTimeout(_hv);
+  _hv=setTimeout(function(){
+    var inst=msInst['msFarm']; var sel=inst?inst.sel:[]; var narrowed=!!(inst&&sel.length>0&&sel.length<inst.opts.length);
+    var sc=harvestScope(); var a={date_from:sc.from, date_to:sc.to};
+    if(narrowed) a.farm=sel.join(',');
+    frappe.call({ method:'get_shelving_harvested', args:a,
+      callback:function(r){ harvestedCurrent=(r&&r.message&&r.message.harvested)||0; draw(); },
+      error:function(){} });
+  },250);
+}
+
+function sInfo(emoji){
+  var cp = emoji ? emoji.codePointAt(0) : 0;
+  if(cp===0x1F7E2) return {cls:'sg', lbl:'Fresh'};
+  if(cp===0x1F7E0) return {cls:'so', lbl:'Ageing'};
+  if(cp===0x1F534) return {cls:'sr', lbl:'Old'};
+  return {cls:'su', lbl:'Unknown'};
+}
+
+/* ── multiselect ─────────────────────────────────────────────────────── */
+function msCreate(cid, ph){
+  var wrap = el(cid); if(!wrap) return;
+  var inst = {opts:[], sel:[], open:false};
+  msInst[cid] = inst;
+  wrap.innerHTML =
+    '<div class="ms" id="ms'+cid+'">'+
+      '<div class="ms-trigger" id="mst'+cid+'">'+
+        '<span class="ms-val ph" id="msv'+cid+'">'+esc(ph)+'</span>'+
+        '<span class="ms-arr">&#x25be;</span>'+
+      '</div>'+
+      '<div class="ms-panel">'+
+        '<div class="ms-search"><input type="text" placeholder="Search&hellip;" id="mss'+cid+'"></div>'+
+        '<div class="ms-list" id="msl'+cid+'"></div>'+
+        '<div class="ms-foot">'+
+          '<button type="button" onclick="msAll(\''+cid+'\')">All</button>'+
+          '<button type="button" onclick="msNone(\''+cid+'\')">Clear</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  el('mst'+cid).addEventListener('click', function(e){ e.stopPropagation(); msToggle(cid); });
+  el('mss'+cid).addEventListener('input', function(){ msRender(cid); });
+}
+function msToggle(cid){
+  var inst=msInst[cid]; if(!inst) return;
+  inst.open=!inst.open; el('ms'+cid).classList.toggle('open',inst.open);
+  if(inst.open && el('mss'+cid)) el('mss'+cid).focus();
+}
+function msSetOpts(cid,opts){
+  var inst=msInst[cid]; if(!inst) return;
+  inst.opts=opts.slice(); inst.sel=opts.slice(); msRender(cid); msValTxt(cid);
+}
+function msRender(cid){
+  var inst=msInst[cid]; var lst=el('msl'+cid); if(!inst||!lst) return;
+  var q=(el('mss'+cid)||{}).value||'';
+  var visible=inst.opts.filter(function(o){return !q||o.toLowerCase().indexOf(q.toLowerCase())>=0;});
+  lst.innerHTML=visible.map(function(o){
+    var chk=inst.sel.indexOf(o)>=0;
+    return '<label class="ms-opt"><input type="checkbox"'+(chk?' checked':'')+' value="'+esc(o)+'" onchange="msCh(\''+cid+'\',this)"> '+esc(o)+'</label>';
+  }).join('');
+}
+function msCh(cid,cb){
+  var inst=msInst[cid]; if(!inst) return;
+  if(cb.checked){if(inst.sel.indexOf(cb.value)<0)inst.sel.push(cb.value);}
+  else{inst.sel=inst.sel.filter(function(x){return x!==cb.value;});}
+  msValTxt(cid); doFilter();
+}
+function msAll(cid){ var inst=msInst[cid]; if(!inst) return; inst.sel=inst.opts.slice(); msRender(cid); msValTxt(cid); doFilter(); }
+function msNone(cid){ var inst=msInst[cid]; if(!inst) return; inst.sel=[]; msRender(cid); msValTxt(cid); doFilter(); }
+function msValTxt(cid){
+  var inst=msInst[cid]; var v=el('msv'+cid); if(!inst||!v) return;
+  var ph=cid==='msVariety'?'All Varieties':'All Farms';
+  if(!inst.sel.length){v.textContent=ph;v.classList.add('ph');}
+  else if(inst.sel.length===1){v.textContent=inst.sel[0];v.classList.remove('ph');}
+  else{v.textContent=inst.sel.length+' selected';v.classList.remove('ph');}
+}
+function msGet(cid){ var inst=msInst[cid]; return inst?inst.sel.slice():[]; }
+window.msCh=msCh; window.msAll=msAll; window.msNone=msNone;
+document.addEventListener('click',function(){
+  Object.keys(msInst).forEach(function(cid){
+    var inst=msInst[cid]; var me=el('ms'+cid);
+    if(inst&&me){inst.open=false;me.classList.remove('open');}
+  });
+});
+
+/* ── data fetch ──────────────────────────────────────────────────────── */
+function loadData(){
+  el('aphContent').innerHTML='<div class="aph-loading"><div class="spin"></div>Loading shelving data&#x2026;</div>';
+  el('recCount').innerHTML='&#x2014; records';
+  frappe.call({
+    method: 'fetch_shelving_report',
+    args: {},
+    callback: function(r){
+      allData = (r&&r.message&&r.message.rows) ? r.message.rows : [];
+      harvestedToday = (r&&r.message&&r.message.harvested_today) ? r.message.harvested_today : 0;
+      harvestedCurrent = harvestedToday;
+      init();
+    },
+    error: function(){ allData=[]; harvestedToday=0; init(); }
+  });
+}
+
+function init(){
+  var farms={}, varieties={};
+  allData.forEach(function(r){
+    if(r.farm) farms[r.farm]=1;
+    if(r.variety) varieties[r.variety]=1;
+  });
+  msCreate('msVariety','All Varieties');
+  msSetOpts('msVariety', Object.keys(varieties).sort());
+  msCreate('msFarm','All Farms');
+  msSetOpts('msFarm', Object.keys(farms).sort());
+  doFilter();
+}
+
+function doFilter(){
+  var selFarms     = msGet('msFarm');
+  var selVarieties = msGet('msVariety');
+  var statusFilt = (el('fStatus')||{}).value||'';
+  var fromVal = (el('fFrom')||{}).value||'';
+  var toVal   = (el('fTo')||{}).value||'';
+  var q = ((el('fSearch')||{}).value||'').toLowerCase().trim();
+
+  filtered = allData.filter(function(r){
+    if(selFarms.length    && selFarms.indexOf(r.farm||'')<0)    return false;
+    if(selVarieties.length && selVarieties.indexOf(r.variety||'')<0) return false;
+    if(statusFilt){
+      var cp=r.status?r.status.codePointAt(0):0;
+      if(statusFilt==='green'  && cp!==0x1F7E2) return false;
+      if(statusFilt==='orange' && cp!==0x1F7E0) return false;
+      if(statusFilt==='red'    && cp!==0x1F534) return false;
+    }
+    if(fromVal && r.date_added && r.date_added<fromVal) return false;
+    if(toVal   && r.date_added && r.date_added>toVal)   return false;
+    if(q){
+      var h=[(r.variety||''),(r.shelf||''),(r.bucket_id||''),(r.farm||'')].join('|').toLowerCase();
+      if(h.indexOf(q)<0) return false;
+    }
+    return true;
+  });
+  visibleCount=20;
+  draw();
+  refreshHarvested();
+  if(activeTab==='cold' && !crLoading && crFarmSig!==crFarmArg()) loadColdRoom();
+}
+
+function draw(){
+  var content=el('aphContent'); if(!content) return;
+  el('recCount').textContent=Number(filtered.length).toLocaleString()+' records';
+
+  var totStems=0, farmSet={}, shelfSet={};
+  filtered.forEach(function(r){ totStems+=(r.qty||0); if(r.farm) farmSet[r.farm]=1; if(r.shelf) shelfSet[r.shelf]=1; });
+
+  _sorted=filtered.slice().sort(function(a,b){
+    var av=a[sortCol]||'', bv=b[sortCol]||'';
+    if(sortCol==='qty'){av=+(av||0);bv=+(bv||0);}
+    if(av<bv)return -sortDir; if(av>bv)return sortDir; return 0;
+  });
+  visibleCount=Math.min(visibleCount,Math.max(PAGE,visibleCount));
+  var pageRows=_sorted.slice(0, visibleCount);
+
+  content.innerHTML=
+    '<div class="aph-page-hd"><div class="ttl">Shelving Report</div>'+
+    '<div class="sub">Cold-store shelf inventory &mdash; stems, buckets, and freshness by farm and variety</div></div>'+
+    '<div class="aph-kpis">'+
+      kpi('Total Stems',Number(totStems).toLocaleString(),'Stems on shelf')+
+      kpi('Buckets',Number(filtered.length).toLocaleString(),'Bucket entries')+
+      kpi('Shelves Used',Object.keys(shelfSet).length,'Shelves holding stock')+
+      kpi('Farms',Object.keys(farmSet).length,'Contributing farms')+
+      kpi('Harvested',Number(harvestedCurrent).toLocaleString(),harvestSub())+
+    '</div>'+
+    '<div class="tbl-section">'+
+      '<div class="tbl-hd"><span class="ttl">Shelf Detail</span><span class="cnt">'+Number(filtered.length).toLocaleString()+' rows</span></div>'+
+      '<div class="tbl-wrap">'+buildTable(pageRows)+'</div>'+
+      '<div class="lm-wrap" id="aphLMWrap">'+buildLoadMore()+'</div>'+
+    '</div>';
+
+  content.querySelectorAll('th[data-c]').forEach(function(th){
+    th.addEventListener('click',function(){
+      if(sortCol===th.dataset.c) sortDir*=-1; else{sortCol=th.dataset.c;sortDir=1;}
+      draw();
+    });
+  });
+}
+
+/* Load-more via a single top-level delegated listener */
+document.addEventListener('click', function(e){
+  if(e.target && e.target.id==='aphLMBtn'){
+    var start=visibleCount;
+    visibleCount=Math.min(visibleCount+PAGE,_sorted.length);
+    var newRows=_sorted.slice(start,visibleCount);
+    var tbody=document.getElementById('aphTblBody');
+    if(tbody){
+      var frag=document.createDocumentFragment();
+      newRows.forEach(function(r){
+        var tr=document.createElement('tr');
+        tr.innerHTML=buildRow(r);
+        frag.appendChild(tr);
+      });
+      tbody.appendChild(frag);
+    }
+    var wrap=document.getElementById('aphLMWrap');
+    if(wrap) wrap.innerHTML=buildLoadMore();
+  }
+});
+
+function kpi(lbl,val,sub){
+  return '<div class="aph-kpi"><div class="lbl">'+esc(lbl)+'</div><div class="val">'+val+'</div><div class="sub">'+esc(sub)+'</div></div>';
+}
+
+function buildRow(r){
+  var si=sInfo(r.status||'');
+  var wh=esc((r.warehouse||'').replace(' - KR',''));
+  var gh=esc((r.origin_greenhouse||'').replace(' - KR',''));
+  return '<td class="bold">'+esc(r.variety||'&#x2014;')+'</td>'+
+    '<td>'+esc(r.farm||'&#x2014;')+'</td>'+
+    '<td><span class="sbadge '+si.cls+'"><span class="d"></span>'+si.lbl+'</span></td>'+
+    '<td>'+esc(r.date_added||'&#x2014;')+'</td>'+
+    '<td style="font-family:var(--mono);font-size:11px">'+esc(r.shelf||'&#x2014;')+'</td>'+
+    '<td style="max-width:170px;overflow:hidden;text-overflow:ellipsis" title="'+wh+'">'+wh+'</td>'+
+    '<td style="max-width:155px;overflow:hidden;text-overflow:ellipsis" title="'+gh+'">'+gh+'</td>'+
+    '<td>'+esc(r.stem_length||'&#x2014;')+'</td>'+
+    '<td class="num">'+num(r.qty)+'</td>'+
+    '<td style="font-family:var(--mono);font-size:11px;color:var(--ink-mute)">'+esc(r.bucket_id||'&#x2014;')+'</td>';
+}
+function buildTable(rows){
+  var cols=[
+    {k:'variety',           l:'Variety'},
+    {k:'farm',              l:'Farm'},
+    {k:'status',            l:'Status'},
+    {k:'date_added',        l:'Harvest Date'},
+    {k:'shelf',             l:'Shelf'},
+    {k:'warehouse',         l:'Warehouse'},
+    {k:'origin_greenhouse', l:'Origin GH'},
+    {k:'stem_length',       l:'Length'},
+    {k:'qty',               l:'Qty'},
+    {k:'bucket_id',         l:'Bucket ID'}
+  ];
+  var arr0='&#x25b4;', arrD='&#x25be;';
+  var hdr='<thead><tr>'+cols.map(function(c){
+    var isSorted=c.k===sortCol;
+    var a=isSorted?(sortDir===1?arr0:arrD):arr0;
+    return '<th data-c="'+c.k+'"'+(isSorted?' class="sorted"':'')+'>'+c.l+' <span style="opacity:'+(isSorted?'1':'.3')+'">'+a+'</span></th>';
+  }).join('')+'</tr></thead>';
+  var bdy='<tbody id="aphTblBody">'+rows.map(function(r){
+    return '<tr>'+buildRow(r)+'</tr>';
+  }).join('')+'</tbody>';
+  return '<table id="aphTbl">'+hdr+bdy+'</table>';
+}
+
+function buildLoadMore(){
+  var rem=_sorted.length-visibleCount;
+  var info='Showing '+Number(Math.min(visibleCount,_sorted.length)).toLocaleString()+' of '+Number(_sorted.length).toLocaleString()+' rows';
+  if(rem<=0) return '<div class="lm-info">'+info+'</div>';
+  return '<div class="lm-info">'+info+'</div>'+
+    '<button class="lm-btn" id="aphLMBtn">Load 20 more <span class="lm-rem">('+Number(rem).toLocaleString()+' remaining)</span></button>';
+}
+
+el('fStatus').addEventListener('change', doFilter);
+el('fFrom').addEventListener('change', doFilter);
+el('fTo').addEventListener('change', doFilter);
+el('clrDates').addEventListener('click',function(){ el('fFrom').value=''; el('fTo').value=''; doFilter(); });
+el('btnRefresh').addEventListener('click', function(){ if(activeTab==='cold'){ crData=null; loadColdRoom(); } else { loadData(); } });
+var _st;
+el('fSearch').addEventListener('input',function(){ clearTimeout(_st); _st=setTimeout(doFilter,250); });
+
+function switchTab(t){
+  activeTab=t; var d=(t==='detail');
+  el('tabDetail').classList.toggle('on',d); el('tabCold').classList.toggle('on',!d);
+  el('aphContent').style.display=d?'':'none'; el('crContent').style.display=d?'none':'';
+  if(!d && !crLoading && (crData===null || crFarmSig!==crFarmArg())) loadColdRoom();
+}
+function crFarmArg(){ var inst=msInst['msFarm']; var sel=inst?inst.sel:[]; var narrowed=!!(inst&&sel.length>0&&sel.length<inst.opts.length); return narrowed?sel.join(','):''; }
+function loadColdRoom(){
+  crLoading=true; var fa=crFarmArg(); crFarmSig=fa;
+  el('crContent').innerHTML='<div class="aph-loading"><div class="spin"></div>Loading cold-room data&hellip;</div>';
+  frappe.call({ method:'get_coldroom_occupancy', args: fa?{farm:fa}:{},
+    callback:function(r){ crLoading=false; crData=(r&&r.message)||null; renderColdRoom(); },
+    error:function(){ crLoading=false; el('crContent').innerHTML='<div class="aph-loading">Could not load cold-room data.</div>'; } });
+}
+function crBar(pct){
+  var p=Math.max(0,Math.min(100,Number(pct)||0));
+  var col=p>=90?'#c4302b':(p>=70?'#a16207':'#228883');
+  return '<span class="cr-barwrap"><span class="bar" style="width:'+p+'%;background:'+col+'"></span></span>';
+}
+function crChips(ids){
+  if(!ids) return '';
+  return String(ids).split(/,\s*/).filter(Boolean).map(function(b){ return '<span class="chip">'+esc(b)+'</span>'; }).join('');
+}
+function crGroup(list, kind){
+  var g={};
+  (list||[]).forEach(function(r){ var f=r.farm||'Unassigned'; if(!g[f]) g[f]={farm:f,rows:[],maxage:0}; g[f].rows.push(r); if((r.age||0)>g[f].maxage) g[f].maxage=(r.age||0); });
+  var arr=Object.keys(g).map(function(k){ return g[k]; });
+  arr.sort(function(a,b){ return kind==='old' ? (b.maxage-a.maxage) : (b.rows.length-a.rows.length); });
+  return arr;
+}
+function crAccordion(kind, title, sub, list, total){
+  var groups=crGroup(list, kind);
+  var cls=kind==='old'?'cr-panel-old':'cr-panel-free';
+  var s='<div class="cr-panel '+cls+'"><div class="cr-phd"><span class="cr-dot"></span><span class="cr-pttl">'+title+'<span class="cr-psub">'+sub+'</span></span><span class="cr-pill">'+total+' shelves</span></div>';
+  if(!groups.length){ return s+'<div class="acc-empty">'+(kind==='old'?('No shelves &ge; '+(crData.old_days||5)+' days'):'No fully-allocated shelves')+'</div></div>'; }
+  groups.forEach(function(gp, idx){
+    var open=(idx===0);
+    var n=gp.rows.length;
+    var meta=kind==='old' ? (n+' shelves &middot; up to '+gp.maxage+'d') : (n+(n===1?' shelf':' shelves'));
+    s+='<button type="button" class="acc-farm'+(open?' open':'')+'"><span class="arr">&#9656;</span><span class="nm">'+esc(gp.farm)+'</span><span class="mi">'+meta+'</span></button>';
+    s+='<div class="acc-body" style="display:'+(open?'block':'none')+'">';
+    gp.rows.forEach(function(r){
+      if(kind==='old'){
+        var acls=(r.age>=7)?'hi':'mid';
+        s+='<div class="srow"><span class="sid">'+esc(r.shelf)+'</span><span class="age '+acls+'">'+r.age+'d</span><span class="rm">'+num(r.buckets)+' bkt &middot; '+num(r.stems)+' stems</span><span class="chips">'+crChips(r.bucket_ids)+'</span></div>';
+      } else {
+        s+='<div class="srow"><span class="sid">'+esc(r.shelf)+'</span><span class="rm">'+num(r.buckets)+' bkt &middot; '+num(r.allocated_qty)+' allocated</span><span class="chips">'+crChips(r.bucket_ids)+'</span></div>';
+      }
+    });
+    s+='</div>';
+  });
+  return s+'</div>';
+}
+function renderColdRoom(){
+  var c=el('crContent'); if(!c) return;
+  if(!crData){ c.innerHTML='<div class="aph-loading">No data.</div>'; return; }
+  var o=crData.overall||{};
+  var h2='<div class="aph-page-hd"><div class="ttl">Cold Room Occupancy</div>'
+    +'<div class="sub">Shelf capacity '+(crData.capacity_per_shelf||2)+' buckets each &mdash; live occupancy, allocation and ageing across every farm.</div></div>'
+    +'<div class="aph-kpis">'
+      +kpi('Occupancy',Number(o.occupancy_pct||0).toLocaleString()+'%',Number(o.buckets||0).toLocaleString()+' / '+Number(o.capacity||0).toLocaleString()+' bucket slots')
+      +kpi('Occupied shelves',Number(o.occupied||0).toLocaleString(),'of '+Number(o.shelves||0).toLocaleString()+' shelves')
+      +kpi('Free shelves',Number(o.free||0).toLocaleString(),'ready for fresh stock')
+      +kpi('Freeing soon',Number(o.freeing||0).toLocaleString(),'fully allocated')
+      +kpi('Old stock',Number(o.old||0).toLocaleString(),'shelves &ge; '+(crData.old_days||5)+' days')
+    +'</div>';
+  h2+='<div class="cr-sec-hd"><h2>Occupancy by farm</h2><span class="note">bucket slots filled &middot; sorted by fullest</span></div><div class="cr-farms">';
+  (crData.by_farm||[]).forEach(function(f){
+    var occ=Number(f.occupancy_pct)||0;
+    var empty=(Number(f.occupied)||0)===0;
+    var col=occ>=90?'var(--bad)':(occ>=70?'var(--warn)':'var(--signal)');
+    h2+='<div class="cr-farm'+(empty?' empty':'')+'">'
+      +'<div class="cr-ftop"><div class="cr-fname">'+esc(f.farm)+'<small>'+num(f.shelves)+' shelves</small></div><div class="cr-fpct">'+Math.round(occ)+'%</div></div>'
+      +'<div class="cr-track"><div class="cr-fill" style="width:'+occ+'%;background:'+(empty?'transparent':col)+'"></div></div>'
+      +'<div class="cr-fstats">'
+        +'<div class="cr-st"><b>'+num(f.occupied)+'</b><span>occ</span></div>'
+        +'<div class="cr-st"><b>'+num(f.free)+'</b><span>free</span></div>'
+        +'<div class="cr-st warn"><b>'+num(f.old)+'</b><span>old</span></div>'
+        +'<div class="cr-st teal"><b>'+num(f.freeing)+'</b><span>free&#8594;</span></div>'
+      +'</div></div>';
+  });
+  h2+='</div>';
+  h2+='<div class="cr-panels">'
+    +crAccordion('old','&#x26A0; Clear first &mdash; old stock','shelves holding stock 5+ days, oldest first',crData.old_stock||[],o.old||0)
+    +crAccordion('free','&#x2705; Freeing soon &mdash; allocated','fully allocated, will clear for fresh stock',crData.freeing_soon||[],o.freeing||0)
+    +'</div>';
+  c.innerHTML=h2;
+}
+el('tabDetail').addEventListener('click',function(){ switchTab('detail'); });
+el('tabCold').addEventListener('click',function(){ switchTab('cold'); });
+el('crContent').addEventListener('click',function(e){ var hdr=e.target.closest?e.target.closest('.acc-farm'):null; if(!hdr) return; var body=hdr.nextElementSibling; var open=hdr.classList.toggle('open'); if(body) body.style.display=open?'block':'none'; });
+
+frappe.ready(function(){
+  var u=frappe.session&&frappe.session.user;
+  if(!u||u==='Guest'){window.location.href='/login?redirect-to='+encodeURIComponent(window.location.pathname);return;}
+  loadData();
+});
+
+})();
+</script>
+</body>
+</html>
