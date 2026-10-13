@@ -7,6 +7,7 @@
 # frappe.response exactly as the live scripts used them.
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -2397,8 +2398,8 @@ def deleteSavedTrolleys():
 	# Undo a SAVED trolley grouping WITHOUT re-shelving its buckets.
 	# Clears trolley_id / loaded_in_trolley / awaiting_transfer
 	# on the trolley's Pick List Item rows, leaving shelf untouched.
-	# Only acts on not-yet-loaded rows (in_transit != 1); loaded ones are
-	# skipped and reported back.
+	# Only acts on rows not yet on a truck (not in_transit, no transfer truck);
+	# loaded ones are skipped and reported back.
 	#
 	# Matching is Pick List Item-FIRST (by trolley_id), because saved
 	# trolleys live on OPLs of EITHER docstatus (draft AND submitted) — an earlier
@@ -2430,7 +2431,13 @@ def deleteSavedTrolleys():
 			rows = frappe.get_all(
 				"Pick List Item",
 				filters=[["trolley_id", "in", trolley_ids]],
-				fields=["name", "parent", "trolley_id", "in_transit"],
+				fields=["name", "parent", "trolley_id", "in_transit", "transit_truck"],
+			)
+			# Rows already loaded on a transfer truck stay with it (and its trip): a reused
+			# trolley id still carries them. transit_truck alone is no proof: allocation
+			# pre-fills it with the order's delivery label ("SIM Truck").
+			transfer_trucks = set(
+				frappe.get_all("Vehicle", filters={"custom_dispatch_truck": ["!=", 1]}, pluck="name")
 			)
 
 			# Resolve parent OPL farms once (small set) for the cross-farm safety check.
@@ -2461,7 +2468,7 @@ def deleteSavedTrolleys():
 				row_farm = farm_by_parent.get(r.parent, "")
 				if farm != "" and row_farm != farm:
 					skipped_farm[r.trolley_id] = 1
-				elif r.in_transit == 1:
+				elif r.in_transit == 1 or (r.transit_truck and r.transit_truck in transfer_trucks):
 					skipped[r.trolley_id] = 1
 				else:
 					if not dry_run:
@@ -2625,6 +2632,8 @@ def fetchAllocatedBuckets():
 				# 'ASAP': a quality-issue replacement the packhouse is waiting on
 				# (upande_packhouse.api.packing_quality) -- the app lists it first.
 				"transfer_priority",
+				# On a trolley already (any phone): the app counts it as added, not requested.
+				"loaded_in_trolley",
 			],
 		)
 		pick_list_items = [it for it in pick_list_items if _row_farm(it) == farm_name]
@@ -2775,6 +2784,8 @@ def fetchAllocatedBuckets():
 						)
 						if item.get("transfer_priority") == "ASAP":
 							seen_bucket[dedupe_key]["priority"] = "ASAP"
+						if frappe.utils.cint(item.get("loaded_in_trolley")):
+							seen_bucket[dedupe_key]["loaded_in_trolley"] = 1
 						continue
 					harvest_info = bucket_harvest_map.get(bucket_id, {})
 					opl_info = opl_map.get(item["parent"], {})
@@ -2811,6 +2822,7 @@ def fetchAllocatedBuckets():
 						)
 						or "",
 						"priority": item.get("transfer_priority") or None,
+						"loaded_in_trolley": frappe.utils.cint(item.get("loaded_in_trolley")),
 					}
 					seen_bucket[dedupe_key] = row_out
 					result.append(row_out)
@@ -4189,8 +4201,11 @@ def getFarmPlannedTrips():
 				):
 					opl_delivery[d.opl] = str(d.dd or "")
 			# ── Live loading state per (OPL, farm-short) from Pick List Item flags ──
-			# awaiting (on a shelf, not yet on a trolley) -> loaded (on a trolley) ->
-			# in_transit (picked up by the truck) -> shelved (arrived at packhouse).
+			# awaiting (on a shelf, not yet on a trolley) -> trolley (on a trolley, still at
+			# the farm) -> loaded (on a transfer truck) -> in_transit (the trip is
+			# dispatched) -> shelved (arrived at packhouse). The app closes the stop once
+			# loaded + transit + shelved covers it, so a bucket only in a trolley must not
+			# count as loaded.
 			opls = []
 			seen_opl = {}
 			i = 0
@@ -4201,8 +4216,14 @@ def getFarmPlannedTrips():
 					opls.append(op)
 				i = i + 1
 
-			portion_state = {}  # "opl||farmShort" -> {awaiting, loaded, transit, shelved, total}
+			portion_state = {}  # "opl||farmShort" -> {awaiting, trolley, loaded, transit, shelved, total}
 			if opls:
+				# transit_truck names a transfer truck only when it is an internal Vehicle:
+				# allocation pre-fills it with the order's delivery label ("SIM Truck").
+				transfer_trucks = set(
+					frappe.get_all("Vehicle", filters={"custom_dispatch_truck": ["!=", 1]}, pluck="name")
+				)
+				has_on_truck = frappe.db.has_column("Pick List Item", "loaded_on_truck")
 				pli = frappe.get_all(
 					"Pick List Item",
 					filters={"parent": ["in", opls], "parenttype": "Order Pick List", "bucket": ["!=", ""]},
@@ -4216,7 +4237,9 @@ def getFarmPlannedTrips():
 						"in_transit",
 						"shelved",
 						"not_found",
-					],
+						"transit_truck",
+					]
+					+ (["loaded_on_truck"] if has_on_truck else []),
 					limit_page_length=0,
 				)
 				pli = [it for it in pli if not int(it.get("not_found") or 0)]
@@ -4238,6 +4261,7 @@ def getFarmPlannedTrips():
 					if key not in portion_state:
 						portion_state[key] = {
 							"awaiting": 0,
+							"trolley": 0,
 							"loaded": 0,
 							"transit": 0,
 							"shelved": 0,
@@ -4245,12 +4269,17 @@ def getFarmPlannedTrips():
 						}
 					st = portion_state[key]
 					st["total"] = st["total"] + 1
+					on_truck = it.get("transit_truck") in transfer_trucks and (
+						int(it.get("loaded_in_trolley") or 0) or int(it.get("loaded_on_truck") or 0)
+					)
 					if int(it.get("shelved") or 0):
 						st["shelved"] = st["shelved"] + 1
 					elif int(it.get("in_transit") or 0):
 						st["transit"] = st["transit"] + 1
-					elif int(it.get("loaded_in_trolley") or 0):
+					elif on_truck:
 						st["loaded"] = st["loaded"] + 1
+					elif int(it.get("loaded_in_trolley") or 0):
+						st["trolley"] = st["trolley"] + 1
 					else:
 						st["awaiting"] = st["awaiting"] + 1
 					p = p + 1
@@ -4291,6 +4320,7 @@ def getFarmPlannedTrips():
 						farm_map[f] = {
 							"planned": 0,
 							"awaiting": 0,
+							"trolley": 0,
 							"loaded": 0,
 							"transit": 0,
 							"shelved": 0,
@@ -4315,6 +4345,7 @@ def getFarmPlannedTrips():
 					ps = portion_state.get(key)
 					if ps:
 						fm["awaiting"] = fm["awaiting"] + ps["awaiting"]
+						fm["trolley"] = fm["trolley"] + ps["trolley"]
 						fm["loaded"] = fm["loaded"] + ps["loaded"]
 						fm["transit"] = fm["transit"] + ps["transit"]
 						fm["shelved"] = fm["shelved"] + ps["shelved"]
@@ -4328,6 +4359,7 @@ def getFarmPlannedTrips():
 						and ps["total"]
 						and (
 							r.get("order_pick_list") in on_schedule
+							or ps["trolley"]
 							or ps["loaded"]
 							or ps["transit"]
 							or ps["shelved"]
@@ -4346,6 +4378,8 @@ def getFarmPlannedTrips():
 								# This order's own progress at the farm, so the app can show the
 								# stop for the delivery date on screen (a stop holds several dates).
 								"total": int((ps or {}).get("total") or 0),
+								# loaded = on a transfer truck; trolley = only on a trolley at the farm.
+								"trolley": int((ps or {}).get("trolley") or 0),
 								"loaded": int((ps or {}).get("loaded") or 0),
 								"transit": int((ps or {}).get("transit") or 0),
 								"shelved": int((ps or {}).get("shelved") or 0),
@@ -4384,9 +4418,11 @@ def getFarmPlannedTrips():
 					fm = farm_map[f]
 					total = fm["total"]
 					awaiting = fm["awaiting"]
+					trolley = fm["trolley"]
 					loaded = fm["loaded"]
 					transit = fm["transit"]
 					shelved = fm["shelved"]
+					# On the truck (or past it): a bucket only in a trolley is still at the farm.
 					done_ish = loaded + transit + shelved
 
 					status = "waiting"
@@ -4394,9 +4430,9 @@ def getFarmPlannedTrips():
 						status = "done"
 					elif total > 0 and (transit + shelved) == total:
 						status = "transit"
-					elif awaiting == 0 and done_ish > 0 and total > 0:
+					elif awaiting == 0 and trolley == 0 and done_ish > 0 and total > 0:
 						status = "ready"
-					elif done_ish > 0:
+					elif done_ish > 0 or trolley > 0:
 						status = "loading"
 					else:
 						status = "waiting"
@@ -4424,6 +4460,7 @@ def getFarmPlannedTrips():
 							"planned": fm["planned"],
 							"total": total,
 							"awaiting": awaiting,
+							"trolley": trolley,
 							"loaded": loaded,
 							"transit": transit,
 							"shelved": shelved,
@@ -6855,17 +6892,67 @@ def loadTrolleyInTruck():
 		if not transit_truck:
 			frappe.throw("transit_truck is required")
 
-		rows = frappe.get_all(
-			"Pick List Item",
-			filters={"trolley_id": trolley_id, "loaded_in_trolley": 1, "in_transit": 0},
-			fields=["name", "parent", "bucket"],
-			order_by="parent asc",
+		from upande_packhouse.api.transfer_control import TRANSFER_TRUCK_OK
+
+		# On a transfer truck: loaded on it or on the road. transit_truck alone is no
+		# proof: allocation pre-fills it with the order's delivery label ("SIM Truck").
+		on_truck_flags = "pli.loaded_in_trolley = 1 OR pli.in_transit = 1"
+		if frappe.db.has_column("Pick List Item", "loaded_on_truck"):
+			on_truck_flags += " OR IFNULL(pli.loaded_on_truck, 0) = 1"
+		on_truck = "((" + on_truck_flags + ") AND " + TRANSFER_TRUCK_OK + ")"
+		# Only this load's buckets: a reused trolley id still carries its earlier loads,
+		# and those are on a truck (and its trip) already. A bucket rides one truck only,
+		# so they stay there and are never stamped onto this one.
+		trolley_rows = frappe.db.sql(
+			"""SELECT pli.name, pli.parent, pli.bucket, pli.transit_truck,
+			  (IFNULL(pli.in_transit, 0) = 1 OR """
+			+ on_truck
+			+ """) AS on_truck
+			FROM `tabPick List Item` pli
+			WHERE pli.parenttype = 'Order Pick List' AND pli.trolley_id = %(t)s
+			  AND pli.loaded_in_trolley = 1 AND IFNULL(pli.not_found, 0) = 0
+			ORDER BY pli.parent ASC""",
+			{"t": trolley_id},
+			as_dict=True,
+		)
+		rows = [r for r in trolley_rows if not r.on_truck]
+		# A bucket of this load already on another truck (under another order) stays there.
+		on_other = {}
+		if rows:
+			for b in frappe.db.sql(
+				"""SELECT pli.bucket, pli.transit_truck FROM `tabPick List Item` pli
+				JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus < 2
+				WHERE pli.parenttype = 'Order Pick List' AND pli.bucket IN %(b)s
+				  AND IFNULL(pli.not_found, 0) = 0 AND IFNULL(pli.shelved, 0) = 0 AND """
+				+ on_truck
+				+ """ AND UPPER(TRIM(pli.transit_truck)) != UPPER(TRIM(%(truck)s))""",
+				{"b": tuple({r.bucket for r in rows if r.bucket}) or ("",), "truck": transit_truck},
+				as_dict=True,
+			):
+				on_other[(b.bucket or "").upper()] = b.transit_truck
+			rows = [r for r in rows if (r.bucket or "").upper() not in on_other]
+		refused = "".join(" {0} is already on {1}.".format(b, t) for b, t in sorted(on_other.items()))
+		# Nothing new and the trolley's buckets already on this truck: a repeated Load (the
+		# reply was lost) is not an error.
+		already = not rows and any(
+			r.on_truck and (r.transit_truck or "").strip().upper() == str(transit_truck).strip().upper()
+			for r in trolley_rows
 		)
 
-		if not rows:
+		if already:
+			frappe.response["message"] = {
+				"status": "success",
+				"message": "Trolley "
+				+ str(trolley_id)
+				+ " is already loaded to "
+				+ str(transit_truck)
+				+ "."
+				+ refused,
+			}
+		elif not rows:
 			frappe.response["message"] = {
 				"status": "error",
-				"message": "No buckets found for trolley " + str(trolley_id),
+				"message": ("No buckets found for trolley " + str(trolley_id) + "." + refused).strip(),
 			}
 		else:
 			opl_map = {}
@@ -6934,7 +7021,8 @@ def loadTrolleyInTruck():
 				+ str(transit_truck)
 				+ ". "
 				+ str(shelf_removed_count)
-				+ " shelf row(s) removed.",
+				+ " shelf row(s) removed."
+				+ refused,
 			}
 
 	except Exception as e:
@@ -9418,6 +9506,11 @@ def setOfflineTrolleyFlags():
 		# the bucket can't also be issued offline) -- the bucket is still at the farm,
 		# so its shelf row stays until Load to truck. A mis-scan then costs nothing.
 		keep_shelf = bool(frappe.utils.cint(data.get("keep_shelf")))
+		from upande_packhouse.api.transfer_control import TRANSFER_TRUCK_OK
+
+		on_truck_flags = "pli.loaded_in_trolley = 1 OR pli.in_transit = 1"
+		if frappe.db.has_column("Pick List Item", "loaded_on_truck"):
+			on_truck_flags += " OR IFNULL(pli.loaded_on_truck, 0) = 1"
 
 		field = None
 		if flag == "loaded":
@@ -9462,8 +9555,16 @@ def setOfflineTrolleyFlags():
 						# else the second order's rows stay open and it gets loaded twice).
 						# Same farm only, and never shelved / issued / not-found rows.
 						farm = frappe.db.get_value("Pick List Item", name, "farm")
+						# on_truck: the row is on a transfer truck (an internal Vehicle, loaded or
+						# moving). Allocation pre-fills transit_truck with the order's delivery
+						# label ("SIM Truck"), which is no truck at all.
 						sibs = frappe.db.sql(
-							"""SELECT pli.name, pli.parent, pli.in_transit, pli.transit_truck, pli.shelved, pli.issued
+							"""SELECT pli.name, pli.parent, pli.in_transit, pli.transit_truck, pli.shelved, pli.issued,
+							  (("""
+							+ on_truck_flags
+							+ """) AND """
+							+ TRANSFER_TRUCK_OK
+							+ """) AS on_truck
 							FROM `tabPick List Item` pli
 							JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus < 2
 							WHERE pli.parenttype = 'Order Pick List' AND pli.bucket = %(b)s
@@ -9475,16 +9576,16 @@ def setOfflineTrolleyFlags():
 						)
 					if not sibs:
 						sibs = [frappe._dict(name=name, parent=parent)]
-					# Already on the road on another truck, or shelved / issued: it can't be
-					# loaded (or moved to another truck) again from here.
+					# Already on another transfer truck (loaded or on the road), or shelved /
+					# issued: it can't be loaded (or moved to another truck) again from here. A
+					# bucket rides one truck only; the same truck again is a harmless re-scan.
 					on_other = next(
 						(
 							r
 							for r in sibs
-							if r.get("in_transit")
-							and r.get("transit_truck")
+							if r.get("on_truck")
 							and truck
-							and r.get("transit_truck") != truck
+							and (r.get("transit_truck") or "").strip().upper() != truck.strip().upper()
 						),
 						None,
 					)
@@ -11973,13 +12074,13 @@ def saveVaselifeSample():
 	def to_float(v):
 		try:
 			return float(v) if v not in (None, "") else None
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			return None
 
 	def to_int(v):
 		try:
 			return int(v) if v not in (None, "") else None
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			return None
 
 	try:
@@ -12071,7 +12172,7 @@ def saveVaselifeObservation():
 			stems_failed = data.get("stems_failed")
 			try:
 				stems_failed = int(stems_failed) if stems_failed not in (None, "") else 0
-			except (ValueError, TypeError):
+			except ValueError, TypeError:
 				stems_failed = 0
 
 			reasons_raw = data.get("failure_reasons") or []
@@ -12100,7 +12201,7 @@ def saveVaselifeObservation():
 					continue
 				try:
 					st = int(st)
-				except (ValueError, TypeError):
+				except ValueError, TypeError:
 					st = 0
 				reason_rows.append({"reason": nm, "stems": st})
 
@@ -12928,16 +13029,37 @@ def transferBucket():
 		}
 
 
+# Offline removal reasons are free text typed on the farm app. Stems that are gone
+# for good are written off; a bucket put on a truck by hand is still moving (the
+# Remote Transfers leg moves its stems once it is shelved at the hub), so it never is.
+# A reason naming both (or neither) is not written off.
+OFFLINE_LOSS_REASON = re.compile(
+	r"\b(damag|discard|reject|quality|lost\b|loss|missing|broke|rott|botrytis|diseas|"
+	r"wilt|dump|destroy|spoil|wast|dispos|throw|thrown|dead|expired)",
+	re.IGNORECASE,
+)
+OFFLINE_MOVED_REASON = re.compile(
+	r"\b(truck|lorry|trolley|transfer|transport|dispatch|sent\b|send|load|kapkolia|hub\b|"
+	r"packhouse|moved|move\b|deliver)",
+	re.IGNORECASE,
+)
+
+
+def _offline_reason_writes_off(reason):
+	return bool(OFFLINE_LOSS_REASON.search(reason or "")) and not OFFLINE_MOVED_REASON.search(reason or "")
+
+
 @frappe.whitelist()
 def createOfflineIssuingEntry():
 	"""Report that a bucket was physically removed from its shelf for a reason
 	other than a normal sales issue or a Discard-Request-driven discard (e.g.
-	damage, quality hold, loaded on a truck by hand). Takes the bucket off the shelf
-	only: its Shelf Item rows are cleared and the Shelving Log closed with the
-	reason. No stock is written off -- the stems stay where the ledger has them (a
-	Material Issue here wrote off stock that was still moving, e.g. a bucket trucked
-	to Kapkolia then arriving with no stock behind it). Blocked outright if the
-	bucket is allocated to a sales order -- use normal issuing for that instead."""
+	damage, quality hold, loaded on a truck by hand). Its Shelf Item rows are
+	cleared and the Shelving Log closed with the reason. A loss (damaged,
+	discarded, rejected, lost: _offline_reason_writes_off) also writes off the
+	bucket's current-harvest stems in its farm store (Offline Issuing). Anything
+	else is not written off: a bucket put on a truck by hand is still moving, and a
+	write-off left it arriving at Kapkolia with no stock behind it. Blocked
+	outright if the bucket is allocated to a sales order -- use normal issuing."""
 	try:
 		data = frappe.request.get_json() or {}
 		bucket_id = data.get("bucket_id")
@@ -13007,6 +13129,74 @@ def createOfflineIssuingEntry():
 
 		total_qty = sum(frappe.utils.flt(si.stem_qty) for si in shelf_items)
 
+		entry = None
+		written_off = 0
+		if _offline_reason_writes_off(reason):
+			from upande_packhouse import stock_movement
+
+			# What this harvest of the bucket still has in its farm's store (a reused
+			# bucket ID's earlier cycles don't count). One line per variety and store:
+			# a bucket on two shelf rows is still one bucket.
+			lines = {}
+			for si in shelf_items:
+				farm = frappe.db.get_value("Shelf", si.parent, "farm") or si.farm
+				mapped = stock_movement.mapping_row_for_farm(farm, "Roses") if farm else None
+				stores = [
+					w
+					for w in dict.fromkeys([mapped.source_warehouse if mapped else None, si.warehouse])
+					if w and frappe.db.get_value("Warehouse", w, "custom_farm") == farm
+				]
+				for w in stores:
+					if (si.variety, w) in lines:
+						break
+					have = stock_movement.bucket_balance(bucket_id, si.variety, w, current_cycle=True)
+					if have > stock_movement.QTY_TOLERANCE:
+						lines[(si.variety, w)] = (have, farm)
+						break
+			if lines:
+				first_farm = next(iter(lines.values()))[1]
+				entry = frappe.new_doc("Stock Entry")
+				entry.stock_entry_type = "Offline Issuing"
+				entry.purpose = "Material Issue"
+				entry.company = frappe.db.get_value("Farm", first_farm, "company")
+				entry.posting_date = frappe.utils.now_datetime().date()
+				entry.posting_time = frappe.utils.now_datetime().time()
+				entry.set_posting_time = 1
+				entry.custom_bucket_id = bucket_id
+				entry.remarks = reason
+				entry.from_warehouse = next(iter(lines))[1]
+				for (variety, w), (qty, _farm) in lines.items():
+					item_meta = frappe.db.get_value(
+						"Item", variety, ["item_name", "description", "item_group", "stock_uom"], as_dict=True
+					)
+					recv_row = frappe.db.sql(
+						"""SELECT sed.expense_account, sed.cost_center
+						FROM `tabStock Entry Detail` sed
+						JOIN `tabStock Entry` se ON se.name = sed.parent
+						WHERE se.stock_entry_type IN ('Receiving', 'Late Receipt')
+						  AND se.custom_bucket_id = %s AND se.docstatus = 1 AND sed.item_code = %s
+						ORDER BY se.creation DESC LIMIT 1""",
+						(bucket_id, variety),
+						as_dict=True,
+					)
+					row = entry.append("items", {})
+					row.item_code = variety
+					row.item_name = item_meta.item_name if item_meta else variety
+					row.description = item_meta.description if item_meta else None
+					row.item_group = item_meta.item_group if item_meta else None
+					row.qty = qty
+					row.uom = item_meta.stock_uom if item_meta else None
+					row.stock_uom = item_meta.stock_uom if item_meta else None
+					row.conversion_factor = 1
+					row.s_warehouse = w
+					row.allow_zero_valuation_rate = 1
+					if recv_row:
+						row.expense_account = recv_row[0].expense_account
+						row.cost_center = recv_row[0].cost_center
+					written_off += qty
+				entry.insert(ignore_permissions=True)
+				entry.submit()
+
 		for si in shelf_items:
 			frappe.delete_doc("Shelf Item", si.name, force=1, ignore_permissions=True)
 			frappe.db.set_value("Shelf", si.parent, "modified", frappe.utils.now())
@@ -13031,8 +13221,18 @@ def createOfflineIssuingEntry():
 		frappe.db.commit()
 		frappe.response["data"] = {
 			"status": "success",
-			"message": "Bucket {0} removed from its shelf ({1} stems).".format(bucket_id, int(total_qty)),
-			"payload": {"bucket_id": bucket_id, "stems": total_qty},
+			"message": "Bucket {0} removed from its shelf ({1} stems).".format(bucket_id, int(total_qty))
+			+ (
+				" {0} stems written off ({1}).".format(int(written_off), entry.name)
+				if entry and entry.name
+				else ""
+			),
+			"payload": {
+				"bucket_id": bucket_id,
+				"stems": total_qty,
+				"written_off": written_off,
+				"stock_entry": entry.name if entry else None,
+			},
 		}
 	except Exception as e:
 		frappe.db.rollback()
@@ -14028,7 +14228,7 @@ def saveColdroomReject():
 		reason = (f.get("reason") or "").strip()
 		try:
 			stems = int(f.get("stems") or 0)
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			stems = 0
 		if reason and stems > 0:
 			if not frappe.db.exists("QC Parameters", reason):
@@ -14055,7 +14255,7 @@ def saveColdroomReject():
 		for row in existing:
 			try:
 				n = int(row["name"][len(qr_prefix) :])
-			except (ValueError, TypeError):
+			except ValueError, TypeError:
 				n = 0
 			maxn = max(maxn, n)
 		qr_seq = maxn + 1
@@ -14529,7 +14729,7 @@ def get_vehicle_trips():
 				try:
 					lat = float(r.latitude)
 					lng = float(r.longitude)
-				except (TypeError, ValueError):
+				except TypeError, ValueError:
 					lat = None
 				if lat is None:
 					continue
@@ -14822,8 +15022,15 @@ def findRequestedBucketReplacement():
 
 	try:
 		data = _bucket_request_payload()
-		res = sales_allocation.find_requested_bucket_replacement(data.get("pick_list_item"))
+		# farm: the phone's station -- replacements only come from there.
+		res = sales_allocation.find_requested_bucket_replacement(
+			data.get("pick_list_item"), farm=data.get("farm") or None
+		)
 		frappe.response["message"] = dict(res, status="success" if res.get("found") else "error")
+	except getattr(sales_allocation, "BucketMovedOn", ()) as e:
+		# Not missing -- on a trolley / truck, shelved or issued: information, not an error.
+		frappe.local.message_log = []
+		frappe.response["message"] = {"status": "info", "message": str(e), "moved": getattr(e, "moved", None)}
 	except Exception as e:
 		frappe.response["message"] = {"status": "error", "message": str(e)}
 
@@ -14858,6 +15065,7 @@ def replaceRequestedBucket():
 		reason=data.get("reason"),
 		notes=data.get("notes"),
 		keep_old_on_shelf=wrong_variety,
+		farm=data.get("farm") or None,
 	)
 	if res.get("success") and wrong_variety and old_bucket:
 		from upande_packhouse.api import offline_issue

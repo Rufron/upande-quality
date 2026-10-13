@@ -428,7 +428,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		from upande_quality.mobile.api import createOfflineIssuingEntry
 
 		frappe.request = frappe._dict(
-			get_json=lambda: {"bucket_id": self.bucket_id, "reason": "Damaged in transit"}
+			get_json=lambda: {"bucket_id": self.bucket_id, "reason": "Loaded on the truck by hand"}
 		)
 		frappe.response = frappe._dict()
 		createOfflineIssuingEntry()
@@ -457,7 +457,7 @@ class IntegrationTestShelfOperations(IntegrationTestCase):
 		self.assertTrue(
 			frappe.db.exists(
 				"Comment",
-				{"reference_doctype": "Shelving Log", "content": ["like", "%Damaged in transit%"]},
+				{"reference_doctype": "Shelving Log", "content": ["like", "%Loaded on the truck by hand%"]},
 			)
 		)
 
