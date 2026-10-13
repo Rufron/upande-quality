@@ -34,6 +34,7 @@
   "column_break_fgfp",
   "auto_transfer_frequency",
   "auto_dispatch_full_trips",
+  "carry_over_unshelved_buckets",
   "release_trips_without_confirmation"
  ],
  "fields": [
@@ -191,13 +192,19 @@
   {
    "fieldname": "column_break_jthd",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "carry_over_unshelved_buckets",
+   "fieldtype": "Check",
+   "label": "Carry Unshelved Buckets to the Truck's Next Trip"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-09 02:00:00.000000",
+ "modified": "2026-10-13 23:11:18.898632",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",

@@ -31,7 +31,7 @@ line-length = 110
 target-version = "py314"
 # Verbatim reference copies of v15 Server Scripts (safe_exec code: no imports, undefined
 # `frappe` globals) — linting/formatting them would change what they document.
-extend-exclude = ["kaitet_group_scripts"]
+extend-exclude = ["kaitet_group_scripts", "server_scripts"]
 
 [tool.ruff.lint]
 select = [
