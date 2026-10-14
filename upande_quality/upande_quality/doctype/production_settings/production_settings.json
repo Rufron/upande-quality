@@ -25,6 +25,7 @@
   "allow_shelving_in_transit",
   "allow_issue_out_of_sequence",
   "allow_pack_out_of_sequence",
+  "pack_waiting_replacement_pct",
   "show_unscheduled_in_issuing",
   "show_unscheduled_in_packing",
   "show_unscheduled_in_scheduler",
@@ -198,13 +199,19 @@
    "fieldname": "carry_over_unshelved_buckets",
    "fieldtype": "Check",
    "label": "Carry Unshelved Buckets to the Truck's Next Trip"
+  },
+  {
+   "default": "50",
+   "fieldname": "pack_waiting_replacement_pct",
+   "fieldtype": "Percent",
+   "label": "Pack While Waiting for a Replacement From (%)"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-13 23:11:18.898632",
+ "modified": "2026-10-14 09:43:21.944162",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
