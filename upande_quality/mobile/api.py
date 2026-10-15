@@ -2560,6 +2560,72 @@ def _farm_trip_opls(farm_name, opls, on_road=False):
 	)
 
 
+def _unscheduled_rows(pli_names):
+	"""The Pick List Item rows among `pli_names` that must not go on a trolley: a draft
+	order on no truck trip to the row's farm yet (Not Scheduled in the app). An ASAP
+	replacement always may."""
+	pli_names = [n for n in (pli_names or []) if n]
+	if not pli_names:
+		return set()
+	rows = frappe.db.sql(
+		"""SELECT pli.name, pli.parent, pli.farm, pli.source_warehouse, pli.warehouse,
+		       IFNULL(pli.transfer_priority, '') AS priority
+		FROM `tabPick List Item` pli
+		JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+		WHERE pli.name IN %(n)s AND opl.docstatus = 0""",
+		{"n": tuple(pli_names)},
+		as_dict=True,
+	)
+	by_farm = {}
+	for r in rows:
+		if r.priority != "ASAP":
+			by_farm.setdefault(_row_farm(r), []).append(r)
+	out = set()
+	for farm, rs in by_farm.items():
+		on_trip = _farm_trip_opls(farm, list({r.parent for r in rs}), on_road=True)
+		out |= {r.name for r in rs if r.parent not in on_trip}
+	return out
+
+
+def _off_trip_rows(pli_names, trip):
+	"""Rows among `pli_names` whose order is not on `trip` (the trip the farm app has
+	open): {row: "KDG 076V Trip 2"} -- the trip(s) it is on instead, '' when none. An
+	ASAP replacement follows whatever truck comes next, so it is never off-trip."""
+	pli_names = [n for n in (pli_names or []) if n]
+	if not pli_names or not trip or not frappe.db.exists("Bucket Request Trip", trip):
+		return {}
+	# (order, farm): an order collecting from two farms can ride a different trip from each.
+	on_trip = {
+		(o.order_pick_list, o.farm or "")
+		for o in frappe.get_all(
+			"Bucket Request Trip Order", filters={"parent": trip}, fields=["order_pick_list", "farm"]
+		)
+	}
+	rows = frappe.db.sql(
+		"""SELECT pli.name, pli.parent, pli.farm, pli.source_warehouse, pli.warehouse,
+		       IFNULL(pli.transfer_priority, '') AS priority
+		FROM `tabPick List Item` pli WHERE pli.name IN %(n)s""",
+		{"n": tuple(pli_names)},
+		as_dict=True,
+	)
+	out = {}
+	for r in rows:
+		if r.priority == "ASAP" or (r.parent, _row_farm(r)) in on_trip or (r.parent, "") in on_trip:
+			continue
+		others = frappe.db.sql(
+			"""SELECT DISTINCT t.vehicle, t.run FROM `tabBucket Request Trip Order` o
+			JOIN `tabBucket Request Trip` t ON t.name = o.parent
+			WHERE o.order_pick_list = %(opl)s AND t.name != %(trip)s
+			  AND t.status IN ('Draft', 'Requested', 'Scheduled', 'Dispatched')
+			  AND (IFNULL(o.farm, '') = '' OR o.farm = %(farm)s)
+			ORDER BY t.trip_date, t.run""",
+			{"opl": r.parent, "trip": trip, "farm": _row_farm(r)},
+			as_dict=True,
+		)
+		out[r.name] = ", ".join((t.vehicle or "") + (" Trip " + str(t.run) if t.run else "") for t in others)
+	return out
+
+
 @frappe.whitelist()
 def fetchAllocatedBuckets():
 	# Frappe Server Script (Type: API), api_method = fetchAllocatedBuckets
@@ -2705,14 +2771,23 @@ def fetchAllocatedBuckets():
 			# farm's to issue -- except a replacement it asked this farm for (ASAP).
 			# Only orders on a trip planned to this farm are sent (an ASAP replacement
 			# always): the farm sees an order once it is scheduled onto a truck, not before.
+			# Production Settings > Show Not Scheduled Orders in the App Bucket Requests: the
+			# draft orders not on a truck yet are sent too, marked scheduled 0 -- the app
+			# shows them greyed out and won't load them until they are on a trip.
 			on_farm_trip = _farm_trip_opls(farm_name, list(opl_map))
+			show_unscheduled = frappe.utils.cint(
+				frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
+			)
 			pick_list_items = [
 				it
 				for it in pick_list_items
 				if it["parent"] in opl_map
 				and (
 					(it.get("transfer_priority") or "") == "ASAP"
-					or (not int(opl_map[it["parent"]].get("docstatus") or 0) and it["parent"] in on_farm_trip)
+					or (
+						not int(opl_map[it["parent"]].get("docstatus") or 0)
+						and (it["parent"] in on_farm_trip or show_unscheduled)
+					)
 				)
 			]
 
@@ -2766,6 +2841,31 @@ def fetchAllocatedBuckets():
 						"Sales Order", filters={"name": ["in", so_list]}, fields=["name", "delivery_date"]
 					):
 						so_delivery[sr["name"]] = str(sr["delivery_date"] or "")
+				# Each variety's colour (Item colour, as on the Variety Tree), for the app's
+				# per-variety lists.
+				variety_color = {}
+				item_codes = list({it["item_code"] for it in pick_list_items if it.get("item_code")})
+				if item_codes:
+					item_colour = {
+						i.name: i.custom_color
+						for i in frappe.get_all(
+							"Item", filters={"name": ["in", item_codes]}, fields=["name", "custom_color"]
+						)
+						if i.custom_color
+					}
+					hexes = (
+						{
+							c.name: c.color
+							for c in frappe.get_all(
+								"Color",
+								filters={"name": ["in", list(set(item_colour.values()))]},
+								fields=["name", "color"],
+							)
+						}
+						if item_colour
+						else {}
+					)
+					variety_color = {k: hexes.get(v) or "" for k, v in item_colour.items()}
 				result = []
 				seen_bucket = {}
 				for item in pick_list_items:
@@ -2823,6 +2923,12 @@ def fetchAllocatedBuckets():
 						or "",
 						"priority": item.get("transfer_priority") or None,
 						"loaded_in_trolley": frappe.utils.cint(item.get("loaded_in_trolley")),
+						"variety_color": variety_color.get(item["item_code"]) or "",
+						# 0: the order is not on a truck to this farm yet (sent only when
+						# Production Settings shows not-scheduled orders): look, don't load.
+						"scheduled": 1
+						if item["parent"] in on_farm_trip or (item.get("transfer_priority") or "") == "ASAP"
+						else 0,
 					}
 					seen_bucket[dedupe_key] = row_out
 					result.append(row_out)
@@ -4141,10 +4247,16 @@ def getFarmPlannedTrips():
 				"data": [],
 				"farm": farm_name,
 				"schedules": schedules_for(waiting_opls + device_opls),
-				# Off: the farm loads each team's orders in schedule order (Production
-				# Settings > Allow Issuing Out of Schedule Order also frees loading).
-				"allow_out_of_sequence": frappe.utils.cint(
-					frappe.get_cached_doc("Production Settings").get("allow_issue_out_of_sequence")
+				# A farm loads a trip's buckets all at once: no schedule-order check (1
+				# also frees app builds that still check it).
+				"allow_out_of_sequence": 1,
+				# On: Bucket Requests also lists orders not on a truck yet, greyed out.
+				"show_unscheduled": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
+				),
+				# On: a trip's buckets are listed per order (varieties grouped under it).
+				"group_by_order": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("group_bucket_requests_by_order")
 				),
 				"opl_states": opl_states,
 			}
@@ -4165,11 +4277,24 @@ def getFarmPlannedTrips():
 					"route",
 					"run",
 					"loaded_buckets",
+					"creation",
+					"released_at",
 				],
 				order_by="trip_date asc, run asc, name asc",
 				limit_page_length=0,
 			)
-			# ALL order rows for these trips (every farm on the route, not just this one).
+			# When each trip was scheduled: the first change of its status to Scheduled
+			# (Version log), else its release, else its creation (made Scheduled).
+			scheduled_on = {}
+			for v in frappe.db.sql(
+				"""SELECT docname, MIN(creation) AS at FROM `tabVersion`
+				WHERE ref_doctype = 'Bucket Request Trip' AND docname IN %(t)s
+				  AND data LIKE %(pat)s
+				GROUP BY docname""",
+				{"t": tuple(trip_names), "pat": '%["status",%"Scheduled"]%'},
+				as_dict=True,
+			):
+				scheduled_on[v.docname] = v.at
 			rows = frappe.get_all(
 				"Bucket Request Trip Order",
 				filters={"parent": ["in", trip_names]},
@@ -4498,6 +4623,14 @@ def getFarmPlannedTrips():
 						"runs": run_info["runs"],
 						"run_chain": run_info["run_chain"],
 						"window": run_info["window"],
+						# When the trip was planned, and when it was scheduled (full and
+						# released to the farms).
+						"created_at": str(hd.get("creation") or "")[:19],
+						"scheduled_at": str(
+							scheduled_on.get(tn) or hd.get("released_at") or hd.get("creation") or ""
+						)[:19]
+						if hd.get("status") not in ("Draft", "Requested")
+						else "",
 						"loaded_buckets": int(hd.get("loaded_buckets") or 0),
 						"your_stop_closed": 1
 						if any(
@@ -4525,10 +4658,16 @@ def getFarmPlannedTrips():
 				"data": data,
 				"farm": farm_name,
 				"schedules": schedules_for(waiting_opls + device_opls + trip_opls),
-				# Off: the farm loads each team's orders in schedule order (Production
-				# Settings > Allow Issuing Out of Schedule Order also frees loading).
-				"allow_out_of_sequence": frappe.utils.cint(
-					frappe.get_cached_doc("Production Settings").get("allow_issue_out_of_sequence")
+				# A farm loads a trip's buckets all at once: no schedule-order check (1
+				# also frees app builds that still check it).
+				"allow_out_of_sequence": 1,
+				# On: Bucket Requests also lists orders not on a truck yet, greyed out.
+				"show_unscheduled": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
+				),
+				# On: a trip's buckets are listed per order (varieties grouped under it).
+				"group_by_order": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("group_bucket_requests_by_order")
 				),
 				"opl_states": opl_states,
 			}
@@ -9352,6 +9491,8 @@ def saveTrolleyData():
 			data = frappe.parse_json(data)
 		trolley_id = data.get("trolley_id")
 		buckets = data.get("buckets", [])
+		# The trip the farm app has open: a bucket of an order on another trip is refused.
+		trip = data.get("trip") or ""
 		if not trolley_id:
 			frappe.throw("trolley_id is required")
 		if not buckets:
@@ -9366,6 +9507,29 @@ def saveTrolleyData():
 				errors.append({"bucket_id": bucket_id, "error": "Missing opl_name or bucket_id"})
 				continue
 			doc = frappe.get_doc("Order Pick List", opl_name)
+			# Not Scheduled (on no truck trip to its farm yet): never onto a trolley.
+			mine = [r.name for r in doc.get("table_ytkc") or [] if r.bucket == bucket_id]
+			if mine and set(mine) <= _unscheduled_rows(mine):
+				errors.append(
+					{
+						"bucket_id": bucket_id,
+						"error": bucket_id + " is not on this trip -- it is not scheduled yet.",
+					}
+				)
+				continue
+			off = _off_trip_rows(mine, trip) if trip else {}
+			if mine and set(mine) <= set(off):
+				where = next((v for v in off.values() if v), "")
+				errors.append(
+					{
+						"bucket_id": bucket_id,
+						"error": bucket_id
+						+ " is not on this trip -- "
+						+ ("it is on " + where if where else "it is not scheduled yet")
+						+ ".",
+					}
+				)
+				continue
 			found = False
 			# v16 keeps one pick row per BOX, so a bucket spans several rows of the
 			# OPL: flag every one of them. The live script stopped at the first row,
@@ -9534,11 +9698,49 @@ def setOfflineTrolleyFlags():
 			went_in_transit = []
 			flag_changes = {}
 			conflicts = []
+			# Not Scheduled rows (a draft order on no truck trip yet) are never flagged.
+			unscheduled = _unscheduled_rows(pli_ids)
+			not_scheduled = []
+			# The trip the farm app has open: rows of an order on another trip are refused
+			# (reason other_trip, with the trip it is on), never flagged for this one.
+			off_trip = _off_trip_rows(pli_ids, data.get("trip") or "")
+			# The open trip has already left (in transit / received): nothing more goes on it.
+			trip_left = None
+			if data.get("trip") and flag == "loaded":
+				tl = frappe.db.get_value(
+					"Bucket Request Trip", data.get("trip"), ["status", "vehicle", "run"], as_dict=True
+				)
+				if tl and tl.status in ("Dispatched", "Received"):
+					trip_left = (tl.vehicle or "") + (" Trip " + str(tl.run) if tl.run else "")
 			i = 0
 			while i < len(pli_ids):
 				name = pli_ids[i]
 				# A bucket the farm marked "not found" never goes on a trolley or truck.
 				if name and frappe.db.get_value("Pick List Item", name, "not_found"):
+					i = i + 1
+					continue
+				if name in unscheduled:
+					not_scheduled.append(frappe.db.get_value("Pick List Item", name, "bucket") or name)
+					i = i + 1
+					continue
+				if trip_left:
+					conflicts.append(
+						{
+							"bucket": frappe.db.get_value("Pick List Item", name, "bucket") or name,
+							"reason": "trip_left",
+							"truck": trip_left,
+						}
+					)
+					i = i + 1
+					continue
+				if name in off_trip:
+					conflicts.append(
+						{
+							"bucket": frappe.db.get_value("Pick List Item", name, "bucket") or name,
+							"reason": "other_trip",
+							"truck": off_trip[name] or None,
+						}
+					)
 					i = i + 1
 					continue
 				if name and frappe.db.exists("Pick List Item", name):
@@ -9674,6 +9876,7 @@ def setOfflineTrolleyFlags():
 				"status": "success",
 				"updated": updated,
 				"missing": missing,
+				"not_scheduled": not_scheduled,
 				"flag": flag,
 				"removed_from_shelves": list(set(removed_shelves)),
 				# Buckets refused: already on another truck, or already arrived / issued.
