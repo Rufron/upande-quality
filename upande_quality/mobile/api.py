@@ -157,6 +157,59 @@ def getVarietyAndStemLengthOptions():
 	}
 
 
+@frappe.whitelist()
+def getBucketOriginOptions():
+	# Edit Details: a bucket's current greenhouse + cut stage (to prefill) and the
+	# pickers for them — the greenhouses of the bucket's farm and every cut stage.
+	data = frappe.request.get_json(silent=True) or {}
+	bucket_id = (data.get("bucket_id") or frappe.form_dict.get("bucket_id") or "").strip()
+	rank = {"Harvesting": 0, "Receiving": 1, "Late Receipt": 1, "Grading": 2}
+	session = sorted(
+		_bucket_session_entries(bucket_id) if bucket_id else [],
+		key=lambda r: rank.get(r.stock_entry_type, 3),
+	)
+	greenhouse = next((r.custom_greenhouse for r in session if r.custom_greenhouse), "")
+	cut_stage = next((r.custom_cut_stage for r in session if r.custom_cut_stage), "")
+	farm = next((r.farm for r in session if r.farm), "")
+	if bucket_id and not (greenhouse and cut_stage and farm):
+		shelf = frappe.get_all(
+			"Shelf Item",
+			filters={"bucket_id": bucket_id},
+			fields=["greenhouse", "cut_stage", "farm"],
+			order_by="creation desc",
+			limit=1,
+		)
+		if shelf:
+			greenhouse = greenhouse or shelf[0].greenhouse or ""
+			cut_stage = cut_stage or shelf[0].cut_stage or ""
+			farm = farm or shelf[0].farm or ""
+
+	greenhouses = [
+		g
+		for g in frappe.get_all(
+			"Greenhouse",
+			filters={"farm": farm} if farm else {},
+			pluck="greenhouse",
+			order_by="greenhouse asc",
+		)
+		if g
+	]
+	if greenhouse and greenhouse not in greenhouses:
+		greenhouses.insert(0, greenhouse)
+	cut_stages = frappe.get_all("Cut Stage", pluck="name", order_by="name asc")
+	if cut_stage and cut_stage not in cut_stages:
+		cut_stages.insert(0, cut_stage)
+
+	frappe.response["data"] = {
+		"bucket_id": bucket_id,
+		"farm": farm,
+		"greenhouse": greenhouse,
+		"cut_stage": cut_stage,
+		"greenhouses": greenhouses,
+		"cut_stages": cut_stages,
+	}
+
+
 def _bucket_session_entries(bucket_id, window_days=5):
 	"""The stock entries of a bucket's current round (a bucket is reused round after
 	round): anchored on its latest Grading / Receiving, same variety, within
@@ -175,6 +228,8 @@ def _bucket_session_entries(bucket_id, window_days=5):
 			"custom_bunch_id",
 			"farm",
 			"custom_pending_reshelving",
+			"custom_greenhouse",
+			"custom_cut_stage",
 		],
 		order_by="posting_date desc, posting_time desc, creation desc",
 		limit=200,
@@ -211,6 +266,16 @@ def correctDetails():
 	bucket_id = (data.get("bucket_id") or "").strip()
 	new_variety = (data.get("variety") or "").strip()
 	new_stem_length = (data.get("stem_length") or "").strip()
+	# Greenhouse and cut stage are bucket-level: a bunch carries neither. Older
+	# builds never send them, so an absent key leaves both untouched.
+	new_greenhouse = (data.get("greenhouse") or "").strip() if kind == "bucket" else ""
+	new_cut_stage = (data.get("cut_stage") or "").strip() if kind == "bucket" else ""
+	has_change = bool(new_variety or new_stem_length or new_greenhouse or new_cut_stage)
+	invalid = ""
+	if new_greenhouse and not frappe.db.exists("Warehouse", {"name": new_greenhouse, "is_group": 0}):
+		invalid = "Unknown greenhouse: " + new_greenhouse
+	if new_cut_stage and not frappe.db.exists("Cut Stage", new_cut_stage):
+		invalid = "Unknown cut stage: " + new_cut_stage
 
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
@@ -225,11 +290,15 @@ def correctDetails():
 				frappe.response["http_status_code"] = 400
 				frappe.response["data"] = {"error": "id is required."}
 
-			if target_id and not new_variety and not new_stem_length:
+			if target_id and not has_change:
 				frappe.response["http_status_code"] = 400
-				frappe.response["data"] = {"error": "Provide variety, stem_length, or both."}
+				frappe.response["data"] = {"error": "Provide variety, stem_length, greenhouse or cut_stage."}
 
-			if target_id and (new_variety or new_stem_length):
+			if target_id and has_change and invalid:
+				frappe.response["http_status_code"] = 400
+				frappe.response["data"] = {"error": invalid}
+
+			if target_id and has_change and not invalid:
 				try:
 					log = []
 
@@ -341,6 +410,29 @@ def correctDetails():
 										changed_any = True
 								return changed_any
 
+							# Helper: greenhouse / cut stage on a SE header. The ledger
+							# (Stock Entry Detail warehouses, quantities) is left as posted.
+							origin_done = set()
+
+							def set_origin(se_row, label):
+								se_name = se_row["name"]
+								if se_name in origin_done:
+									return
+								origin_done.add(se_name)
+								updates = {}
+								if new_greenhouse and se_row.get("custom_greenhouse") != new_greenhouse:
+									updates["custom_greenhouse"] = new_greenhouse
+								if new_cut_stage and se_row.get("custom_cut_stage") != new_cut_stage:
+									updates["custom_cut_stage"] = new_cut_stage
+								if updates:
+									# Labels first: set_value adds modified/modified_by to the dict.
+									what = " & ".join(
+										"greenhouse" if k == "custom_greenhouse" else "cut stage"
+										for k in updates
+									)
+									frappe.db.set_value("Stock Entry", se_name, updates)
+									log.append(label + " SE " + se_name + " " + what + " updated")
+
 							# Apply corrections to every Grading SE + its Bunch QR
 							for g in grading_ses:
 								g_name = g["name"]
@@ -351,6 +443,7 @@ def correctDetails():
 									log.append("Grading SE " + g_name + " stem length updated")
 								if new_variety and rewrite_se_items(g_name, new_variety):
 									log.append("Grading SE " + g_name + " items[].item_code → " + new_variety)
+								set_origin(g, "Grading")
 
 								bunch_id = g.get("custom_bunch_id") or ""
 								if bunch_id and frappe.db.exists("Bunch QR Code", bunch_id):
@@ -376,6 +469,7 @@ def correctDetails():
 									log.append("Harvest SE " + h_name + " stem length updated")
 								if new_variety and rewrite_se_items(h_name, new_variety):
 									log.append("Harvest SE " + h_name + " items[].item_code → " + new_variety)
+								set_origin(h, "Harvest")
 
 							# Receiving / Late Receipt — single SE for the whole bucket
 							upper = ""
@@ -390,9 +484,15 @@ def correctDetails():
 							receive_ses = frappe.get_all(
 								"Stock Entry",
 								filters=receive_filters,
-								fields=["name", "custom_stem_length"],
+								fields=[
+									"name",
+									"custom_stem_length",
+									"custom_greenhouse",
+									"custom_cut_stage",
+								],
 							)
 							for r in receive_ses:
+								set_origin(r, "Receiving")
 								if new_stem_length and r.get("custom_stem_length") != new_stem_length:
 									frappe.db.set_value(
 										"Stock Entry", r["name"], "custom_stem_length", new_stem_length
@@ -403,11 +503,20 @@ def correctDetails():
 										"Receiving SE " + r["name"] + " items[].item_code → " + new_variety
 									)
 
+							# The round's quarantine entries carry the bucket's greenhouse too.
+							for q in session:
+								if q.stock_entry_type in (
+									"Receiving Quarantined",
+									"Quarantine Accept",
+									"Quarantine Rejects",
+								):
+									set_origin(q, q.stock_entry_type)
+
 							# Shelf Item update (bucket may be on a shelf)
 							shelf_items = frappe.get_all(
 								"Shelf Item",
 								filters={"bucket_id": canonical_bucket},
-								fields=["name", "variety", "stem_length"],
+								fields=["name", "variety", "stem_length", "greenhouse", "cut_stage"],
 								limit=5,
 							)
 							for si in shelf_items:
@@ -416,7 +525,12 @@ def correctDetails():
 									updates["variety"] = new_variety
 								if new_stem_length and si.get("stem_length") != new_stem_length:
 									updates["stem_length"] = new_stem_length
-									updates["custom_stem_length"] = new_stem_length
+									if frappe.db.has_column("Shelf Item", "custom_stem_length"):
+										updates["custom_stem_length"] = new_stem_length
+								if new_greenhouse and si.get("greenhouse") != new_greenhouse:
+									updates["greenhouse"] = new_greenhouse
+								if new_cut_stage and si.get("cut_stage") != new_cut_stage:
+									updates["cut_stage"] = new_cut_stage
 								if updates:
 									frappe.db.set_value("Shelf Item", si["name"], updates)
 									log.append("Shelf Item " + si["name"] + " updated")
@@ -435,6 +549,8 @@ def correctDetails():
 								"id": canonical_bucket,
 								"new_variety": new_variety or None,
 								"new_stem_length": new_stem_length or None,
+								"new_greenhouse": new_greenhouse or None,
+								"new_cut_stage": new_cut_stage or None,
 								"bunches_affected": len(grading_ses),
 								"updates": log,
 							}
@@ -561,13 +677,7 @@ def createDiscardEntry():
 		rows = frappe.get_all("Discard Request Bucket", filters=child_filters, fields=["parent"], limit=50)
 		i = 0
 		while i < len(rows):
-			dr = frappe.get_all(
-				"Discard Request",
-				filters={"name": rows[i].parent, "workflow_state": "Approved"},
-				fields=["name"],
-				limit=1,
-			)
-			if dr:
+			if _approved_discard_requests([rows[i].parent]):
 				return True
 			i = i + 1
 		return False
@@ -577,7 +687,7 @@ def createDiscardEntry():
 	# ---------------------------------------------------------
 	def is_on_final_discard_request(bucket_id):
 		"""True if the bucket is a row on a FINAL Discard Request — one that has been
-		approved and submitted (workflow_state 'Approved' AND docstatus 1). Once a
+		submitted (docstatus 1; see _approved_discard_requests). Once a
 		request is final the manager has authorised the discard, so the age check
 		must NOT block it (a listed bucket is discarded regardless of age). This is
 		intentionally farm-agnostic and independent of the from_discard_request flag,
@@ -591,13 +701,7 @@ def createDiscardEntry():
 		)
 		i = 0
 		while i < len(rows):
-			dr = frappe.get_all(
-				"Discard Request",
-				filters={"name": rows[i].parent, "workflow_state": "Approved", "docstatus": 1},
-				fields=["name"],
-				limit=1,
-			)
-			if dr:
+			if _approved_discard_requests([rows[i].parent]):
 				return True
 			i = i + 1
 		return False
@@ -3890,6 +3994,23 @@ def getBucketStatus():
 		frappe.response["data"] = {"error": str(e)}
 
 
+def _approved_discard_requests(names=None):
+	"""Discard Requests that authorise a discard: every submitted one. With the approval
+	workflow switched off (2026-10-01) a request is submitted with no workflow_state (or
+	the Draft it had), and the nightly ones are stamped Approved; a rejected one is never
+	submitted. name -> creation."""
+	cond = " AND name IN %(n)s" if names else ""
+	return {
+		r[0]: str(r[1] or "")
+		for r in frappe.db.sql(
+			"""SELECT name, creation FROM `tabDiscard Request`
+			WHERE docstatus = 1"""
+			+ cond,
+			{"n": tuple(names or ())},
+		)
+	}
+
+
 @frappe.whitelist()
 def getDiscardRequestBuckets():
 	# Frappe Server Script (Type: API), api_method = getDiscardRequestBuckets
@@ -3917,17 +4038,7 @@ def getDiscardRequestBuckets():
 		else:
 			# Approved requests: name -> creation, so a bucket listed on several
 			# requests resolves to the LATEST one (max creation).
-			approved = frappe.get_all(
-				"Discard Request",
-				filters={"workflow_state": "Approved"},
-				fields=["name", "creation"],
-				limit_page_length=0,
-			)
-			approved_names = {}
-			i = 0
-			while i < len(approved):
-				approved_names[approved[i].name] = str(approved[i].creation or "")
-				i = i + 1
+			approved_names = _approved_discard_requests()
 
 			# Live shelf state at THIS farm — the physical set of buckets currently on
 			# a shelf whose farm = the requested farm AND that have been sitting there
@@ -6392,7 +6503,7 @@ def gradingReplacementOptions():
                                       SELECT drb.bucket_id
                                       FROM `tabDiscard Request Bucket` drb
                                       INNER JOIN `tabDiscard Request` dr ON dr.name = drb.parent
-                                      WHERE dr.docstatus = 1 AND dr.workflow_state = 'Approved'
+                                      WHERE dr.docstatus = 1
                                         AND drb.discarded = 0 AND drb.bucket_id IS NOT NULL
                                   )
                                 LIMIT 500
@@ -6660,7 +6771,7 @@ def listBunchDestinations():
                           SELECT drb.bucket_id
                           FROM `tabDiscard Request Bucket` drb
                           INNER JOIN `tabDiscard Request` dr ON dr.name = drb.parent
-                          WHERE dr.docstatus = 1 AND dr.workflow_state = 'Approved'
+                          WHERE dr.docstatus = 1
                             AND drb.discarded = 0 AND drb.bucket_id IS NOT NULL
                       )
                     LIMIT 500
@@ -6944,7 +7055,7 @@ def listReplacementCandidates():
                               SELECT drb.bucket_id
                               FROM `tabDiscard Request Bucket` drb
                               INNER JOIN `tabDiscard Request` dr ON dr.name = drb.parent
-                              WHERE dr.docstatus = 1 AND dr.workflow_state = 'Approved'
+                              WHERE dr.docstatus = 1
                                 AND drb.discarded = 0 AND drb.bucket_id IS NOT NULL
                           )
                         LIMIT 500
@@ -8372,7 +8483,6 @@ def replaceBunchInOpl():
                                    SELECT 1 FROM `tabDiscard Request Bucket` drb
                                    INNER JOIN `tabDiscard Request` dr ON dr.name = drb.parent
                                    WHERE dr.docstatus = 1
-                                     AND dr.workflow_state = 'Approved'
                                      AND drb.discarded = 0
                                      AND drb.bucket_id = si.bucket_id
                                )) AS on_discard_list
@@ -8632,7 +8742,6 @@ def replaceStems():
                                    SELECT 1 FROM `tabDiscard Request Bucket` drb
                                    INNER JOIN `tabDiscard Request` dr ON dr.name = drb.parent
                                    WHERE dr.docstatus = 1
-                                     AND dr.workflow_state = 'Approved'
                                      AND drb.discarded = 0
                                      AND drb.bucket_id = si.bucket_id
                                )) AS on_discard_list
@@ -15800,3 +15909,209 @@ def getBucketCountLocations():
 			"reason": "unknown_error",
 			"message": "An unexpected error occurred: {0}".format(str(e)),
 		}
+
+
+def _quality_farm_scope(requested, station_farm, company):
+	"""(farms the user may see, has all-farm rights, farm to show or None for all).
+
+	All-farm rights: Administrator / System Manager, no Farm User Permission, or
+	Farm User Permissions covering every farm of those farms' companies. Anyone
+	else sees only their permitted farms, defaulting to the station farm."""
+	user = frappe.session.user
+	permitted = sorted(
+		set(frappe.get_all("User Permission", filters={"user": user, "allow": "Farm"}, pluck="for_value"))
+	)
+	if permitted and user != "Administrator" and "System Manager" not in frappe.get_roles(user):
+		companies = set(frappe.get_all("Farm", filters={"name": ["in", permitted]}, pluck="company"))
+		company_farms = set(
+			frappe.get_all("Farm", filters={"company": ["in", list(companies)]}, pluck="name")
+		)
+		if not company_farms.issubset(permitted):
+			if requested in permitted:
+				return permitted, False, requested
+			if station_farm in permitted:
+				return permitted, False, station_farm
+			default = frappe.db.get_value(
+				"User Permission", {"user": user, "allow": "Farm", "is_default": 1}, "for_value"
+			)
+			return permitted, False, default if default in permitted else permitted[0]
+		farms = sorted(company_farms)
+	else:
+		# One company's farms: the app's tenant company, else the station farm's, else
+		# the site's default -- never every company's farms on a shared site.
+		company = (
+			company
+			or (frappe.db.get_value("Farm", station_farm, "company") if station_farm else None)
+			or frappe.db.get_single_value("Global Defaults", "default_company")
+			or ("Karen Roses" if frappe.db.exists("Company", "Karen Roses") else None)
+		)
+		farms = frappe.get_all(
+			"Farm", filters={"company": company} if company else {}, pluck="name", order_by="name asc"
+		)
+	return farms, True, requested if requested in farms else None
+
+
+@frappe.whitelist()
+def getQualityDashboardData():
+	"""Quality app home: the Intake FTR Overview figures for one day, in one read-only call.
+
+	Same definitions as the desk Quality Dashboard (fetchIntakeFtrOverview Server
+	Script) with from_date = to_date = the day: Intake Quality Reporting rows that
+	are not cancelled, dated by creation, and one physical batch counted once.
+	A submit writes one report per (variety, action) and a re-submit repeats the
+	batch, so rows sharing farm + greenhouse + variety + day + stems_received are
+	one batch and its stems are taken as the MAX across those rows.
+
+	Farm scope: see _quality_farm_scope; every figure is limited to it."""
+	day = frappe.utils.getdate(frappe.form_dict.get("date") or frappe.utils.nowdate())
+	farms, all_farms, farm = _quality_farm_scope(
+		(frappe.form_dict.get("farm") or "").strip(),
+		(frappe.form_dict.get("station_farm") or "").strip(),
+		(frappe.form_dict.get("company") or "").strip(),
+	)
+	# None = every farm (all-farm rights, nothing picked).
+	scope = [farm] if farm else (None if all_farms else farms)
+
+	day_start = frappe.utils.get_datetime(day)
+	values = {"day": day, "start": day_start, "end": frappe.utils.add_days(day_start, 1), "farms": scope}
+	where = (
+		"qr.docstatus < 2 AND qr.control_point = 'Intake'"
+		" AND qr.creation >= %(start)s AND qr.creation < %(end)s"
+		+ (" AND qr.farm IN %(farms)s" if scope else "")
+	)
+	batches = (
+		"SELECT qr.farm, qr.variety,"
+		" MAX(qr.stems_received) AS stems_received,"
+		" MAX(qr.stems_checked) AS stems_checked,"
+		" MAX(qr.quarantined_stems) AS quarantined_stems"
+		" FROM `tabQuality Reporting` qr WHERE "
+		+ where
+		+ " GROUP BY qr.farm, qr.ghouse, qr.variety, DATE(qr.creation), qr.stems_received"
+	)
+
+	def _ftr(received, quarantined):
+		return round((received - quarantined) / received * 100, 2) if received > 0 else None
+
+	reports_query = "SELECT COUNT(*) FROM `tabQuality Reporting` qr WHERE " + where
+	total_reports = frappe.db.sql(reports_query, values)[0][0]
+	totals = frappe.db.sql(
+		"SELECT IFNULL(SUM(stems_received), 0), IFNULL(SUM(stems_checked), 0),"
+		" IFNULL(SUM(quarantined_stems), 0) FROM (" + batches + ") AS b",
+		values,
+	)[0]
+	received, checked, quarantined = (frappe.utils.flt(v) for v in totals)
+
+	ftr_by_farm = [
+		{
+			"farm": r.farm or "",
+			"stems_received": frappe.utils.flt(r.stems_received),
+			"quarantined": frappe.utils.flt(r.quarantined_stems),
+			"ftr": _ftr(frappe.utils.flt(r.stems_received), frappe.utils.flt(r.quarantined_stems)),
+		}
+		for r in frappe.db.sql(
+			"SELECT farm, SUM(stems_received) AS stems_received, SUM(quarantined_stems) AS quarantined_stems"
+			" FROM (" + batches + ") AS b GROUP BY farm ORDER BY farm",
+			values,
+			as_dict=True,
+		)
+	]
+
+	quarantined_by_variety = [
+		{"variety": r.variety or "", "stems": frappe.utils.flt(r.stems)}
+		for r in frappe.db.sql(
+			"SELECT variety, SUM(quarantined_stems) AS stems FROM (" + batches + ") AS b"
+			" GROUP BY variety HAVING stems > 0 ORDER BY stems DESC LIMIT 8",
+			values,
+			as_dict=True,
+		)
+	]
+
+	# Issue counts per batch, MAX per parameter like the stems above. The desk
+	# script instead keeps only the earliest report of farm + greenhouse + day +
+	# stems_received, which drops the issues recorded on a batch's later
+	# (e.g. Quarantined) report and on other varieties of the same size.
+	quarantined_by_issue = [
+		{"issue": r.issue or "", "stems": frappe.utils.flt(r.stems)}
+		for r in frappe.db.sql(
+			"SELECT issue, SUM(cnt) AS stems FROM ("
+			" SELECT qp.parameter_name AS issue, MAX(IFNULL(qp.`count`, 0)) AS cnt"
+			" FROM `tabQuality Parameter` qp"
+			" INNER JOIN `tabQuality Reporting` qr ON qp.parent = qr.name"
+			" WHERE " + where + " AND qp.parenttype = 'Quality Reporting' AND IFNULL(qp.`count`, 0) > 0"
+			" GROUP BY qr.farm, qr.ghouse, qr.variety, DATE(qr.creation), qr.stems_received,"
+			" qp.parameter_name"
+			") AS i GROUP BY issue ORDER BY stems DESC LIMIT 8",
+			values,
+			as_dict=True,
+		)
+	]
+
+	# Not received: a bucket harvested that day whose harvest round has no
+	# Receiving / Late Receipt yet. A bucket is reused round after round, so the
+	# round is the bucket's harvests after its last closing entry before its final
+	# harvest of the day; a Grading also closes it (bunches graded at the farm
+	# never go through Receiving). Stems are that round's harvested stems.
+	close_types = "('Receiving', 'Late Receipt', 'Grading')"
+	not_received = frappe.db.sql(
+		"SELECT COUNT(*) AS buckets, IFNULL(SUM(("
+		" SELECT SUM(sed.qty) FROM `tabStock Entry` h2"
+		" INNER JOIN `tabStock Entry Detail` sed ON sed.parent = h2.name"
+		" WHERE h2.custom_bucket_id = x.bucket AND h2.stock_entry_type = 'Harvesting'"
+		" AND h2.docstatus = 1 AND h2.posting_date = %(day)s"
+		" AND TIMESTAMP(h2.posting_date, h2.posting_time) > IFNULL(("
+		"  SELECT MAX(TIMESTAMP(c.posting_date, c.posting_time)) FROM `tabStock Entry` c"
+		"  WHERE c.custom_bucket_id = x.bucket AND c.docstatus = 1"
+		"  AND c.stock_entry_type IN "
+		+ close_types
+		+ "  AND TIMESTAMP(c.posting_date, c.posting_time) < x.last_harvest), '1900-01-01')"
+		" )), 0) AS stems"
+		" FROM ("
+		"  SELECT h.custom_bucket_id AS bucket, MAX(TIMESTAMP(h.posting_date, h.posting_time)) AS last_harvest"
+		"  FROM `tabStock Entry` h"
+		"  WHERE h.stock_entry_type = 'Harvesting' AND h.docstatus = 1 AND h.posting_date = %(day)s"
+		"  AND IFNULL(h.custom_bucket_id, '') != ''"
+		+ (" AND h.farm IN %(farms)s" if scope else "")
+		+ "  GROUP BY h.custom_bucket_id"
+		" ) AS x"
+		" WHERE NOT EXISTS ("
+		"  SELECT 1 FROM `tabStock Entry` r"
+		"  WHERE r.custom_bucket_id = x.bucket AND r.docstatus = 1"
+		"  AND r.stock_entry_type IN "
+		+ close_types
+		+ "  AND TIMESTAMP(r.posting_date, r.posting_time) >= x.last_harvest)",
+		values,
+		as_dict=True,
+	)[0]
+
+	scoped = {"farm": ["in", scope]} if scope else {}
+	pending_reshelving = frappe.db.count(
+		"Stock Entry", {"custom_pending_reshelving": 1, "stock_entry_type": "Grading", **scoped}
+	)
+	# Bucket Replacement ships with upande_packhouse, which not every site has.
+	open_replacements = (
+		frappe.db.count("Bucket Replacement", {"status": "Open", **scoped})
+		if frappe.db.table_exists("Bucket Replacement")
+		else 0
+	)
+
+	return {
+		"date": str(day),
+		"farm": farm or "",
+		"farms": farms,
+		"all_farms": all_farms,
+		"kpi": {
+			"total_reports": int(total_reports or 0),
+			"total_stems_received": received,
+			"total_stems_checked": checked,
+			"total_quarantined": quarantined,
+			"overall_ftr": _ftr(received, quarantined),
+			"overall_sampled": round(checked / received * 100, 2) if received > 0 else None,
+			"not_received_buckets": int(not_received.buckets or 0),
+			"not_received_stems": frappe.utils.flt(not_received.stems),
+			"pending_reshelving": pending_reshelving,
+			"open_replacements": open_replacements,
+		},
+		"ftr_by_farm": ftr_by_farm,
+		"quarantined_by_issue": quarantined_by_issue,
+		"quarantined_by_variety": quarantined_by_variety,
+	}
