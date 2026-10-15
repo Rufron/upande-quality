@@ -25,15 +25,17 @@
   "allow_shelving_in_transit",
   "allow_issue_out_of_sequence",
   "allow_pack_out_of_sequence",
+  "column_break_jthd",
   "pack_waiting_replacement_pct",
   "show_unscheduled_in_issuing",
   "show_unscheduled_in_packing",
   "show_unscheduled_in_scheduler",
-  "column_break_jthd",
+  "show_unscheduled_in_bucket_requests",
+  "group_bucket_requests_by_order",
   "auto_transfer_section",
   "auto_remote_transfer_scheduling",
-  "column_break_fgfp",
   "auto_transfer_frequency",
+  "column_break_fgfp",
   "auto_dispatch_full_trips",
   "carry_over_unshelved_buckets",
   "release_trips_without_confirmation"
@@ -183,6 +185,20 @@
    "label": "Show Unscheduled OPLs in the App Scheduler"
   },
   {
+   "default": "0",
+   "description": "On: the farm app's Bucket Requests also lists orders not on a truck yet, greyed out (they can't be loaded until scheduled).",
+   "fieldname": "show_unscheduled_in_bucket_requests",
+   "fieldtype": "Check",
+   "label": "Show Not Scheduled Orders in the App Bucket Requests"
+  },
+  {
+   "default": "0",
+   "description": "On: the farm app's Bucket Requests lists a trip's buckets per order, with the varieties grouped under each order. Off: per variety.",
+   "fieldname": "group_bucket_requests_by_order",
+   "fieldtype": "Check",
+   "label": "Group App Bucket Requests by Order"
+  },
+  {
    "fieldname": "column_break_ozyn",
    "fieldtype": "Column Break"
   },
@@ -211,7 +227,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-14 09:43:21.944162",
+ "modified": "2026-10-15 04:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
