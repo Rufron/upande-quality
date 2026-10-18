@@ -2641,7 +2641,44 @@ def _row_farm(r):
 def _farm_trip_opls(farm_name, opls, on_road=False):
 	"""The OPLs among `opls` on a trip planned to this farm (Draft or Scheduled, from
 	today, or loaded): what the farm app shows. `on_road`: trips on their way to the
-	hub (Dispatched) count too."""
+	hub (Dispatched) count too. An order whose bucket here is shared with an order on
+	such a trip rides that trip with it (transfer_scheduling.shared_buckets)."""
+	if not opls:
+		return set()
+	found = _farm_trip_opls_direct(farm_name, opls, on_road)
+	rest = [o for o in opls if o not in found]
+	if rest:
+		found |= _riding_opls(farm_name, rest, on_road)
+	return found
+
+
+def _riding_opls(farm_name, opls, on_road=False):
+	"""The OPLs among `opls` (on no trip themselves) whose bucket at this farm travels
+	for another order on a trip planned to this farm: they ride that trip."""
+	from upande_packhouse.api.transfer_control import shared_buckets
+
+	groups = shared_buckets(
+		frappe.db.sql_list(
+			"""SELECT DISTINCT bucket FROM `tabPick List Item`
+			WHERE parenttype = 'Order Pick List' AND parent IN %(o)s AND IFNULL(bucket, '') != ''
+			AND IFNULL(shelved, 0) = 0
+			AND (awaiting_transfer = 1 OR loaded_in_trolley = 1 OR in_transit = 1)""",
+			{"o": tuple(opls)},
+		)
+	)
+	mine = set(opls)
+	groups = [
+		g
+		for (_b, f), g in groups.items()
+		if f and (f == farm_name or f in farm_name or farm_name in f) and mine & set(g["opls"])
+	]
+	if not groups:
+		return set()
+	carried = _farm_trip_opls_direct(farm_name, list({g["lead"] for g in groups}), on_road)
+	return {o for g in groups if g["lead"] in carried for o in g["opls"] if o in mine}
+
+
+def _farm_trip_opls_direct(farm_name, opls, on_road=False):
 	if not opls:
 		return set()
 	return set(
@@ -2691,6 +2728,30 @@ def _unscheduled_rows(pli_names):
 	return out
 
 
+def _lead_rows(pli_names):
+	"""{row: lead row} for the rows among `pli_names` of a bucket shared by several
+	orders that travels for another order (its lead, transfer_scheduling.shared_buckets):
+	scanning or loading such a row is checked as its lead's row -- one bucket, one trip."""
+	pli_names = [n for n in (pli_names or []) if n]
+	if not pli_names:
+		return {}
+	from upande_packhouse.api.transfer_control import shared_buckets, shared_group
+
+	rows = frappe.db.sql(
+		"""SELECT name, parent, bucket, farm, source_warehouse, warehouse
+		FROM `tabPick List Item` WHERE name IN %(n)s AND IFNULL(bucket, '') != ''""",
+		{"n": tuple(pli_names)},
+		as_dict=True,
+	)
+	groups = shared_buckets({r.bucket for r in rows})
+	out = {}
+	for r in rows:
+		g = shared_group(groups, r.bucket, _row_farm(r))
+		if g and g["lead"] != r.parent and g["rows"].get(g["lead"]):
+			out[r.name] = g["rows"][g["lead"]][0]
+	return out
+
+
 def _off_trip_rows(pli_names, trip):
 	"""Rows among `pli_names` whose order is not on `trip` (the trip the farm app has
 	open): {row: "KDG 076V Trip 2"} -- the trip(s) it is on instead, '' when none. An
@@ -2728,6 +2789,28 @@ def _off_trip_rows(pli_names, trip):
 		)
 		out[r.name] = ", ".join((t.vehicle or "") + (" Trip " + str(t.run) if t.run else "") for t in others)
 	return out
+
+
+def _earlier_run_first(pli_name, trip, cache):
+	"""'KDG 076V Trip 1' when the order of this pick row (at its farm) rides an earlier run
+	than `trip` that still has buckets waiting: the farm fills that run's share first
+	(trip_bucket_shares). None when `trip` is the run to fill, or the row is already on a
+	trolley (a re-scan)."""
+	r = frappe.db.get_value(
+		"Pick List Item",
+		pli_name,
+		["parent", "farm", "source_warehouse", "warehouse", "loaded_in_trolley", "transfer_priority"],
+		as_dict=True,
+	)
+	if not r or int(r.loaded_in_trolley or 0) or (r.transfer_priority or "") == "ASAP":
+		return None
+	key = (r.parent, _row_farm(r))
+	if key not in cache:
+		from upande_packhouse.api.transfer_control import earlier_trip_with_room
+
+		t = earlier_trip_with_room(key[0], key[1], trip)
+		cache[key] = (((t.vehicle or "") + (" Trip " + str(t.run) if t.run else "")) or t.name) if t else None
+	return cache[key]
 
 
 @frappe.whitelist()
@@ -2829,6 +2912,7 @@ def fetchAllocatedBuckets():
 				],
 			)
 			opl_map = {o["name"]: o for o in opl_docs}
+			on_trip = None
 			# v16 Order Pick List has no consignee/status columns: consignee comes from
 			# the Sales Order, status from docstatus.
 			opl_so_names = list(set(o["sales_order"] for o in opl_docs if o.get("sales_order")))
@@ -2878,7 +2962,11 @@ def fetchAllocatedBuckets():
 			# Production Settings > Show Not Scheduled Orders in the App Bucket Requests: the
 			# draft orders not on a truck yet are sent too, marked scheduled 0 -- the app
 			# shows them greyed out and won't load them until they are on a trip.
-			on_farm_trip = _farm_trip_opls(farm_name, list(opl_map))
+			# The window check above already asked for every one of them (a subset gets the
+			# same answer per order): not asked twice.
+			on_farm_trip = (
+				on_trip & set(opl_map) if on_trip is not None else _farm_trip_opls(farm_name, list(opl_map))
+			)
 			show_unscheduled = frappe.utils.cint(
 				frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
 			)
@@ -2905,24 +2993,29 @@ def fetchAllocatedBuckets():
 			else:
 				# ── Step 3: Bulk fetch latest harvest date per bucket ──────────────
 				bucket_ids = list(set(item["bucket"] for item in pick_list_items))
-				all_harvest_entries = frappe.get_all(
-					"Stock Entry",
-					filters={
-						"stock_entry_type": "Harvesting",
-						"custom_bucket_id": ["in", bucket_ids],
-						"docstatus": 1,
-					},
-					fields=["custom_bucket_id", "posting_date", "posting_time"],
-					order_by="custom_bucket_id asc, posting_date desc, posting_time desc",
-				)
+				# Only each bucket id's latest harvest (per exact spelling, as the lookup below):
+				# a reused bucket id has years of them.
+				# The last 30 days first (the posting-date index; a bucket harvested in them
+				# has its latest harvest there), then all time for the ids not found in them.
 				bucket_harvest_map = {}
-				for entry in all_harvest_entries:
-					bid = entry["custom_bucket_id"]
-					if bid not in bucket_harvest_map:
-						bucket_harvest_map[bid] = {
-							"harvest_date": entry["posting_date"],
-							"harvest_time": entry["posting_time"],
-						}
+				for since in (frappe.utils.add_days(frappe.utils.today(), -30), None):
+					missing = tuple(b for b in bucket_ids if b not in bucket_harvest_map)
+					if not missing:
+						break
+					for entry in frappe.db.sql(
+						"""SELECT h.custom_bucket_id, DATE(h.at) AS posting_date, TIME(h.at) AS posting_time
+						FROM (SELECT custom_bucket_id, MAX(TIMESTAMP(posting_date, posting_time)) AS at
+							FROM `tabStock Entry`
+							WHERE stock_entry_type = 'Harvesting' AND custom_bucket_id IN %(b)s AND docstatus = 1
+							  AND (%(since)s IS NULL OR posting_date >= %(since)s)
+							GROUP BY BINARY custom_bucket_id) h""",
+						{"b": missing, "since": since},
+						as_dict=True,
+					):
+						bucket_harvest_map.setdefault(
+							entry["custom_bucket_id"],
+							{"harvest_date": entry["posting_date"], "harvest_time": entry["posting_time"]},
+						)
 
 				# ── Step 4: Assemble result ───────────────────────────────────────
 				# A bucket can appear on MULTIPLE Pick List Item rows of the same OPL
@@ -4212,16 +4305,19 @@ def getFarmPlannedTrips():
 
 		# Draft orders only (waiting on this farm's transfer); a submitted one is the
 		# sales farm's to issue -- except a replacement it asked this farm for (ASAP).
+		# Deliveries from today on: an older draft left waiting is no order the app works.
 		waiting_opls = [
 			r.parent
 			for r in frappe.db.sql(
 				"""SELECT DISTINCT pli.parent FROM `tabPick List Item` pli
 				JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+				LEFT JOIN `tabSales Order` so ON so.name = opl.sales_order
 				WHERE pli.parenttype = 'Order Pick List' AND pli.awaiting_transfer = 1
 				  AND pli.in_transit = 0 AND IFNULL(pli.bucket, '') != ''
 				  AND COALESCE(NULLIF(pli.farm, ''), SUBSTRING_INDEX(pli.source_warehouse, ' ', 1)) = %(farm)s
-				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND IFNULL(pli.transfer_priority, '') = 'ASAP'))""",
-				{"farm": farm_name},
+				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND IFNULL(pli.transfer_priority, '') = 'ASAP'))
+				  AND (so.delivery_date IS NULL OR so.delivery_date >= %(today)s)""",
+				{"farm": farm_name, "today": frappe.utils.today()},
 				as_dict=True,
 			)
 		]
@@ -4229,11 +4325,23 @@ def getFarmPlannedTrips():
 		# schedule number and live state while they move through the tabs.
 		device_opls = [o for o in (payload.get("opls") or []) if o] if isinstance(payload, dict) else []
 
+		# Each order's Packhouse Schedule entry, read once per request (the answer for an
+		# order does not depend on which others are asked with it).
+		schedule_memo = {}
+
+		def schedule_map_for(opl_list):
+			ask = [o for o in dict.fromkeys(opl_list) if o and o not in schedule_memo]
+			if ask:
+				found = _schedule_map(opls=ask)
+				for o in ask:
+					schedule_memo[o] = found.get(o)
+			return {o: schedule_memo[o] for o in opl_list if o and schedule_memo.get(o)}
+
 		def schedules_for(opl_list):
 			opl_list = list(dict.fromkeys(opl_list))
 			if not opl_list:
 				return {}
-			all_schedules = _schedule_map()
+			all_schedules = schedule_map_for(opl_list)
 			# Not yet on a Packhouse Schedule: fall back to the team stamped on the OPL at allocation.
 			opl_teams = {}
 			for o in frappe.get_all(
@@ -4452,78 +4560,19 @@ def getFarmPlannedTrips():
 					opls.append(op)
 				i = i + 1
 
-			portion_state = {}  # "opl||farmShort" -> {awaiting, trolley, loaded, transit, shelved, total}
-			if opls:
-				# transit_truck names a transfer truck only when it is an internal Vehicle:
-				# allocation pre-fills it with the order's delivery label ("SIM Truck").
-				transfer_trucks = set(
-					frappe.get_all("Vehicle", filters={"custom_dispatch_truck": ["!=", 1]}, pluck="name")
-				)
-				has_on_truck = frappe.db.has_column("Pick List Item", "loaded_on_truck")
-				pli = frappe.get_all(
-					"Pick List Item",
-					filters={"parent": ["in", opls], "parenttype": "Order Pick List", "bucket": ["!=", ""]},
-					fields=[
-						"parent",
-						"bucket",
-						"warehouse",
-						"source_warehouse",
-						"awaiting_transfer",
-						"loaded_in_trolley",
-						"in_transit",
-						"shelved",
-						"not_found",
-						"transit_truck",
-					]
-					+ (["loaded_on_truck"] if has_on_truck else []),
-					limit_page_length=0,
-				)
-				pli = [it for it in pli if not int(it.get("not_found") or 0)]
-				seen_bkt = {}
-				p = 0
-				while p < len(pli):
-					it = pli[p]
-					wh = it.get("source_warehouse") or it.get("warehouse") or ""  # v16 fills source_warehouse
-					farm_short = wh.split(" ")[0] if wh else ""
-					op = it.get("parent")
-					bkt = it.get("bucket") or ""
-					dk = str(op) + "||" + str(bkt).lower()
-					if bkt and (dk in seen_bkt):
-						p = p + 1
-						continue
-					if bkt:
-						seen_bkt[dk] = 1
-					key = str(op) + "||" + farm_short
-					if key not in portion_state:
-						portion_state[key] = {
-							"awaiting": 0,
-							"trolley": 0,
-							"loaded": 0,
-							"transit": 0,
-							"shelved": 0,
-							"total": 0,
-						}
-					st = portion_state[key]
-					st["total"] = st["total"] + 1
-					on_truck = it.get("transit_truck") in transfer_trucks and (
-						int(it.get("loaded_in_trolley") or 0) or int(it.get("loaded_on_truck") or 0)
-					)
-					if int(it.get("shelved") or 0):
-						st["shelved"] = st["shelved"] + 1
-					elif int(it.get("in_transit") or 0):
-						st["transit"] = st["transit"] + 1
-					elif on_truck:
-						st["loaded"] = st["loaded"] + 1
-					elif int(it.get("loaded_in_trolley") or 0):
-						st["trolley"] = st["trolley"] + 1
-					else:
-						st["awaiting"] = st["awaiting"] + 1
-					p = p + 1
+			# Each bucket counts on ONE trip: an order's farm portion split over two runs
+			# fills the earlier run first (trip_bucket_shares -- the dashboard and truck
+			# loads count the same way). Keyed per trip, then (order, farm).
+			from upande_packhouse.api.transfer_control import trip_bucket_shares
+
+			portion_state = trip_bucket_shares(opls) if opls else {}
 
 			# Orders the Requests tab lists: on a Packhouse Schedule (the farm works only
 			# scheduled orders). A trip row for one that isn't, or for an OPL that no longer
 			# exists, has nothing for the farm to load.
-			on_schedule = _schedule_map()
+			# (With the device's and waiting orders: schedules_for below reuses the read.)
+			schedule_map_for(waiting_opls + device_opls + opls)
+			on_schedule = schedule_map_for(opls)
 
 			# Group order rows by trip.
 			by_trip = {}
@@ -4537,6 +4586,23 @@ def getFarmPlannedTrips():
 				i = i + 1
 
 			data = []
+			# Orders riding on these trips with another order's buckets: their order details in one read.
+			rider_opls = {
+				r_opl
+				for shares in portion_state.values()
+				for (r_opl, _f), rps in shares.items()
+				if rps.get("riding") and not rps.get("total")
+			}
+			rider_info = {r_opl: [] for r_opl in rider_opls}
+			if rider_opls:
+				for ri in frappe.db.sql(
+					"""SELECT opl.name, opl.order_name, so.customer, so.delivery_date
+					FROM `tabOrder Pick List` opl LEFT JOIN `tabSales Order` so ON so.name = opl.sales_order
+					WHERE opl.name IN %(o)s AND opl.docstatus < 2""",
+					{"o": tuple(rider_opls)},
+					as_dict=True,
+				):
+					rider_info[ri.name] = [ri]
 			h = 0
 			while h < len(headers):
 				hd = headers[h]
@@ -4548,6 +4614,7 @@ def getFarmPlannedTrips():
 				farm_map = {}
 				farm_order = []
 				your_orders = []
+				seen_portion = set()
 				j = 0
 				while j < len(trip_rows):
 					r = trip_rows[j]
@@ -4577,9 +4644,12 @@ def getFarmPlannedTrips():
 					# A load nothing planned shows what went on the truck.
 					pb = max(int(r.get("buckets") or 0), int(r.get("loaded_buckets") or 0))
 					fm["planned"] = fm["planned"] + pb
-					key = str(r.get("order_pick_list")) + "||" + f
-					ps = portion_state.get(key)
-					if ps:
+					ps = (portion_state.get(tn) or {}).get((r.get("order_pick_list"), r.get("farm") or ""))
+					# Two plan rows of one portion (planned + an unscheduled load) share its buckets.
+					pkey = (r.get("order_pick_list"), r.get("farm") or "")
+					counted = pkey in seen_portion
+					seen_portion.add(pkey)
+					if ps and not counted:
 						fm["awaiting"] = fm["awaiting"] + ps["awaiting"]
 						fm["trolley"] = fm["trolley"] + ps["trolley"]
 						fm["loaded"] = fm["loaded"] + ps["loaded"]
@@ -4592,7 +4662,7 @@ def getFarmPlannedTrips():
 						is_my_farm = False  # delivery date passed: not this farm's job any more
 					if is_my_farm and not (
 						ps
-						and ps["total"]
+						and (ps["total"] or ps.get("riding"))
 						and (
 							r.get("order_pick_list") in on_schedule
 							or ps["trolley"]
@@ -4619,9 +4689,38 @@ def getFarmPlannedTrips():
 								"loaded": int((ps or {}).get("loaded") or 0),
 								"transit": int((ps or {}).get("transit") or 0),
 								"shelved": int((ps or {}).get("shelved") or 0),
+								# Shared buckets travelling for another order on this trip.
+								"riding": int((ps or {}).get("riding") or 0),
 							}
 						)
 					j = j + 1
+				# Orders whose only buckets here ride with another order's on this trip: listed
+				# with it (one bucket, one scan), planned nowhere themselves.
+				for (r_opl, r_farm), rps in (portion_state.get(tn) or {}).items():
+					if (r_opl, r_farm) in seen_portion or not rps.get("riding") or rps.get("total"):
+						continue
+					if not (r_farm == farm_name or (r_farm and (r_farm in farm_name or farm_name in r_farm))):
+						continue
+					info = rider_info.get(r_opl)
+					if not info or (info[0].delivery_date and str(info[0].delivery_date) < today_s):
+						continue
+					seen_portion.add((r_opl, r_farm))
+					your_orders.append(
+						{
+							"delivery_date": str(info[0].delivery_date or ""),
+							"opl": r_opl,
+							"order_name": info[0].order_name or r_opl,
+							"customer": info[0].customer or "",
+							"varieties": "",
+							"buckets": 0,
+							"total": 0,
+							"trolley": 0,
+							"loaded": 0,
+							"transit": 0,
+							"shelved": 0,
+							"riding": int(rps["riding"]),
+						}
+					)
 
 				# Order the farms the way the truck drives this trip's run, then any extras.
 				from upande_packhouse.api.transfer_control import _trip_run_info, _trip_stops
@@ -7181,6 +7280,19 @@ def loadTrolleyInTruck():
 			):
 				on_other[(b.bucket or "").upper()] = b.transit_truck
 			rows = [r for r in rows if (r.bucket or "").upper() not in on_other]
+			# A bucket several orders share is on the trolley for all of them: their rows
+			# of it go on the truck too (only one order's row carries the trolley id).
+			from upande_packhouse.api.transfer_control import shared_buckets
+
+			have = {r.name for r in rows}
+			for (bkt, _f), g in shared_buckets({r.bucket for r in rows if r.bucket}).items():
+				if not any(n in have for names in g["rows"].values() for n in names):
+					continue  # the same bucket id at another farm
+				for opl_name, names in g["rows"].items():
+					for n in names:
+						if n not in have and bkt not in on_other:
+							have.add(n)
+							rows.append(frappe._dict(name=n, parent=opl_name, bucket=bkt))
 		refused = "".join(" {0} is already on {1}.".format(b, t) for b, t in sorted(on_other.items()))
 		# Nothing new and the trolley's buckets already on this truck: a repeated Load (the
 		# reply was lost) is not an error.
@@ -9807,12 +9919,15 @@ def setOfflineTrolleyFlags():
 			went_in_transit = []
 			flag_changes = {}
 			conflicts = []
+			# A shared bucket's row of an order it rides with is checked as its lead's row.
+			lead_row = _lead_rows(pli_ids)
+			checked = list(dict.fromkeys(list(pli_ids) + list(lead_row.values())))
 			# Not Scheduled rows (a draft order on no truck trip yet) are never flagged.
-			unscheduled = _unscheduled_rows(pli_ids)
+			unscheduled = _unscheduled_rows(checked)
 			not_scheduled = []
 			# The trip the farm app has open: rows of an order on another trip are refused
 			# (reason other_trip, with the trip it is on), never flagged for this one.
-			off_trip = _off_trip_rows(pli_ids, data.get("trip") or "")
+			off_trip = _off_trip_rows(checked, data.get("trip") or "")
 			# The open trip has already left (in transit / received): nothing more goes on it.
 			trip_left = None
 			if data.get("trip") and flag == "loaded":
@@ -9821,6 +9936,9 @@ def setOfflineTrolleyFlags():
 				)
 				if tl and tl.status in ("Dispatched", "Received"):
 					trip_left = (tl.vehicle or "") + (" Trip " + str(tl.run) if tl.run else "")
+			# The farm app's trolley scan (no truck yet) for the trip it has open.
+			scan_only = flag == "loaded" and keep_shelf and not truck and bool(data.get("trip"))
+			earlier_cache = {}
 			i = 0
 			while i < len(pli_ids):
 				name = pli_ids[i]
@@ -9828,7 +9946,8 @@ def setOfflineTrolleyFlags():
 				if name and frappe.db.get_value("Pick List Item", name, "not_found"):
 					i = i + 1
 					continue
-				if name in unscheduled:
+				check = lead_row.get(name, name)
+				if check in unscheduled:
 					not_scheduled.append(frappe.db.get_value("Pick List Item", name, "bucket") or name)
 					i = i + 1
 					continue
@@ -9842,12 +9961,25 @@ def setOfflineTrolleyFlags():
 					)
 					i = i + 1
 					continue
-				if name in off_trip:
+				if check in off_trip:
 					conflicts.append(
 						{
 							"bucket": frappe.db.get_value("Pick List Item", name, "bucket") or name,
 							"reason": "other_trip",
-							"truck": off_trip[name] or None,
+							"truck": off_trip[check] or None,
+						}
+					)
+					i = i + 1
+					continue
+				# A trolley scan for a later run of an order whose earlier run (planned at this
+				# farm) still has buckets waiting: those go first, one bucket one trip.
+				first = _earlier_run_first(check, data.get("trip"), earlier_cache) if scan_only else None
+				if first:
+					conflicts.append(
+						{
+							"bucket": frappe.db.get_value("Pick List Item", name, "bucket") or name,
+							"reason": "earlier_trip",
+							"truck": first,
 						}
 					)
 					i = i + 1
