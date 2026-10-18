@@ -4092,6 +4092,8 @@ def _approved_discard_requests(names=None):
 	workflow switched off (2026-10-01) a request is submitted with no workflow_state (or
 	the Draft it had), and the nightly ones are stamped Approved; a rejected one is never
 	submitted. name -> creation."""
+	if names is not None and not names:
+		return {}
 	cond = " AND name IN %(n)s" if names else ""
 	return {
 		r[0]: str(r[1] or "")
@@ -9972,14 +9974,17 @@ def setOfflineTrolleyFlags():
 					i = i + 1
 					continue
 				# A trolley scan for a later run of an order whose earlier run (planned at this
-				# farm) still has buckets waiting: those go first, one bucket one trip.
+				# farm) still has buckets waiting: those go first, one bucket one trip. Sent as
+				# other_trip on the earlier run (what older app builds can word); `earlier`
+				# tells the current app it is the run to fill first.
 				first = _earlier_run_first(check, data.get("trip"), earlier_cache) if scan_only else None
 				if first:
 					conflicts.append(
 						{
 							"bucket": frappe.db.get_value("Pick List Item", name, "bucket") or name,
-							"reason": "earlier_trip",
+							"reason": "other_trip",
 							"truck": first,
+							"earlier": 1,
 						}
 					)
 					i = i + 1
