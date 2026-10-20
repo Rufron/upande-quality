@@ -4655,7 +4655,7 @@ def getFarmPlannedTrips():
 					)
 
 				# Order the farms the way the truck drives this trip's run, then any extras.
-				from upande_packhouse.api.transfer_control import _trip_run_info, _trip_stops
+				from upande_packhouse.api.transfer_control import _stop_complete, _trip_run_info, _trip_stops
 
 				trip_doc = frappe.get_doc("Bucket Request Trip", tn)
 				run_info = _trip_run_info(trip_doc)
@@ -4714,10 +4714,14 @@ def getFarmPlannedTrips():
 						trip_transit = 1
 
 					is_you = 0
+					# ready: every bucket planned here is on the truck, by the rule the farm's
+					# send (closeTripStop) checks -- the app enables its button from this.
+					ready = 0
 					if (f == farm_name) or (f and f in farm_name) or (f and farm_name in f):
 						is_you = 1
 						your_stop = s + 1
 						farm_buckets = fm["buckets"]
+						ready = 1 if _stop_complete(trip_doc, f) else 0
 
 					stops.append(
 						{
@@ -4734,6 +4738,7 @@ def getFarmPlannedTrips():
 							"transit": transit,
 							"shelved": shelved,
 							"done_count": done_ish,
+							"ready": ready,
 							"status": status,
 							"delaying": delaying,
 						}
