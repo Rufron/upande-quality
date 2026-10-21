@@ -1,0 +1,225 @@
+{
+ "actions": [],
+ "autoname": "field:install_id",
+ "creation": "2026-10-21 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "install_id",
+  "app",
+  "user",
+  "status",
+  "update_to",
+  "column_break_dev",
+  "platform",
+  "device_brand",
+  "device_model",
+  "device_name",
+  "is_physical_device",
+  "versions_section",
+  "os_version",
+  "app_version",
+  "runtime_version",
+  "column_break_ver",
+  "previous_app_version",
+  "version_changed_at",
+  "upgrades",
+  "seen_section",
+  "ip_address",
+  "first_ip",
+  "column_break_seen",
+  "first_seen",
+  "last_seen",
+  "launches",
+  "users_section",
+  "users"
+ ],
+ "fields": [
+  {
+   "fieldname": "install_id",
+   "fieldtype": "Data",
+   "label": "Install ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "app",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "App",
+   "options": "Mobile App",
+   "reqd": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Last User",
+   "options": "User"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "current\nbehind_ota\nneeds_apk\nahead\ndormant\nunknown",
+   "read_only": 1
+  },
+  {
+   "fieldname": "update_to",
+   "fieldtype": "Data",
+   "label": "Update To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_dev",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Select",
+   "label": "Platform",
+   "options": "android\nios\nweb"
+  },
+  {
+   "fieldname": "device_brand",
+   "fieldtype": "Data",
+   "label": "Device Brand"
+  },
+  {
+   "fieldname": "device_model",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Device Model"
+  },
+  {
+   "fieldname": "device_name",
+   "fieldtype": "Data",
+   "label": "Device Name"
+  },
+  {
+   "fieldname": "is_physical_device",
+   "fieldtype": "Check",
+   "label": "Physical Device"
+  },
+  {
+   "fieldname": "versions_section",
+   "fieldtype": "Section Break",
+   "label": "Versions"
+  },
+  {
+   "fieldname": "os_version",
+   "fieldtype": "Data",
+   "label": "OS Version"
+  },
+  {
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "App Version"
+  },
+  {
+   "fieldname": "runtime_version",
+   "fieldtype": "Data",
+   "label": "Runtime Version"
+  },
+  {
+   "fieldname": "column_break_ver",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "previous_app_version",
+   "fieldtype": "Data",
+   "label": "Previous App Version"
+  },
+  {
+   "fieldname": "version_changed_at",
+   "fieldtype": "Datetime",
+   "label": "Version Changed At"
+  },
+  {
+   "fieldname": "upgrades",
+   "fieldtype": "Int",
+   "label": "Upgrades"
+  },
+  {
+   "fieldname": "seen_section",
+   "fieldtype": "Section Break",
+   "label": "Seen"
+  },
+  {
+   "fieldname": "ip_address",
+   "fieldtype": "Data",
+   "label": "IP Address"
+  },
+  {
+   "fieldname": "first_ip",
+   "fieldtype": "Data",
+   "label": "First IP"
+  },
+  {
+   "fieldname": "column_break_seen",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "first_seen",
+   "fieldtype": "Datetime",
+   "label": "First Seen"
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Last Seen"
+  },
+  {
+   "fieldname": "launches",
+   "fieldtype": "Int",
+   "label": "Launches"
+  },
+  {
+   "fieldname": "users_section",
+   "fieldtype": "Section Break",
+   "label": "Users"
+  },
+  {
+   "fieldname": "users",
+   "fieldtype": "Table",
+   "label": "Users",
+   "options": "Mobile App Install User"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-21 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Mobile App Install",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "last_seen",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "device_model",
+ "track_changes": 0
+}

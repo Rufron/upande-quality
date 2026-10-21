@@ -132,6 +132,9 @@ doctype_js = {"Bucket Logistics Route": "public/js/bucket_logistics_route.js"}
 
 # before_install = "upande_quality.install.before_install"
 # after_install = "upande_quality.install.after_install"
+after_install = "upande_quality.install.after_install"
+# Seeds the Mobile App records of the device register (never overwrites).
+after_migrate = "upande_quality.install.after_migrate"
 
 # Uninstallation
 # ------------
@@ -203,6 +206,9 @@ doc_events = {
 scheduler_events = {
 	"cron": {
 		"0 0 * * *": ["upande_quality.tasks.auto_discard_request"],
+		# Latest published OTA / APK of every enabled Mobile App, for the
+		# Mobile App Installs register (who is behind, and what to update to).
+		"0 * * * *": ["upande_quality.mobile.mobile_app.refresh_latest"],
 	},
 }
 
