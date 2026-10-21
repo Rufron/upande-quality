@@ -58,7 +58,9 @@ frappe.query_reports["Mobile App Installs"] = {
 		const formatted = default_formatter(value, row, column, data);
 		if (column.fieldname === "status" && data && data.status) {
 			const colour = STATUS_COLOURS[data.status] || "gray";
-			return `<span class="indicator-pill ${colour}">${frappe.utils.escape_html(data.status)}</span>`;
+			return `<span class="indicator-pill ${colour}">${frappe.utils.escape_html(
+				data.status
+			)}</span>`;
 		}
 		return formatted;
 	},
