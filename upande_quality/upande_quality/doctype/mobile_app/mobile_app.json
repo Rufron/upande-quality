@@ -1,0 +1,153 @@
+{
+ "actions": [],
+ "autoname": "field:app_name",
+ "creation": "2026-10-21 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "app_name",
+  "enabled",
+  "dormant_days",
+  "column_break_source",
+  "github_repo",
+  "ota_base_url",
+  "platform",
+  "latest_section",
+  "latest_version",
+  "latest_runtime",
+  "latest_apk_version",
+  "latest_apk_url",
+  "column_break_latest",
+  "published_at",
+  "checked_at",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "app_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "App Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "default": "7",
+   "fieldname": "dormant_days",
+   "fieldtype": "Int",
+   "label": "Dormant After (Days)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "owner/repo, e.g. mark-judah/upande-packhouse",
+   "fieldname": "github_repo",
+   "fieldtype": "Data",
+   "label": "GitHub Repo"
+  },
+  {
+   "description": "e.g. https://mark-judah.github.io/upande-packhouse/ota",
+   "fieldname": "ota_base_url",
+   "fieldtype": "Data",
+   "label": "OTA Base URL"
+  },
+  {
+   "default": "android",
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "label": "Platform"
+  },
+  {
+   "fieldname": "latest_section",
+   "fieldtype": "Section Break",
+   "label": "Latest Published"
+  },
+  {
+   "fieldname": "latest_version",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Latest Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latest_runtime",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Latest Runtime",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latest_apk_version",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Latest APK Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latest_apk_url",
+   "fieldtype": "Small Text",
+   "label": "Latest APK URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_latest",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "published_at",
+   "fieldtype": "Datetime",
+   "label": "Published At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checked_at",
+   "fieldtype": "Datetime",
+   "label": "Checked At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-21 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Mobile App",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "app_name",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 0
+}

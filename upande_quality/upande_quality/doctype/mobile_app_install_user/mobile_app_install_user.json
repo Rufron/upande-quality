@@ -1,0 +1,96 @@
+{
+ "actions": [],
+ "creation": "2026-10-21 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "app_version",
+  "runtime_version",
+  "previous_app_version",
+  "column_break_seen",
+  "platform",
+  "first_seen",
+  "last_seen",
+  "logins",
+  "launches"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "App Version"
+  },
+  {
+   "fieldname": "runtime_version",
+   "fieldtype": "Data",
+   "label": "Runtime Version"
+  },
+  {
+   "fieldname": "previous_app_version",
+   "fieldtype": "Data",
+   "label": "Previous App Version"
+  },
+  {
+   "fieldname": "column_break_seen",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "label": "Platform"
+  },
+  {
+   "fieldname": "first_seen",
+   "fieldtype": "Datetime",
+   "label": "First Seen"
+  },
+  {
+   "columns": 3,
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Last Seen"
+  },
+  {
+   "columns": 1,
+   "fieldname": "logins",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Logins"
+  },
+  {
+   "columns": 1,
+   "fieldname": "launches",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Launches"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-21 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Mobile App Install User",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}
