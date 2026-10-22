@@ -22,18 +22,19 @@ def execute(filters=None):
 	)
 	data = [
 		{
-			"full_name": r.full_name or r.user,
-			"user": r.user,
 			"device": " ".join(x for x in (r.device_brand, r.device_model) if x) or r.device_name,
-			"install_id": r.install_id,
+			"os_version": r.os_version,
 			"app": r.app,
 			"app_version": r.app_version,
-			"runtime_version": r.runtime_version,
-			"last_seen": r.last_seen,
-			"logins": r.logins,
-			"launches": r.launches,
 			"status": r.status,
 			"update_to": r.update_to,
+			"last_seen": r.last_seen,
+			"full_name": r.full_name or r.user,
+			"user": r.user,
+			"user_count": r.user_count,
+			"users": ", ".join(f"{u['full_name'] or u['user']} ({u['app_version'] or '?'})" for u in r.users),
+			"launches": r.launches,
+			"install_id": r.install_id,
 		}
 		for r in rows
 	]
@@ -42,9 +43,24 @@ def execute(filters=None):
 
 def get_columns():
 	return [
-		{"label": _("User"), "fieldname": "full_name", "fieldtype": "Data", "width": 170},
-		{"label": _("User ID"), "fieldname": "user", "fieldtype": "Link", "options": "User", "width": 170},
 		{"label": _("Device"), "fieldname": "device", "fieldtype": "Data", "width": 160},
+		{"label": _("Build"), "fieldname": "os_version", "fieldtype": "Data", "width": 70},
+		{"label": _("App"), "fieldname": "app", "fieldtype": "Link", "options": "Mobile App", "width": 130},
+		{"label": _("Version"), "fieldname": "app_version", "fieldtype": "Data", "width": 85},
+		{"label": _("Status"), "fieldname": "status", "fieldtype": "Data", "width": 100},
+		{"label": _("Update To"), "fieldname": "update_to", "fieldtype": "Data", "width": 240},
+		{"label": _("Last Seen"), "fieldname": "last_seen", "fieldtype": "Datetime", "width": 160},
+		{"label": _("Last User"), "fieldname": "full_name", "fieldtype": "Data", "width": 170},
+		{
+			"label": _("Last User ID"),
+			"fieldname": "user",
+			"fieldtype": "Link",
+			"options": "User",
+			"width": 170,
+		},
+		{"label": _("Users"), "fieldname": "user_count", "fieldtype": "Int", "width": 60},
+		{"label": _("Used By (Version)"), "fieldname": "users", "fieldtype": "Data", "width": 320},
+		{"label": _("Launches"), "fieldname": "launches", "fieldtype": "Int", "width": 80},
 		{
 			"label": _("Install ID"),
 			"fieldname": "install_id",
@@ -52,12 +68,4 @@ def get_columns():
 			"options": "Mobile App Install",
 			"width": 140,
 		},
-		{"label": _("App"), "fieldname": "app", "fieldtype": "Link", "options": "Mobile App", "width": 130},
-		{"label": _("Version"), "fieldname": "app_version", "fieldtype": "Data", "width": 85},
-		{"label": _("Runtime"), "fieldname": "runtime_version", "fieldtype": "Data", "width": 80},
-		{"label": _("Last Seen"), "fieldname": "last_seen", "fieldtype": "Datetime", "width": 160},
-		{"label": _("Logins"), "fieldname": "logins", "fieldtype": "Int", "width": 70},
-		{"label": _("Launches"), "fieldname": "launches", "fieldtype": "Int", "width": 80},
-		{"label": _("Status"), "fieldname": "status", "fieldtype": "Data", "width": 100},
-		{"label": _("Update To"), "fieldname": "update_to", "fieldtype": "Data", "width": 240},
 	]

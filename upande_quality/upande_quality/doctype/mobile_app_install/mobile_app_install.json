@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "install_id",
+  "device_key",
   "app",
   "user",
   "status",
@@ -43,6 +44,13 @@
    "read_only": 1,
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "device_key",
+   "fieldtype": "Data",
+   "label": "Device Key",
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "app",
@@ -196,7 +204,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-21 12:00:00.000000",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Mobile App Install",
