@@ -17,7 +17,14 @@
 # CURRENT latest published release. It is never derived from history (old
 # rows, the fleet's highest version): when the latest is not known, or the
 # app is not a known, enabled Mobile App, the status is `unknown`.
+#
+# One row is one physical device per app. The docname is the first random
+# install id the device reported under; the app's storage can lose that id, so
+# a device also sends a hardware `device_key` (the Android ID), stored only as
+# a SHA-256 hex. A report whose key matches a row of the same app updates that
+# row whatever its install id, and folds the row of the new install id into it.
 
+import hashlib
 import re
 
 import frappe
@@ -52,6 +59,11 @@ STATUS_ORDER = {"needs_apk": 0, "behind_ota": 1, "unknown": 2, "ahead": 3, "curr
 DEFAULT_DORMANT_DAYS = 7
 
 INSTALL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+DEVICE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_-]{4,140}$")
+HASHED_KEY_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+DEVICE_KEY_PREFIX = "upande-device:"
+# Android IDs shared by many devices (an old emulator / firmware bug): never a key.
+SHARED_ANDROID_IDS = ("9774d56d682e549c", "0000000000000000", "unknown")
 APP_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{1,63}$")
 INSTALL_PLATFORMS = ("android", "ios", "web")
 # A same-account launch inside this window only refreshes last_seen — unless
@@ -104,6 +116,30 @@ def _observed_ip():
 		except Exception:
 			forwarded = ""
 	return forwarded.split(",")[0].strip()[:MAX_DATA_LENGTH]
+
+
+def device_key_of(value):
+	"""The stored key for a hardware id a client sent, or "" when there is none.
+
+	SHA-256 hex of "upande-device:" + the id, so the raw Android ID is never
+	stored. A value that already is such a hex is kept as it is: an app that
+	hashes on the device and one that sends the raw id land on the same key.
+	"""
+	value = _text(value)
+	if not DEVICE_KEY_PATTERN.match(value) or value.lower() in SHARED_ANDROID_IDS:
+		return ""
+	if HASHED_KEY_PATTERN.match(value):
+		return value
+	return hashlib.sha256((DEVICE_KEY_PREFIX + value).encode()).hexdigest()
+
+
+def _later(a, b):
+	"""True when timestamp a is after b; a missing value is the earliest."""
+	if not a:
+		return False
+	if not b:
+		return True
+	return get_datetime(a) > get_datetime(b)
 
 
 def _require_manager():
@@ -309,6 +345,153 @@ def _touch_install_user(install_id, app_version, runtime_version, platform, now_
 	return cint(child.logins)
 
 
+# The device's latest report: copied from a merged row when it reported last.
+LATEST_REPORT_FIELDS = (
+	"user",
+	"platform",
+	"device_brand",
+	"device_model",
+	"device_name",
+	"os_version",
+	"app_version",
+	"runtime_version",
+	"previous_app_version",
+	"version_changed_at",
+	"is_physical_device",
+	"ip_address",
+	"last_seen",
+	"status",
+	"update_to",
+)
+INSTALL_USER_FIELDS = (
+	"name",
+	"user",
+	"app_version",
+	"runtime_version",
+	"previous_app_version",
+	"platform",
+	"first_seen",
+	"last_seen",
+	"logins",
+	"launches",
+)
+
+
+def _install_users(parent):
+	# The column list is the fixed INSTALL_USER_FIELDS tuple, never request input.
+	return frappe.db.sql(  # nosemgrep: frappe-sql-format-injection
+		f"""
+		SELECT {", ".join(f"`{f}`" for f in INSTALL_USER_FIELDS)}
+		FROM `tabMobile App Install User`
+		WHERE parent = %s AND parenttype = %s
+		ORDER BY idx, creation
+		""",
+		(parent, INSTALL),
+		as_dict=True,
+	)
+
+
+def _merge_install_users(target, source):
+	"""Move `source`'s account rows onto `target`; an account on both keeps one row.
+
+	That row has the earliest first_seen, the latest last_seen, the summed
+	counters, and the version of whichever side saw the account last.
+	"""
+	kept = {r.user: r for r in _install_users(target)}
+	idx = cint(
+		frappe.db.sql(
+			"SELECT MAX(idx) FROM `tabMobile App Install User` WHERE parent = %s AND parenttype = %s",
+			(target, INSTALL),
+		)[0][0]
+	)
+	for row in _install_users(source):
+		mine = kept.get(row.user)
+		if not mine:
+			idx += 1
+			frappe.db.set_value(INSTALL_USER, row.name, {"parent": target, "idx": idx}, update_modified=False)
+			kept[row.user] = row
+			continue
+		values = {
+			"logins": cint(mine.logins) + cint(row.logins),
+			"launches": cint(mine.launches) + cint(row.launches),
+		}
+		if _later(mine.first_seen, row.first_seen):
+			values["first_seen"] = row.first_seen
+		if _later(row.last_seen, mine.last_seen):
+			values["last_seen"] = row.last_seen
+			values["platform"] = row.platform
+			values["runtime_version"] = row.runtime_version
+			newer, older = _text(row.app_version), _text(mine.app_version)
+			values["app_version"] = newer or older
+			if newer and older and newer != older:
+				values["previous_app_version"] = older
+			elif row.previous_app_version:
+				values["previous_app_version"] = row.previous_app_version
+		frappe.db.set_value(INSTALL_USER, mine.name, values, update_modified=False)
+		frappe.db.delete(INSTALL_USER, {"name": row.name})
+
+
+def merge_installs(target, source):
+	"""Fold install row `source` into `target` (the same device) and delete `source`.
+
+	`target` keeps the device's latest report (whichever row reported last), the
+	earliest first sighting, the summed launches / upgrades and every account.
+	"""
+	if not source or source == target:
+		return
+	kept = frappe.db.get_value(INSTALL, target, "*", as_dict=True)
+	gone = frappe.db.get_value(INSTALL, source, "*", as_dict=True)
+	if not kept or not gone:
+		return
+	values = {
+		"launches": cint(kept.launches) + cint(gone.launches),
+		"upgrades": cint(kept.upgrades) + cint(gone.upgrades),
+	}
+	if _later(kept.first_seen, gone.first_seen):
+		values["first_seen"] = gone.first_seen
+		values["first_ip"] = gone.first_ip
+	if _later(gone.last_seen, kept.last_seen):
+		for field in LATEST_REPORT_FIELDS:
+			values[field] = gone.get(field)
+	if gone.device_key and not kept.device_key:
+		values["device_key"] = gone.device_key
+	frappe.db.set_value(INSTALL, target, values, update_modified=True)
+	_merge_install_users(target, source)
+	frappe.db.delete(INSTALL_USER, {"parent": source, "parenttype": INSTALL})
+	frappe.db.delete(INSTALL, {"name": source})
+
+
+def _resolve_install(install_id, app, key):
+	"""(the row name this report is filed under or None for a new row, whether rows were merged).
+
+	Without a key: the install id's own row. With one: the same app's row with
+	that key (the earliest seen when there are several) — every other row of
+	that key, and the install id's own row when it has no key or the same one,
+	is merged into it.
+	"""
+	own = frappe.db.get_value(INSTALL, install_id, ["name", "app", "device_key"], as_dict=True)
+	if not key:
+		return (own.name if own else None), False
+	keyed = frappe.db.sql(
+		"""
+		SELECT name FROM `tabMobile App Install`
+		WHERE app = %s AND device_key = %s
+		ORDER BY first_seen IS NULL, first_seen, creation, name
+		""",
+		(app, key),
+		pluck=True,
+	)
+	if not keyed:
+		return (own.name if own else None), False
+	target = keyed[0]
+	sources = list(keyed[1:])
+	if own and own.name != target and own.app == app and _text(own.device_key) in ("", key):
+		sources.append(own.name)
+	for source in sources:
+		merge_installs(target, source)
+	return target, bool(sources)
+
+
 @frappe.whitelist(methods=["POST"])
 def register_install(
 	install_id: str | None = None,
@@ -323,13 +506,21 @@ def register_install(
 	is_physical_device: str | int | bool | None = None,
 	reason: str | None = None,
 	login: str | int | bool | None = None,
+	device_key: str | None = None,
 ):
 	"""Record this device in the register, or refresh its row.
 
-	`install_id` is a random id the app keeps in its own storage; it is the
-	docname. The parent row is the device and its LATEST report (who reported
-	last, on which version); the `users` child keeps one row per account that
-	has used it.
+	`install_id` is a random id the app keeps in its own storage; a new row is
+	named after it. `device_key` is the device's hardware id (the Android ID, or
+	its SHA-256 hex), stored hashed: when the same app already has a row with
+	that key, the report goes to that row whatever the install id, and a row
+	filed under this install id without a key is merged into it. With no key the
+	install id alone decides, as before; a keyless row reporting again with a
+	key takes that key.
+
+	The parent row is the device and its LATEST report (who reported last, on
+	which version); the `users` child keeps one row per account that has used
+	it, each with its own version and last_seen.
 
 	A launch by the same account inside `INSTALL_THROTTLE_MINUTES` only moves
 	`last_seen` — except when the app or runtime version changed, which is
@@ -365,36 +556,47 @@ def register_install(
 	runtime_version = _clip(runtime_version) or runtime_of(app_version)
 	is_login = _flag(login) == 1 or _text(reason).lower() == "login"
 	is_foreground = not is_login and _text(reason).lower() == "foreground"
+	key = device_key_of(device_key)
 	user = frappe.session.user
 	now_str = now()
 
 	latest, dormant_days = _context(apps_by_name(), app)
 	status, update_to = install_status(app_version, runtime_version, now_str, latest, dormant_days)
 
-	existing = frappe.db.get_value(
-		INSTALL,
-		install_id,
-		[
-			"name",
-			"app",
-			"user",
-			"app_version",
-			"runtime_version",
-			"first_seen",
-			"last_seen",
-			"launches",
-			"upgrades",
-		],
-		as_dict=True,
+	row_name, merged = _resolve_install(install_id, app, key)
+	existing = (
+		frappe.db.get_value(
+			INSTALL,
+			row_name,
+			[
+				"name",
+				"app",
+				"user",
+				"device_key",
+				"app_version",
+				"runtime_version",
+				"first_seen",
+				"last_seen",
+				"launches",
+				"upgrades",
+			],
+			as_dict=True,
+		)
+		if row_name
+		else None
 	)
 
 	if existing:
+		row_name = existing["name"]
 		stored_version = _text(existing.get("app_version"))
 		version_changed = bool(app_version) and app_version != stored_version
 		runtime_changed = bool(runtime_version) and runtime_version != _text(existing.get("runtime_version"))
+		key_missing = bool(key) and _text(existing.get("device_key")) != key
 		last_seen = existing.get("last_seen")
 		throttled = (
 			not is_login
+			and not merged
+			and not key_missing
 			and not version_changed
 			and not runtime_changed
 			and _text(existing.get("user")) == user
@@ -410,13 +612,17 @@ def register_install(
 		if throttled:
 			frappe.db.set_value(
 				INSTALL,
-				existing["name"],
+				row_name,
 				{"last_seen": now_str, "status": status, "update_to": update_to},
 				update_modified=False,
 			)
-			pairing = _install_user_row(install_id, user) or {}
+			pairing = _install_user_row(row_name, user) or {}
+			if pairing:
+				frappe.db.set_value(
+					INSTALL_USER, pairing["name"], "last_seen", now_str, update_modified=False
+				)
 			return {
-				"install_id": install_id,
+				"install_id": row_name,
 				"user": user,
 				"status": status,
 				"update_to": update_to,
@@ -443,16 +649,18 @@ def register_install(
 			"status": status,
 			"update_to": update_to,
 		}
+		if key:
+			values["device_key"] = key
 		if version_changed and stored_version:
 			values["previous_app_version"] = stored_version
 			values["version_changed_at"] = now_str
 			values["upgrades"] = cint(existing.get("upgrades")) + 1
-		frappe.db.set_value(INSTALL, existing["name"], values, update_modified=True)
+		frappe.db.set_value(INSTALL, row_name, values, update_modified=True)
 		logins = _touch_install_user(
-			install_id, app_version, runtime_version, platform, now_str, is_login, counted=True
+			row_name, app_version, runtime_version, platform, now_str, is_login, counted=True
 		)
 		return {
-			"install_id": install_id,
+			"install_id": row_name,
 			"user": user,
 			"status": status,
 			"update_to": update_to,
@@ -466,6 +674,7 @@ def register_install(
 		{
 			"doctype": INSTALL,
 			"install_id": install_id,
+			"device_key": key or None,
 			"app": app,
 			"user": user,
 			"platform": platform,
@@ -504,18 +713,55 @@ def register_install(
 # --------------------------------------------------------------------------- #
 
 
-def install_rows(app=None, status=None, user=None, since_days=None, include_dormant=False):
-	"""One row per device: its latest report, its status against the current latest.
+def _device_users(parents):
+	"""{install name: [each account that used it, last seen first]}."""
+	if not parents:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		SELECT p.parent, p.user, u.full_name, p.app_version, p.runtime_version, p.first_seen,
+			p.last_seen, p.logins, p.launches
+		FROM `tabMobile App Install User` p
+		LEFT JOIN `tabUser` u ON u.name = p.user
+		WHERE p.parenttype = 'Mobile App Install' AND p.parent IN %s
+		""",
+		(tuple(parents),),
+		as_dict=True,
+	)
+	out = {}
+	for row in rows:
+		out.setdefault(row.pop("parent"), []).append(
+			{
+				**row,
+				"full_name": row.get("full_name") or "",
+				"logins": cint(row.get("logins")),
+				"launches": cint(row.get("launches")),
+			}
+		)
+	never = get_datetime("1900-01-01")
+	for users in out.values():
+		users.sort(key=lambda r: r["user"])
+		users.sort(key=lambda r: get_datetime(r["last_seen"]) if r.get("last_seen") else never, reverse=True)
+	return out
 
-	Sorted with who must act first (needs_apk, behind_ota) on top, then newest
-	last_seen. Dormant rows are left out unless asked for (or filtered on).
+
+def install_rows(app=None, status=None, user=None, since_days=None, include_dormant=False):
+	"""One row per device: its latest report, its status against the current latest, its accounts.
+
+	`users` lists every account that used the device, each with its own version
+	and last_seen; `user` filters on any of them. Sorted with who must act first
+	(needs_apk, behind_ota) on top, then newest last_seen. Dormant rows are left
+	out unless asked for (or filtered on).
 	"""
 	conditions, params = ["1 = 1"], []
 	if app:
 		conditions.append("i.app = %s")
 		params.append(app)
 	if user:
-		conditions.append("i.user = %s")
+		conditions.append(
+			"EXISTS (SELECT 1 FROM `tabMobile App Install User` f"
+			" WHERE f.parent = i.name AND f.parenttype = 'Mobile App Install' AND f.user = %s)"
+		)
 		params.append(user)
 	since_days = cint(since_days)
 	if since_days > 0:
@@ -527,7 +773,7 @@ def install_rows(app=None, status=None, user=None, since_days=None, include_dorm
 		SELECT i.install_id, i.app, i.user, u.full_name, i.platform, i.device_brand, i.device_model,
 			i.device_name, i.os_version, i.app_version, i.runtime_version, i.previous_app_version,
 			i.version_changed_at, i.is_physical_device, i.ip_address, i.first_seen, i.last_seen,
-			i.launches, COALESCE(p.logins, 0) AS logins
+			i.launches, COALESCE(p.logins, 0) AS logins, i.device_key
 		FROM `tabMobile App Install` i
 		LEFT JOIN `tabUser` u ON u.name = i.user
 		LEFT JOIN `tabMobile App Install User` p
@@ -556,7 +802,14 @@ def install_rows(app=None, status=None, user=None, since_days=None, include_dorm
 		row["launches"] = cint(row.get("launches"))
 		row["logins"] = cint(row.get("logins"))
 		row["is_physical_device"] = bool(cint(row.get("is_physical_device")))
+		# Whether the device sends a hardware key; the key itself stays on the server.
+		row["keyed"] = bool(row.pop("device_key", None))
 		out.append(row)
+
+	users = _device_users([r.install_id for r in out])
+	for row in out:
+		row["users"] = users.get(row.install_id, [])
+		row["user_count"] = len(row["users"])
 
 	out.sort(key=lambda r: r["install_id"])
 	out.sort(
@@ -577,7 +830,8 @@ def installs(
 	start: int | str | None = None,
 	page_length: int | str | None = None,
 ):
-	"""The register for System Managers: each device's latest report, status and update_to."""
+	"""The register for System Managers: one entry per device, its latest report, status and
+	update_to, and every account that used it with that account's version and last_seen."""
 	_require_manager()
 	start = max(cint(start), 0)
 	page_length = min(cint(page_length) or 100, MAX_PAGE_LENGTH)
@@ -599,6 +853,10 @@ def installs(
 				"version_changed_at": _ts(row.get("version_changed_at")),
 				"first_seen": _ts(row.get("first_seen")),
 				"last_seen": _ts(row.get("last_seen")),
+				"users": [
+					{**u, "first_seen": _ts(u.get("first_seen")), "last_seen": _ts(u.get("last_seen"))}
+					for u in row["users"]
+				],
 			}
 			for row in rows[start : start + page_length]
 		],

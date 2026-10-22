@@ -11,6 +11,11 @@ from upande_quality.mobile import mobile_app as devices
 
 INSTALL_A = "_test-install-aaaa1111"
 INSTALL_B = "_test-install-bbbb2222"
+INSTALL_C = "_test-install-cccc3333"
+INSTALLS = [INSTALL_A, INSTALL_B, INSTALL_C]
+# Two Android IDs of identical scanners.
+KEY_1 = "a1b2c3d4e5f60718"
+KEY_2 = "0f1e2d3c4b5a6978"
 USER_A = "mobile-install-a@example.com"
 USER_B = "mobile-install-b@example.com"
 # Test apps of their own, so the seeded Packhouse / Quality records are never touched.
@@ -101,8 +106,8 @@ class IntegrationTestMobileAppInstalls(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		_ensure_user(USER_A)
 		_ensure_user(USER_B)
-		frappe.db.delete(devices.INSTALL, {"name": ["in", [INSTALL_A, INSTALL_B]]})
-		frappe.db.delete(devices.INSTALL_USER, {"parent": ["in", [INSTALL_A, INSTALL_B]]})
+		frappe.db.delete(devices.INSTALL, {"name": ["in", INSTALLS]})
+		frappe.db.delete(devices.INSTALL_USER, {"parent": ["in", INSTALLS]})
 		_ensure_app(PACKHOUSE, PACKHOUSE_OTA)
 		_ensure_app(QUALITY, QUALITY_OTA)
 		self._saved_ip = getattr(frappe.local, "request_ip", None)
@@ -262,6 +267,162 @@ class IntegrationTestMobileAppInstalls(IntegrationTestCase):
 		self.assertEqual(len(rows), 1)
 		self.assertEqual(rows[0].user, USER_B)
 
+	# ------------------------------------------------------------- device key
+
+	def _rows_of_test_installs(self):
+		return frappe.get_all(
+			devices.INSTALL,
+			filters={"name": ["in", INSTALLS]},
+			fields=["name", "device_key"],
+			order_by="name",
+		)
+
+	def test_device_key_is_stored_hashed(self):
+		frappe.set_user(USER_A)
+		self._register(device_key=KEY_1)
+		stored = frappe.db.get_value(devices.INSTALL, INSTALL_A, "device_key")
+		self.assertEqual(stored, devices.device_key_of(KEY_1))
+		self.assertEqual(len(stored), 64)
+		self.assertNotIn(KEY_1, stored)
+		# A key hashed on the device lands on the same row key.
+		self.assertEqual(devices.device_key_of(stored), stored)
+		self.assertEqual(devices.device_key_of("9774d56d682e549c"), "")
+		self.assertEqual(devices.device_key_of(""), "")
+
+	def test_same_device_key_under_two_install_ids_is_one_row(self):
+		_set_latest(PACKHOUSE, "1.1.16", "101.1")
+		frappe.set_user(USER_A)
+		self._register(install_id=INSTALL_A, device_key=KEY_1, app_version="1.1.15")
+		# The app lost its stored id: the same scanner reports under a new one.
+		frappe.set_user(USER_B)
+		result = self._register(install_id=INSTALL_B, device_key=KEY_1, app_version="1.1.16")
+		frappe.set_user("Administrator")
+
+		self.assertEqual(result["install_id"], INSTALL_A)
+		self.assertEqual([r.name for r in self._rows_of_test_installs()], [INSTALL_A])
+		row = frappe.db.get_value(devices.INSTALL, INSTALL_A, ["user", "app_version", "status"], as_dict=True)
+		self.assertEqual((row.user, row.app_version, row.status), (USER_B, "1.1.16", "current"))
+		users = {u.user: u for u in devices._install_users(INSTALL_A)}
+		self.assertEqual(set(users), {USER_A, USER_B})
+
+	def test_different_device_keys_with_same_model_are_two_rows(self):
+		frappe.set_user(USER_A)
+		self._register(install_id=INSTALL_A, device_key=KEY_1, device_model="EDA52", os_version="11")
+		self._register(install_id=INSTALL_B, device_key=KEY_2, device_model="EDA52", os_version="11")
+		frappe.set_user("Administrator")
+		rows = self._rows_of_test_installs()
+		self.assertEqual([r.name for r in rows], [INSTALL_A, INSTALL_B])
+		self.assertNotEqual(rows[0].device_key, rows[1].device_key)
+
+	def test_keyless_duplicate_is_merged_when_it_reports_with_the_key(self):
+		frappe.set_user(USER_A)
+		self._register(install_id=INSTALL_A, device_key=KEY_1, app_version="1.1.15", reason="login")
+		# Row B: the same scanner on an old build that sent no key.
+		self._register(install_id=INSTALL_B, app_version="1.1.15", reason="login")
+		frappe.set_user(USER_B)
+		self._register(install_id=INSTALL_B, app_version="1.1.15", reason="login")
+		frappe.set_user("Administrator")
+		frappe.db.set_value(
+			devices.INSTALL_USER,
+			devices._install_user_row(INSTALL_B, USER_A).name,
+			"first_seen",
+			add_days(now_datetime(), -3),
+			update_modified=False,
+		)
+		frappe.db.set_value(
+			devices.INSTALL, INSTALL_B, "first_seen", add_days(now_datetime(), -3), update_modified=False
+		)
+		self.assertEqual(len(self._rows_of_test_installs()), 2)
+
+		# Row B's app updates and now sends the key: B is folded into A.
+		frappe.set_user(USER_B)
+		result = self._register(install_id=INSTALL_B, device_key=KEY_1, app_version="1.1.16")
+		frappe.set_user("Administrator")
+
+		self.assertEqual(result["install_id"], INSTALL_A)
+		self.assertEqual([r.name for r in self._rows_of_test_installs()], [INSTALL_A])
+		self.assertFalse(frappe.db.exists(devices.INSTALL_USER, {"parent": INSTALL_B}))
+		row = frappe.db.get_value(
+			devices.INSTALL,
+			INSTALL_A,
+			["user", "app_version", "previous_app_version", "launches", "first_seen"],
+			as_dict=True,
+		)
+		self.assertEqual(row.user, USER_B)
+		self.assertEqual(row.app_version, "1.1.16")
+		self.assertEqual(row.previous_app_version, "1.1.15")
+		# A's 1 + B's 2 + this report.
+		self.assertEqual(row.launches, 4)
+		self.assertLess(row.first_seen, add_days(now_datetime(), -2))
+
+		users = {u.user: u for u in devices._install_users(INSTALL_A)}
+		self.assertEqual(set(users), {USER_A, USER_B})
+		self.assertEqual(users[USER_A].logins, 2)
+		self.assertLess(users[USER_A].first_seen, add_days(now_datetime(), -2))
+		self.assertEqual(users[USER_B].app_version, "1.1.16")
+		self.assertEqual(
+			[
+				u.idx
+				for u in frappe.get_all(
+					devices.INSTALL_USER, filters={"parent": INSTALL_A}, fields=["idx"], order_by="idx"
+				)
+			],
+			[1, 2],
+		)
+
+	def test_keyless_row_takes_the_key_when_it_reports_one(self):
+		frappe.set_user(USER_A)
+		self._register(install_id=INSTALL_A)
+		self.assertFalse(frappe.db.get_value(devices.INSTALL, INSTALL_A, "device_key"))
+		# Inside the throttle window: the key is still written.
+		self._register(install_id=INSTALL_A, device_key=KEY_1)
+		self.assertEqual(
+			frappe.db.get_value(devices.INSTALL, INSTALL_A, "device_key"), devices.device_key_of(KEY_1)
+		)
+
+	def test_row_with_another_key_is_not_merged(self):
+		frappe.set_user(USER_A)
+		self._register(install_id=INSTALL_A, device_key=KEY_1)
+		self._register(install_id=INSTALL_B, device_key=KEY_2)
+		self._register(install_id=INSTALL_B, device_key=KEY_1, reason="login")
+		frappe.set_user("Administrator")
+		self.assertEqual([r.name for r in self._rows_of_test_installs()], [INSTALL_A, INSTALL_B])
+
+	def test_without_device_key_each_install_id_is_its_own_row(self):
+		frappe.set_user(USER_A)
+		self._register(install_id=INSTALL_A, device_model="EDA52")
+		self._register(install_id=INSTALL_B, device_model="EDA52")
+		frappe.set_user("Administrator")
+		rows = self._rows_of_test_installs()
+		self.assertEqual([r.name for r in rows], [INSTALL_A, INSTALL_B])
+		self.assertFalse(any(r.device_key for r in rows))
+
+	def test_each_account_keeps_its_own_version(self):
+		_set_latest(PACKHOUSE, "1.1.16", "101.1")
+		frappe.set_user(USER_A)
+		self._register(device_key=KEY_1, app_version="1.1.15")
+		frappe.set_user(USER_B)
+		self._register(install_id=INSTALL_B, device_key=KEY_1, app_version="1.1.16")
+		frappe.set_user("Administrator")
+
+		reply = devices.installs(app=PACKHOUSE)
+		entries = [r for r in reply["rows"] if r["install_id"] in INSTALLS]
+		self.assertEqual(len(entries), 1)
+		entry = entries[0]
+		self.assertEqual(
+			(entry["app_version"], entry["status"], entry["user"]), ("1.1.16", "current", USER_B)
+		)
+		self.assertEqual(entry["user_count"], 2)
+		versions = {u["user"]: u["app_version"] for u in entry["users"]}
+		self.assertEqual(versions, {USER_A: "1.1.15", USER_B: "1.1.16"})
+		self.assertEqual(entry["users"][0]["user"], USER_B)
+		self.assertTrue(all(u["last_seen"] for u in entry["users"]))
+		self.assertTrue(entry["keyed"])
+		self.assertNotIn("device_key", entry)
+		# Filtering by an earlier account still finds the device.
+		by_a = [r for r in devices.install_rows(app=PACKHOUSE, user=USER_A) if r.install_id in INSTALLS]
+		self.assertEqual(len(by_a), 1)
+
 	# ---------------------------------------------------------------- listing
 
 	def test_installs_sorts_behind_first_and_hides_dormant(self):
@@ -304,6 +465,8 @@ class IntegrationTestMobileAppInstalls(IntegrationTestCase):
 		row = next(r for r in data if r["install_id"] == INSTALL_A)
 		self.assertEqual(row["status"], "behind_ota")
 		self.assertEqual(row["update_to"], "1.1.21 (reopen the app)")
+		self.assertEqual(row["user_count"], 1)
+		self.assertIn("(1.1.20)", row["users"])
 
 	# ----------------------------------------------------------------- latest
 

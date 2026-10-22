@@ -2499,9 +2499,10 @@ def deleteSavedTrolleys():
 	# loaded_in_trolley, in_transit, transit_truck, shelf, …) — the v15 custom_*
 	# names don't exist here. The OPL's pick table is `table_ytkc`, not `locations`.
 	# Frappe Server Script (Type: API), api_method = deleteSavedTrolleys
-	# Undo a SAVED trolley grouping WITHOUT re-shelving its buckets.
-	# Clears trolley_id / loaded_in_trolley / awaiting_transfer
-	# on the trolley's Pick List Item rows, leaving shelf untouched.
+	# Undo a SAVED trolley: its buckets go back exactly as before the scan
+	# (transfer_scheduling.back_to_farm_shelf) -- off the trolley, back on their
+	# farm shelf, and waiting for transfer again unless the order delivers today
+	# or earlier (then on the shelf only).
 	# Only acts on rows not yet on a truck (not in_transit, no transfer truck);
 	# loaded ones are skipped and reported back.
 	#
@@ -2535,7 +2536,16 @@ def deleteSavedTrolleys():
 			rows = frappe.get_all(
 				"Pick List Item",
 				filters=[["trolley_id", "in", trolley_ids]],
-				fields=["name", "parent", "trolley_id", "in_transit", "transit_truck"],
+				fields=[
+					"name",
+					"parent",
+					"bucket",
+					"farm",
+					"source_warehouse",
+					"trolley_id",
+					"in_transit",
+					"transit_truck",
+				],
 			)
 			# Rows already loaded on a transfer truck stay with it (and its trip): a reused
 			# trolley id still carries them. transit_truck alone is no proof: allocation
@@ -2566,6 +2576,7 @@ def deleteSavedTrolleys():
 			cleared_count = 0
 			skipped = {}
 			skipped_farm = {}
+			undo = {}  # (opl, UPPER(bucket)) -> its rows on the deleted trolleys
 			m = 0
 			while m < len(rows):
 				r = rows[m]
@@ -2575,19 +2586,13 @@ def deleteSavedTrolleys():
 				elif r.in_transit == 1 or (r.transit_truck and r.transit_truck in transfer_trucks):
 					skipped[r.trolley_id] = 1
 				else:
-					if not dry_run:
-						frappe.db.set_value(
-							"Pick List Item",
-							r.name,
-							{
-								"trolley_id": "",
-								"loaded_in_trolley": 0,
-								"awaiting_transfer": 0,
-							},
-							update_modified=True,
-						)
+					undo.setdefault((r.parent, (r.bucket or r.name).upper()), []).append(r)
 					cleared_count = cleared_count + 1
 				m = m + 1
+
+			reshelved = []
+			if not dry_run:
+				reshelved = _undo_trolley_rows(undo)
 
 			skipped_loaded = []
 			for k2 in skipped:
@@ -2603,10 +2608,68 @@ def deleteSavedTrolleys():
 				"matched_rows": len(rows),
 				"skipped_loaded": skipped_loaded,
 				"skipped_other_farm": skipped_other_farm,
+				"reshelved": reshelved,
 			}
 
 	except Exception as e:
 		frappe.response["message"] = {"status": "error", "message": str(e)}
+
+
+def _undo_trolley_rows(undo):
+	"""deleteSavedTrolleys: put each bucket of the deleted trolleys back as it was before
+	its scan (transfer_scheduling.back_to_farm_shelf, due rule of today). `undo`:
+	{(opl, UPPER(bucket)): pick rows on the trolley}. A row it does not reach (shelved
+	since, no bucket) only loses its trolley id. One bucket at a time: a failure leaves
+	that bucket as it was and the rest go on. Returns [{bucket, opl, shelf, awaiting}]."""
+	from upande_packhouse.api import transfer_control as tc
+
+	out = []
+	for (opl, _bkt), rows in undo.items():
+		r = rows[0]
+		frappe.db.savepoint("undo_trolley")
+		try:
+			back = (
+				tc.back_to_farm_shelf(r.bucket, opl, _row_farm(r))
+				if r.bucket
+				else {"shelf": None, "carried": False, "due": ""}
+			)
+			for x in rows:
+				if frappe.db.get_value("Pick List Item", x.name, "trolley_id"):
+					frappe.db.set_value(
+						"Pick List Item",
+						x.name,
+						{"trolley_id": "", "loaded_in_trolley": 0},
+						update_modified=True,
+					)
+			if r.bucket:
+				tc.log_transfer_event(
+					r.bucket,
+					"Back to awaiting transfer" if back.get("carried") else "Back on farm shelf",
+					opl=opl,
+					farm=_row_farm(r),
+					shelf=back.get("shelf"),
+					details="Trolley {0} deleted{1}{2}".format(
+						r.trolley_id,
+						"; back on shelf {0}".format(back["shelf"]) if back.get("shelf") else "",
+						""
+						if back.get("carried")
+						else "; not carried over: order due {0}".format(back.get("due")),
+					),
+				)
+			out.append(
+				{
+					"bucket": r.bucket,
+					"opl": opl,
+					"shelf": back.get("shelf"),
+					"awaiting": 1 if back.get("carried") else 0,
+				}
+			)
+		except Exception:
+			frappe.db.rollback(save_point="undo_trolley")
+			frappe.log_error(
+				"deleteSavedTrolleys: undo failed for " + str(r.bucket or r.name), frappe.get_traceback()
+			)
+	return out
 
 
 def _farm_pick_rows(farm, filters, starts_with=False, **kwargs):
