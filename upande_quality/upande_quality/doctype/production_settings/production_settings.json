@@ -39,7 +39,6 @@
   "auto_dispatch_full_trips",
   "carry_over_unshelved_buckets",
   "allow_partial_truck_load",
-  "min_truck_load_pct",
   "release_trips_without_confirmation"
  ],
  "fields": [
@@ -225,12 +224,6 @@
    "label": "Allow Sending Partly Loaded Trucks"
   },
   {
-   "depends_on": "allow_partial_truck_load",
-   "fieldname": "min_truck_load_pct",
-   "fieldtype": "Percent",
-   "label": "Minimum Truck Load (%)"
-  },
-  {
    "default": "50",
    "fieldname": "pack_waiting_replacement_pct",
    "fieldtype": "Percent",
@@ -241,7 +234,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-22 08:00:00.000000",
+ "modified": "2026-10-28 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
