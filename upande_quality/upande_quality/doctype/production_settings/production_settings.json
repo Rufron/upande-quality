@@ -39,7 +39,6 @@
   "auto_dispatch_full_trips",
   "carry_over_unshelved_buckets",
   "allow_partial_truck_load",
-  "min_truck_load_pct",
   "release_trips_without_confirmation"
  ],
  "fields": [
@@ -223,12 +222,6 @@
    "fieldname": "allow_partial_truck_load",
    "fieldtype": "Check",
    "label": "Allow Sending Partly Loaded Trucks"
-  },
-  {
-   "depends_on": "allow_partial_truck_load",
-   "fieldname": "min_truck_load_pct",
-   "fieldtype": "Percent",
-   "label": "Minimum Truck Load (%)"
   },
   {
    "default": "50",

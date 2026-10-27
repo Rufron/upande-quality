@@ -2892,16 +2892,15 @@ def fetchAllocatedBuckets():
 		farm_name = payload["farm"]
 		opl_name = payload.get("opl_name")  # Optional: filter by specific OPL
 
-		# Delivery-date window: [today, tomorrow] -- the orders being packed now. Today is
-		# included: an order due today whose buckets are still at the farm has to reach
-		# the farm's list. Overridable via payload from_date/to_date. A specific opl_name
-		# request ignores the window.
+		# Delivery-date window: [tomorrow, the day after] -- the days trucks are planned
+		# for. Overridable via payload from_date/to_date. A specific opl_name request
+		# ignores the window.
 		from_date = payload.get("from_date")
 		to_date = payload.get("to_date")
 		if not from_date:
-			from_date = str(frappe.utils.today())
+			from_date = str(frappe.utils.add_days(frappe.utils.today(), 1))
 		if not to_date:
-			to_date = str(frappe.utils.add_days(frappe.utils.today(), 1))
+			to_date = str(frappe.utils.add_days(frappe.utils.today(), 2))
 
 		vehicles = frappe.get_all(
 			"Vehicle",
@@ -2950,9 +2949,26 @@ def fetchAllocatedBuckets():
 				"transfer_priority",
 				# On a trolley already (any phone): the app counts it as added, not requested.
 				"loaded_in_trolley",
-			],
+				"creation",
+			]
+			+ (["loaded_on_truck"] if frappe.db.has_column("Pick List Item", "loaded_on_truck") else []),
 		)
 		pick_list_items = [it for it in pick_list_items if _row_farm(it) == farm_name]
+		# Loaded on a truck is past the trolley: added, as Bucket Logistics counts it.
+		for it in pick_list_items:
+			if frappe.utils.cint(it.get("loaded_on_truck")):
+				it["loaded_in_trolley"] = 1
+		# A bucket harvested again since its stems were allocated no longer holds them.
+		from upande_packhouse.api.transfer_control import stale_waiting_buckets
+
+		stale = stale_waiting_buckets(
+			[(it["bucket"], it["creation"]) for it in pick_list_items if not it.get("loaded_in_trolley")]
+		)
+		pick_list_items = [
+			it
+			for it in pick_list_items
+			if it.get("loaded_in_trolley") or (it["bucket"], it["creation"]) not in stale
+		]
 
 		if not pick_list_items:
 			frappe.response["message"] = "No remote buckets awaiting transfer found for farm: " + farm_name
@@ -3010,9 +3026,23 @@ def fetchAllocatedBuckets():
 				# the planner tops trucks up with later days' orders.
 				on_trip = _farm_trip_opls(farm_name, list(opl_map))
 				# Rebuild opl_map to only OPLs whose SO is in the delivery window, or on a trip.
+				# An order delivering today or earlier is never sent, trip or not.
+				past_so = (
+					set(
+						frappe.get_all(
+							"Sales Order",
+							filters={"name": ["in", so_names], "delivery_date": ["<=", frappe.utils.today()]},
+							pluck="name",
+						)
+					)
+					if so_names
+					else set()
+				)
 				kept = {}
 				for n in opl_map:
 					so = opl_map[n].get("sales_order")
+					if so in past_so:
+						continue
 					if (so and so in in_window_so) or n in on_trip:
 						kept[n] = opl_map[n]
 				opl_map = kept
@@ -4508,6 +4538,17 @@ def getFarmPlannedTrips():
 			on_farm_trip = _farm_trip_opls(farm_name, list(opl_states), on_road=True)
 			for op in [o for o, v in opl_states.items() if v != "arrived" and o not in on_farm_trip]:
 				del opl_states[op]
+			# An order delivering today or earlier still waiting here is not reported: the
+			# app drops it, as the download no longer sends it.
+			waiting = [o for o, v in opl_states.items() if v == "waiting"]
+			if waiting:
+				for op in frappe.db.sql_list(
+					"""SELECT opl.name FROM `tabOrder Pick List` opl
+					JOIN `tabSales Order` so ON so.name = opl.sales_order
+					WHERE opl.name IN %(o)s AND so.delivery_date <= %(today)s""",
+					{"o": tuple(waiting), "today": frappe.utils.today()},
+				):
+					del opl_states[op]
 		# Trips with an order row from this farm, from the moment they are planned: a
 		# trip still filling (Draft) shows too, so the farm sees its orders before the
 		# truck is full; the app marks it Planned until it is dispatched (Scheduled).
