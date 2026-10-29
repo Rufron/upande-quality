@@ -11,6 +11,7 @@
   "amber_time",
   "discard_age",
   "max_shelving_age",
+  "inactive_bucket_days",
   "column_break_segn",
   "section_break_rvm8",
   "shelf_locations",
@@ -212,29 +213,18 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "0",
-   "fieldname": "carry_over_unshelved_buckets",
-   "fieldtype": "Check",
-   "label": "Carry Unshelved Buckets to the Truck's Next Trip"
-  },
-  {
-   "default": "0",
-   "fieldname": "allow_partial_truck_load",
-   "fieldtype": "Check",
-   "label": "Allow Sending Partly Loaded Trucks"
-  },
-  {
-   "default": "50",
-   "fieldname": "pack_waiting_replacement_pct",
-   "fieldtype": "Percent",
-   "label": "Pack While Waiting for a Replacement From (%)"
+   "default": "4",
+   "description": "Bucket Journey > Inactive tab: a bucket still in the process (on a shelf, in transit, allocated, received-not-shelved) with no activity for this many days is flagged. Users can change it per view.",
+   "fieldname": "inactive_bucket_days",
+   "fieldtype": "Int",
+   "label": "Inactive Bucket Days"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-28 08:00:00.000000",
+ "modified": "2026-10-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
