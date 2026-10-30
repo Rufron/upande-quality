@@ -12,6 +12,7 @@
   "amber_time",
   "discard_age",
   "max_shelving_age",
+  "inactive_bucket_days",
   "column_break_segn",
   "section_break_rvm8",
   "shelf_locations",
