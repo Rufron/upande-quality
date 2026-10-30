@@ -1,0 +1,434 @@
+{% extends "templates/web.html" %}
+{% block page_content %}
+{% raw %}
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Discard Requests | Upande Quality</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* hide Frappe website chrome, take over viewport */
+html,body{margin:0!important;padding:0!important;overflow:hidden!important;height:100vh!important}
+.navbar,header,.page-breadcrumbs,.page-header,.web-footer,footer,.website-edit-button,.btn-edit-page,.scroll-to-top,.website-banner,.web-page-edit{display:none!important}
+.ufd{
+  --ink:#0a0a0a;--ink-1:#1a1a18;--ink-2:#2a2a26;--ink-3:#3a3a34;--ink-4:#5a5a52;
+  --ink-mute:#8a8780;--ink-faint:#b8b6ae;
+  --bg:#f4f3ef;--surface:#fafaf6;--surface-2:#fff;
+  --hairline:rgba(10,10,10,0.06);
+  --shadow-card:0 1px 0 rgba(10,10,10,0.04), 0 8px 32px -16px rgba(10,10,10,0.10);
+  --shadow-hover:0 1px 0 rgba(10,10,10,0.06), 0 24px 48px -24px rgba(10,10,10,0.18);
+  --signal:#228883;--good:#1a8a3a;--warn:#a16207;--bad:#c4302b;
+  --grad-ink:linear-gradient(135deg,#0a0a0a 0%,#3a3a34 100%);
+  --sans:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --display:'Fraunces',Georgia,serif;
+  position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;background:var(--bg);
+  font-family:var(--sans);font-size:14px;color:var(--ink-3);line-height:1.55;-webkit-font-smoothing:antialiased;z-index:2147483000}
+.ufd *{box-sizing:border-box}
+.ufd a{color:inherit;text-decoration:none}
+/* topbar */
+.ufd .topbar{background:var(--surface-2);padding:12px 32px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:10;box-shadow:0 1px 0 rgba(10,10,10,0.03),0 4px 16px -8px rgba(10,10,10,0.05)}
+.ufd .brand{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.ufd .brand .mark{width:36px;height:36px;border-radius:11px;background:var(--grad-ink);color:#fafaf6;display:grid;place-items:center;font:700 14px var(--sans)}
+.ufd .brand .p{font:600 14px var(--sans);color:var(--ink);letter-spacing:-.2px;line-height:1.1}
+.ufd .brand .p small{display:block;font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute);margin-top:1px}
+.ufd .tnav{display:flex;gap:2px;margin-left:14px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.ufd .tnav::-webkit-scrollbar{display:none}
+.ufd .tnav a{padding:8px 13px;font:500 12.5px var(--sans);color:var(--ink-4);border-radius:999px;white-space:nowrap;transition:all .2s}
+.ufd .tnav a:hover{background:rgba(10,10,10,0.04);color:var(--ink)}
+.ufd .tnav a.on{background:var(--ink);color:#fafaf6}
+.ufd .tnav .sep{width:1px;height:18px;background:var(--hairline);margin:0 6px;flex-shrink:0}
+.ufd .topright{margin-left:auto;display:flex;align-items:center;gap:12px;flex-shrink:0}
+/* page */
+.ufd .page{max-width:1480px;margin:0 auto;padding:28px 32px 80px}
+.ufd .pagehead{display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px;margin-bottom:20px}
+.ufd .eyebrow{font:500 11px var(--sans);text-transform:uppercase;letter-spacing:2.2px;color:var(--ink-mute);margin-bottom:8px;display:inline-flex;align-items:center;gap:10px}
+.ufd .eyebrow::before{content:"";width:18px;height:1px;background:var(--ink-3)}
+.ufd .ptitle{font:600 34px/1.05 var(--display);color:var(--ink);letter-spacing:-.8px;margin:0}
+.ufd .plive{margin-top:6px;display:inline-flex;align-items:center;gap:8px;font:500 11px var(--sans);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute)}
+.ufd .plive .dot{width:8px;height:8px;background:var(--signal);border-radius:50%;box-shadow:0 0 0 4px rgba(34,136,131,0.18);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(34,136,131,0.18)}50%{box-shadow:0 0 0 6px rgba(34,136,131,0.04)}}
+.ufd .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.ufd .fgrp{display:flex;align-items:center;gap:6px;background:var(--surface-2);border-radius:999px;padding:5px 12px;box-shadow:var(--shadow-card)}
+.ufd .fgrp label{font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1px;color:var(--ink-mute)}
+.ufd .fgrp select,.ufd .fgrp .form-control,.ufd .fgrp input[type=date]{border:0;background:transparent;font:500 12px var(--sans);color:var(--ink);outline:0;cursor:pointer}
+.ufd .btn{border:0;background:var(--surface-2);border-radius:999px;padding:9px 16px;font:500 12px var(--sans);color:var(--ink-4);cursor:pointer;box-shadow:var(--shadow-card);transition:all .2s}
+.ufd .btn:hover{color:var(--ink);transform:translateY(-1px)}
+.ufd .btn.dark{background:var(--ink);color:#fafaf6}
+#activeFilters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.ufd .active-filter-badge{background:rgba(10,10,10,0.05);border-radius:999px;padding:4px 12px;font:500 11px var(--sans);color:var(--ink-3)}
+/* KPIs 5-up */
+.ufd .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:14px}
+.ufd .kpi{background:var(--surface-2);border-radius:18px;padding:20px 22px;box-shadow:var(--shadow-card);transition:all .25s;position:relative;overflow:hidden}
+.ufd .kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.ufd .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ka,var(--ink))}
+.ufd .kpi .lbl{font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.6px;color:var(--ink-mute);margin-bottom:10px}
+.ufd .kpi .v{font:600 30px/1 var(--sans);color:var(--ink);letter-spacing:-.8px;font-feature-settings:"tnum";word-break:break-word}
+.ufd .kpi .sub{margin-top:8px;font:500 11px var(--sans);color:var(--ink-mute)}
+/* cards */
+.ufd .card{background:var(--surface-2);border-radius:20px;padding:22px 24px;box-shadow:var(--shadow-card);margin-bottom:14px}
+.ufd .card__head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;gap:16px}
+.ufd .card__head h3{margin:0;font:600 15px var(--display);color:var(--ink);letter-spacing:-.2px}
+.ufd .card__head .meta{font:500 11px var(--sans);color:var(--ink-mute);text-transform:uppercase;letter-spacing:1.2px}
+.ufd .row-21{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;align-items:start}
+.ufd .chartbox{position:relative;min-height:230px}
+.ufd .aph-empty,.ufd .aph-loading,.ufd .ufd-empty{padding:40px;text-align:center;color:var(--ink-mute);font-size:13px}
+/* tables */
+.ufd table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.ufd .tbl th{text-align:left;padding:10px 14px;font:600 10px var(--sans);color:var(--ink-mute);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--hairline);white-space:nowrap;position:sticky;top:0;background:var(--surface-2)}
+.ufd .tbl td{padding:10px 14px;border-bottom:1px solid var(--hairline);font-feature-settings:"tnum";white-space:nowrap;color:var(--ink-3)}
+.ufd .tbl tr:last-child td{border-bottom:0}
+.ufd .tbl tr:hover td{background:rgba(10,10,10,0.02)}
+.ufd .tbl td.num,.ufd .tbl th.num{text-align:right}
+.ufd .tbl td.dim{color:var(--ink-mute)}
+.ufd .empty-state{padding:30px;text-align:center;color:var(--ink-mute)}
+.ufd .tblscroll{overflow:auto;border-radius:12px}
+@media (max-width:1100px){.ufd .kpi-grid{grid-template-columns:repeat(2,1fr)}.ufd .row-21{grid-template-columns:1fr}}
+
+.ufd .dqseg{display:flex;background:var(--surface-2);border-radius:999px;padding:3px;box-shadow:var(--shadow-card)}
+.ufd .dqseg button{border:0;background:transparent;border-radius:999px;padding:6px 13px;font:500 12px var(--sans);color:var(--ink-4);cursor:pointer}
+.ufd .dqseg button.on{background:var(--ink);color:#fafaf6}
+.ufd .dqpill{display:inline-block;padding:2px 10px;border-radius:999px;font:600 10.5px var(--sans);letter-spacing:.3px}
+.ufd .p-system{background:rgba(10,10,10,.07);color:var(--ink-3)}.ufd .p-user{background:rgba(34,136,131,.13);color:#1b6b67}
+.ufd .s-Approved{background:rgba(26,138,58,.12);color:#1a8a3a}.ufd .s-Pending{background:rgba(161,98,7,.14);color:#a16207}
+.ufd .s-Draft{background:rgba(10,10,10,.06);color:var(--ink-4)}.ufd .s-Rejected,.ufd .s-Cancelled{background:rgba(196,48,43,.12);color:#c4302b}
+.ufd .dqbar{height:6px;border-radius:99px;background:rgba(10,10,10,.07);overflow:hidden;min-width:70px}
+.ufd .dqbar i{display:block;height:100%;background:var(--signal)}
+.ufd tr.clk{cursor:pointer}
+.ufd .row-3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px;margin-bottom:14px}
+.ufd .dqbulk{display:none;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;border-radius:12px;background:rgba(34,136,131,.09);font:500 12.5px var(--sans);color:var(--ink-2)}
+.ufd .dqbulk.on{display:flex}
+.ufd .btn.teal{background:var(--signal);color:#fff}.ufd .btn.red{background:#c4302b;color:#fff}.ufd .btn[disabled]{opacity:.45;pointer-events:none}
+.ufd .dqscrim{position:fixed;inset:0;background:rgba(10,10,10,.38);z-index:50;display:none}
+.ufd .dqscrim.on{display:block}
+.ufd .dqsheet{position:fixed;top:0;right:0;left:auto;bottom:0;width:min(1060px,100%);background:var(--bg);z-index:60;transform:translateX(102%);transition:transform .25s;display:flex;flex-direction:column;box-shadow:-20px 0 60px -20px rgba(10,10,10,.35)}
+.ufd .dqsheet.on{transform:none}
+.ufd .dhead{padding:18px 26px;background:var(--surface-2);display:flex;align-items:center;gap:14px;box-shadow:0 1px 0 var(--hairline)}
+.ufd .dhead h2{margin:0;font:600 20px var(--display);color:var(--ink);flex:1}
+.ufd .dbody{padding:20px 26px;overflow-y:auto;flex:1}
+.ufd .dfoot{padding:14px 26px;background:var(--surface-2);display:flex;gap:10px;align-items:center;justify-content:flex-end;box-shadow:0 -1px 0 var(--hairline)}
+.ufd .dfoot .grow{flex:1;font:500 12.5px var(--sans);color:var(--ink-4)}
+.ufd .filters{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px}
+.ufd .fld>label{display:block;font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.1px;color:var(--ink-mute);margin-bottom:5px}
+.ufd .ms{position:relative}
+.ufd .ms-btn{width:100%;text-align:left;border:1px solid var(--hairline);background:var(--surface-2);border-radius:12px;padding:9px 12px;font:500 12.5px var(--sans);color:var(--ink);cursor:pointer;display:flex;gap:8px;justify-content:space-between;align-items:center}
+.ufd .ms-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ufd .ms-btn.has{border-color:var(--signal)}
+.ufd .ms-dd{display:none;position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#fff;border:1px solid rgba(10,10,10,.1);border-radius:12px;box-shadow:0 14px 34px -14px rgba(10,10,10,.35);z-index:70;padding:8px}
+.ufd .ms-dd.on{display:block}
+.ufd .ms-dd input[type=text]{width:100%;border:1px solid var(--hairline);border-radius:8px;padding:6px 9px;font:500 12px var(--sans);margin-bottom:6px;outline:0}
+.ufd .ms-acts{display:flex;gap:12px;margin:0 2px 6px;font:500 11px var(--sans)}
+.ufd .ms-acts a{color:var(--signal);cursor:pointer}
+.ufd .ms-list{max-height:210px;overflow-y:auto}
+.ufd .ms-list label{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:6px;font-size:12.5px;cursor:pointer}
+.ufd .ms-list label:hover{background:rgba(10,10,10,.04)}
+.ufd .agebox{display:flex;gap:6px}
+.ufd .agebox input,.ufd .agebox select,.ufd textarea{border:1px solid var(--hairline);background:var(--surface-2);border-radius:12px;padding:9px 12px;font:500 12.5px var(--sans);color:var(--ink);outline:0;width:100%}
+.ufd .chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.ufd .chip{background:rgba(34,136,131,.12);color:#1b6b67;border-radius:999px;padding:3px 11px;font:500 11px var(--sans)}
+.ufd .dqnote{font:500 12px var(--sans);color:var(--ink-4);margin:8px 0}
+.ufd tr.farmrow td{background:rgba(10,10,10,.035);font-weight:600;color:var(--ink)}
+.ufd .kv{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.ufd .kv div{background:var(--surface-2);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow-card)}
+.ufd .kv small{display:block;font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.1px;color:var(--ink-mute);margin-bottom:4px}
+.ufd .kv b{font:600 14px var(--sans);color:var(--ink)}
+.ufd .dqtoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:#fafaf6;padding:11px 20px;border-radius:999px;font:500 13px var(--sans);z-index:90;display:none;max-width:80vw}
+.ufd .dqtoast.bad{background:#c4302b}
+@media (max-width:1100px){.ufd .row-3{grid-template-columns:1fr}.ufd .filters{grid-template-columns:1fr 1fr}.ufd .kv{grid-template-columns:1fr 1fr}}
+</style>
+
+<div class="ufd">
+  <div class="topbar">
+    <div class="brand"><div class="mark">UQ</div><div class="p">Upande Quality<small>Discard Requests</small></div></div>
+    <div class="tnav">
+      <a href="app/upande-quality">Home</a><span class="sep"></span>
+      <a href="intake-ftr-overview">Intake FTR</a>
+      <a href="packhouse-overview">Packhouse</a>
+      <a href="rejects">Rejects</a>
+      <a href="solution-mixing-overview">Solution Mixing</a>
+      <a href="coldroom-overview">Coldroom</a>
+      <a class="on" href="discard-requests">Discards</a>
+      <span class="sep"></span>
+      <a href="quality-trends">Trends</a>
+      <a href="quality-raw-data">Raw Data</a>
+      <a href="transit-time">Transit Time</a>
+      <a href="shelving-report">Shelving</a>
+
+    </div>
+    <div class="topright"><button class="btn" id="btnRefresh">&#8635; Refresh</button><button class="btn dark" id="btnNew">+ New request</button></div>
+  </div>
+
+  <div class="page">
+    <div class="pagehead">
+      <div>
+        <div class="eyebrow">Upande Quality · Discard Requests</div>
+        <h1 class="ptitle">Discard Requests</h1>
+        <div class="plive"><span class="dot"></span>Old stock on the shelves, asked to be discarded</div>
+      </div>
+      <div class="tools">
+        <div class="dqseg" id="segOrigin"><button data-v="" class="on">All</button><button data-v="System">By the system</button><button data-v="User">By people</button></div>
+        <div class="fgrp"><label>Status</label><select id="fState"><option value="">All</option><option>Draft</option><option>Pending Approval</option><option>Approved</option><option>Rejected</option><option>Cancelled</option></select></div>
+        <div class="fgrp"><label>Farm</label><select id="fFarm"><option value="">All</option></select></div>
+        <div class="fgrp"><label>From</label><input type="date" id="fFrom"></div>
+        <div class="fgrp"><label>To</label><input type="date" id="fTo"></div>
+        <button class="btn" id="btnReset">&#8635; Reset</button>
+      </div>
+    </div>
+    <div id="errBox" class="empty-state" style="display:none;color:#c4302b"></div>
+
+    <div class="kpi-grid">
+      <div class="kpi" style="--ka:#0a0a0a"><div class="lbl">Requests</div><div class="v" id="kReq">—</div><div class="sub" id="kReqSub"></div></div>
+      <div class="kpi" style="--ka:#a16207"><div class="lbl">Waiting for approval</div><div class="v" id="kPend">—</div><div class="sub">draft or pending</div></div>
+      <div class="kpi" style="--ka:#228883"><div class="lbl">Stems asked to discard</div><div class="v" id="kStems">—</div><div class="sub" id="kBuckets"></div></div>
+      <div class="kpi" style="--ka:#1a8a3a"><div class="lbl">Discarded</div><div class="v" id="kDone">—</div><div class="sub" id="kDonePct"></div></div>
+      <div class="kpi" style="--ka:#c4302b"><div class="lbl">Still to discard</div><div class="v" id="kWait">—</div><div class="sub">approved, not yet discarded</div></div>
+    </div>
+
+    <div class="row-3">
+      <div class="card"><div class="card__head"><h3>Stems by week</h3><div class="meta">system · people</div></div><div class="chartbox" id="wTrend"></div></div>
+      <div class="card"><div class="card__head"><h3>By farm</h3><div class="meta">stems</div></div><div class="chartbox" id="wFarm"></div></div>
+      <div class="card"><div class="card__head"><h3>Top varieties</h3><div class="meta">stems</div></div><div class="chartbox" id="wVar"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card__head"><h3>Requests</h3><div class="meta" id="stamp"></div></div>
+      <div class="dqbulk" id="bulk"><span id="bulkTxt"></span><span style="flex:1"></span>
+        <button class="btn" id="bSend">Send for approval</button><button class="btn teal" id="bApprove">Approve</button><button class="btn red" id="bReject">Reject</button></div>
+      <div class="tblscroll" style="max-height:560px">
+        <table class="tbl"><thead><tr><th style="width:26px"><input type="checkbox" id="allReq"></th><th>Request</th><th>Made by</th><th>Date</th><th>Farm</th><th>Filters</th><th>Status</th><th class="num">Buckets</th><th class="num">Stems</th><th>Discarded</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="10" class="empty-state">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="dqscrim" id="scrim"></div>
+
+  <div class="dqsheet" id="dView">
+    <div class="dhead"><h2 id="vTitle"></h2><button class="btn" id="vClose">Close</button></div>
+    <div class="dbody" id="vBody"></div>
+    <div class="dfoot" id="vFoot"></div>
+  </div>
+
+  <div class="dqsheet" id="dNew">
+    <div class="dhead"><h2>New discard request</h2><button class="btn" id="nClose">Close</button></div>
+    <div class="dbody">
+      <div class="filters">
+        <div class="fld"><label>Farms</label><div class="ms" id="msFarm"></div></div>
+        <div class="fld"><label>Varieties</label><div class="ms" id="msVar"></div></div>
+        <div class="fld"><label>Lengths</label><div class="ms" id="msLen"></div></div>
+        <div class="fld"><label>Item groups</label><div class="ms" id="msGrp"></div></div>
+        <div class="fld"><label>Cold rooms</label><div class="ms" id="msCold"></div></div>
+        <div class="fld"><label>Older than</label><div class="agebox"><input type="number" min="0" step="0.5" id="nAge"><select id="nUnit" style="width:auto"><option>Days</option><option>Hours</option></select></div></div>
+      </div>
+      <div class="dqnote">Leave a box empty to include everything. Buckets already on a request, and buckets reserved for an order, are left out.</div>
+      <div id="nSummary"></div>
+      <div class="tblscroll" style="max-height:46vh"><table class="tbl"><thead><tr><th style="width:26px"><input type="checkbox" id="allGrp" checked></th><th>Farm</th><th>Variety</th><th>Length</th><th class="num">Buckets</th><th class="num">Stems</th><th class="num">Oldest (days)</th></tr></thead>
+      <tbody id="nRows"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody></table></div>
+      <div class="fld" style="margin-top:14px"><label>Remarks (optional)</label><textarea id="nRemarks" rows="2"></textarea></div>
+    </div>
+    <div class="dfoot"><div class="grow" id="nInfo"></div><button class="btn" id="nDraft">Save as draft</button><button class="btn dark" id="nSend">Create requests</button><button class="btn teal" id="nApprove" style="display:none">Create and approve</button></div>
+  </div>
+  <div class="dqtoast" id="toast"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var API='/api/method/upande_quality.api.discard_requests.';
+var charts={},opts=null,origin='',sel={},ov=null,pv=null,pvTimer=null,groupsOn={};
+function el(i){return document.getElementById(i);}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function n0(v){return Math.round(Number(v)||0).toLocaleString();}
+function toast(m,bad){var t=el('toast');t.textContent=m;t.className='dqtoast'+(bad?' bad':'');t.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(function(){t.style.display='none';},bad?7000:3500);}
+function api(m,args){
+  return new Promise(function(ok,fail){
+    (function go(tries){
+      if(!(window.frappe&&frappe.csrf_token)&&tries<50){setTimeout(function(){go(tries+1);},100);return;}
+      fetch(API+m,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json','Accept':'application/json','X-Frappe-CSRF-Token':(window.frappe&&frappe.csrf_token)||''},body:JSON.stringify(args||{})})
+      .then(function(r){return r.json().then(function(j){return{r:r,j:j};});})
+      .then(function(x){
+        if(x.r.ok&&x.j.message!==undefined){ok(x.j.message);return;}
+        var msg='Something went wrong.';
+        try{var sm=JSON.parse(x.j._server_messages||'[]');if(sm.length)msg=JSON.parse(sm[0]).message.replace(/<[^>]+>/g,'');else if(x.j.exception)msg=String(x.j.exception).split(': ').slice(1).join(': ')||msg;}catch(e){}
+        if(x.r.status===401||x.r.status===403)msg='Please log in with a user that can see Discard Requests.';
+        fail(new Error(msg));})
+      .catch(fail);
+    })(0);
+  });
+}
+function mkChart(id,cfg){if(charts[id])charts[id].destroy();var w=el(id);w.innerHTML='<canvas style="max-height:230px"></canvas>';charts[id]=new Chart(w.firstChild.getContext('2d'),cfg);}
+var AX={grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}},AXX={grid:{display:false},ticks:{color:'#8a8780',font:{size:10}}};
+function stacked(id,labels,sys,usr,horiz){
+  mkChart(id,{type:'bar',data:{labels:labels,datasets:[{label:'System',data:sys,backgroundColor:'#3a3a34',borderRadius:4},{label:'People',data:usr,backgroundColor:'#228883',borderRadius:4}]},
+   options:{indexAxis:horiz?'y':'x',responsive:true,animation:{duration:260},plugins:{legend:{position:'bottom',labels:{color:'#5a5a52',font:{size:11},boxWidth:9,usePointStyle:true}},tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+n0(horiz?c.parsed.x:c.parsed.y)+' stems';}}}},scales:{x:Object.assign({stacked:true},horiz?AX:AXX),y:Object.assign({stacked:true},horiz?AXX:AX)}}});
+}
+/* ---------- multi select ---------- */
+function MS(id,placeholder){
+  var host=el(id),all=[],on={},cb=[];
+  host.innerHTML='<button type="button" class="ms-btn"><span></span><span>&#9662;</span></button><div class="ms-dd"><input type="text" placeholder="Search"><div class="ms-acts"><a data-a="all">Select all shown</a><a data-a="none">Clear</a></div><div class="ms-list"></div></div>';
+  var btn=host.querySelector('.ms-btn'),dd=host.querySelector('.ms-dd'),q=dd.querySelector('input'),list=dd.querySelector('.ms-list');
+  function label(){var k=Object.keys(on);btn.firstChild.textContent=!k.length?placeholder:(k.length<=2?k.join(', '):k.length+' selected');btn.className='ms-btn'+(k.length?' has':'');}
+  function draw(){var f=q.value.toLowerCase();list.innerHTML=all.filter(function(v){return v.toLowerCase().indexOf(f)>=0;}).map(function(v){return '<label><input type="checkbox" value="'+esc(v)+'"'+(on[v]?' checked':'')+'>'+esc(v)+'</label>';}).join('')||'<div class="ufd-empty" style="padding:10px">Nothing found.</div>';}
+  function fire(){label();cb.forEach(function(f){f();});}
+  btn.onclick=function(e){e.stopPropagation();var o=dd.classList.contains('on');document.querySelectorAll('.ms-dd.on').forEach(function(d){d.classList.remove('on');});if(!o){dd.classList.add('on');q.value='';draw();q.focus();}};
+  dd.onclick=function(e){e.stopPropagation();};
+  q.oninput=draw;
+  list.onchange=function(e){var v=e.target.value;if(e.target.checked)on[v]=1;else delete on[v];fire();};
+  dd.querySelector('.ms-acts').onclick=function(e){var a=e.target.getAttribute('data-a');if(!a)return;var f=q.value.toLowerCase();all.forEach(function(v){if(v.toLowerCase().indexOf(f)>=0){if(a==='all')on[v]=1;else delete on[v];}});draw();fire();};
+  document.addEventListener('click',function(){dd.classList.remove('on');});
+  label();
+  return{set:function(a){all=a;Object.keys(on).forEach(function(k){if(a.indexOf(k)<0)delete on[k];});label();},get:function(){return Object.keys(on);},clear:function(){on={};label();},change:function(f){cb.push(f);}};
+}
+var M={};
+/* ---------- overview ---------- */
+function filters(){return{origin:origin,state:el('fState').value,farms:el('fFarm').value?[el('fFarm').value]:[],date_from:el('fFrom').value,date_to:el('fTo').value};}
+function load(){
+  el('errBox').style.display='none';el('stamp').textContent='Loading…';
+  return api('get_overview',filters()).then(function(d){ov=d;render(d);}).catch(function(e){var b=el('errBox');b.textContent=e.message;b.style.display='block';el('rows').innerHTML='<tr><td colspan="10" class="empty-state">No data.</td></tr>';el('stamp').textContent='';});
+}
+function filterText(r){
+  var a=[];if(r.variety)a.push(r.variety);if(r.length)a.push(r.length);if(r.item_group)a.push(r.item_group);if(r.coldroom)a.push(r.coldroom);
+  a.push('older than '+(r.age_threshold||0)+' '+String(r.age_unit||'Days').toLowerCase());return a.join(' · ');
+}
+function stPill(s){return '<span class="dqpill s-'+esc(s.split(' ')[0])+'">'+esc(s)+'</span>';}
+function who(r){return r.origin==='System'?'<span class="dqpill p-system">System</span>':'<span class="dqpill p-user">'+esc((r.owner||'').split('@')[0])+'</span>';}
+function render(d){
+  var k=d.kpis;
+  el('kReq').textContent=n0(k.requests);el('kReqSub').textContent=n0(k.system)+' by the system · '+n0(k.user)+' by people';
+  el('kPend').textContent=n0(k.pending);el('kStems').textContent=n0(k.stems);el('kBuckets').textContent=n0(k.buckets)+' buckets';
+  el('kDone').textContent=n0(k.done_stems);el('kDonePct').textContent=k.stems?Math.round(100*k.done_stems/k.stems)+'% of what was asked':'';
+  el('kWait').textContent=n0(k.waiting_stems);
+  var w=d.by_week.slice(-12);
+  if(w.length)stacked('wTrend',w.map(function(x){return x.week;}),w.map(function(x){return x.system;}),w.map(function(x){return x.user;}));else el('wTrend').innerHTML='<div class="ufd-empty">No data.</div>';
+  if(d.by_farm.length)stacked('wFarm',d.by_farm.map(function(x){return x.farm;}),d.by_farm.map(function(x){return x.system;}),d.by_farm.map(function(x){return x.user;}),true);else el('wFarm').innerHTML='<div class="ufd-empty">No data.</div>';
+  if(d.by_variety.length)mkChart('wVar',{type:'bar',data:{labels:d.by_variety.map(function(x){return x.variety;}),datasets:[{data:d.by_variety.map(function(x){return x.stems;}),backgroundColor:'#3a3a34',borderRadius:4,barThickness:12}]},options:{indexAxis:'y',responsive:true,animation:{duration:260},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+n0(c.parsed.x)+' stems';}}}},scales:{x:AX,y:AXX}}});else el('wVar').innerHTML='<div class="ufd-empty">No data.</div>';
+  var farms=el('fFarm'),cur=farms.value;
+  el('rows').innerHTML=d.requests.length?d.requests.map(function(r){
+    var pct=r.stems?Math.round(100*r.done_stems/r.stems):0;
+    return '<tr class="clk" data-n="'+esc(r.name)+'"><td><input type="checkbox" class="rc" value="'+esc(r.name)+'" data-s="'+esc(r.state)+'"></td><td><b>'+esc(r.name)+'</b></td><td>'+who(r)+'</td><td>'+esc(r.requested_date)+'</td><td>'+esc(r.farm||'—')+'</td><td class="dim">'+esc(filterText(r))+'</td><td>'+stPill(r.state)+'</td><td class="num">'+n0(r.buckets)+'</td><td class="num">'+n0(r.stems)+'</td><td><div class="dqbar" title="'+n0(r.done_stems)+' of '+n0(r.stems)+' stems"><i style="width:'+pct+'%"></i></div></td></tr>';}).join('')
+   :'<tr><td colspan="10" class="empty-state">No discard requests for these filters.</td></tr>';
+  el('stamp').textContent=d.requests.length+' requests';
+  el('allReq').checked=false;bulk();
+}
+function bulk(){
+  var c=[].slice.call(document.querySelectorAll('.rc:checked')),b=el('bulk');
+  b.classList.toggle('on',c.length>0);
+  var st={};c.forEach(function(x){st[x.getAttribute('data-s')]=1;});
+  el('bulkTxt').textContent=c.length+' selected';
+  var canA=opts&&opts.workflow&&opts.workflow.can_approve,canR=opts&&opts.workflow&&opts.workflow.can_reject;
+  el('bSend').style.display=st.Draft?'':'none';
+  el('bApprove').style.display=(st['Pending Approval']&&canA)?'':'none';
+  el('bReject').style.display=(st['Pending Approval']&&canR)?'':'none';
+}
+function act(action,names,after){
+  api('act_on_requests',{names:names,action:action}).then(function(r){
+    if(r.done.length)toast(r.done.length+' request'+(r.done.length>1?'s':'')+' updated.');
+    if(r.failed.length)toast(r.failed[0].name+': '+r.failed[0].error,true);
+    load();if(after)after();}).catch(function(e){toast(e.message,true);});
+}
+function checked(){return [].slice.call(document.querySelectorAll('.rc:checked')).map(function(x){return x.value;});}
+/* ---------- detail ---------- */
+function openView(name){
+  el('vTitle').textContent=name;el('vBody').innerHTML='<div class="aph-loading">Loading…</div>';el('vFoot').innerHTML='';
+  el('dView').classList.add('on');el('scrim').classList.add('on');
+  api('get_request',{name:name}).then(function(d){
+    var done=0,stems=0,dstems=0;d.buckets.forEach(function(b){stems+=+b.stem_qty||0;if(b.discarded){done++;dstems+=+b.stem_qty||0;}});
+    var madeBy=d.origin==='System'?'System':(d.requested_by||d.owner);
+    el('vBody').innerHTML='<div class="kv"><div><small>Status</small><b>'+stPill(d.state)+'</b></div><div><small>Made by</small><b>'+esc(madeBy)+'</b></div><div><small>Date</small><b>'+esc(d.requested_date)+'</b></div><div><small>Approved by</small><b>'+esc(d.approved_by||'—')+'</b></div>'
+     +'<div><small>Farm</small><b>'+esc(d.farm||'—')+'</b></div><div><small>Filters</small><b style="font-size:12px">'+esc(filterText(d))+'</b></div><div><small>Buckets discarded</small><b>'+done+' of '+d.buckets.length+'</b></div><div><small>Stems discarded</small><b>'+n0(dstems)+' of '+n0(stems)+'</b></div></div>'
+     +(d.remarks?'<div class="dqnote" style="white-space:pre-line">'+esc(d.remarks)+'</div>':'')
+     +'<div class="tblscroll" style="max-height:55vh"><table class="tbl"><thead><tr><th>Bucket</th><th>Farm</th><th>Greenhouse</th><th>Shelf</th><th>Variety</th><th>Length</th><th class="num">Stems</th><th class="num">Age (days)</th><th>Discarded</th></tr></thead><tbody>'
+     +d.buckets.map(function(b){return '<tr><td>'+esc(b.bucket_id)+'</td><td>'+esc(b.farm)+'</td><td>'+esc(b.greenhouse)+'</td><td>'+esc(b.shelf)+'</td><td>'+esc(b.variety)+'</td><td>'+esc(b.stem_length)+'</td><td class="num">'+n0(b.stem_qty)+'</td><td class="num">'+esc(b.age_days)+'</td><td>'+(b.discarded?'<span class="dqpill s-Approved">Yes</span>':'<span class="dqpill s-Draft">Not yet</span>')+'</td></tr>';}).join('')+'</tbody></table></div>';
+    var w=d.workflow,f='<button class="btn" onclick="void 0" id="vOpen">Open in the desk</button>';
+    if(w&&d.state==='Draft')f+='<button class="btn dark" id="vSend">Send for approval</button>';
+    if(w&&d.state==='Pending Approval'&&w.can_reject)f+='<button class="btn red" id="vRej">Reject</button>';
+    if(w&&d.state==='Pending Approval'&&w.can_approve)f+='<button class="btn teal" id="vApp">Approve</button>';
+    el('vFoot').innerHTML=f;
+    el('vOpen').onclick=function(){window.open('/app/discard-request/'+encodeURIComponent(name),'_blank');};
+    [['vSend','Submit for Approval'],['vRej','Reject'],['vApp','Approve']].forEach(function(p){var b=el(p[0]);if(b)b.onclick=function(){act(p[1],[name],function(){openView(name);});};});
+  }).catch(function(e){el('vBody').innerHTML='<div class="empty-state" style="color:#c4302b">'+esc(e.message)+'</div>';});
+}
+function closeAll(){['dView','dNew'].forEach(function(i){el(i).classList.remove('on');});el('scrim').classList.remove('on');}
+/* ---------- new request ---------- */
+function nf(){return{farms:M.farm.get(),varieties:M.var.get(),lengths:M.len.get(),item_groups:M.grp.get(),coldrooms:M.cold.get(),age_threshold:el('nAge').value===''?null:+el('nAge').value,age_unit:el('nUnit').value};}
+function openNew(){
+  el('dNew').classList.add('on');el('scrim').classList.add('on');
+  if(el('nAge').value==='')el('nAge').value=opts.discard_age;
+  el('nApprove').style.display=(!opts.workflow||opts.workflow.can_approve)&&opts.workflow?'':'none';
+  el('nDraft').style.display=opts.workflow?'':'none';
+  el('nSend').textContent=opts.workflow?'Create and send for approval':'Create requests';
+  schedule(0);
+}
+function schedule(ms){clearTimeout(pvTimer);el('nInfo').textContent='Looking…';pvTimer=setTimeout(find,ms===undefined?350:ms);}
+function gkey(g){return g.farm+'\u0001'+g.variety+'\u0001'+g.length;}
+function find(){
+  var mine=++find.gen;
+  api('preview_buckets',nf()).then(function(p){
+    if(mine!==find.gen)return;pv=p;groupsOn={};p.groups.forEach(function(g){groupsOn[gkey(g)]=1;});drawPreview();
+  }).catch(function(e){if(mine!==find.gen)return;pv=null;el('nRows').innerHTML='<tr><td colspan="7" class="empty-state" style="color:#c4302b">'+esc(e.message)+'</td></tr>';el('nInfo').textContent='';});
+}
+find.gen=0;
+function totals(){var b=0,s=0,f={};if(pv)pv.groups.forEach(function(g){if(groupsOn[gkey(g)]){b+=g.buckets;s+=g.stems;f[g.farm]=1;}});return{b:b,s:s,f:Object.keys(f).length};}
+function drawPreview(){
+  var rows='',last=null;
+  pv.groups.forEach(function(g){
+    if(g.farm!==last){last=g.farm;var fg=pv.groups.filter(function(x){return x.farm===g.farm;});
+      rows+='<tr class="farmrow"><td><input type="checkbox" class="fchk" data-f="'+esc(g.farm)+'"'+(fg.every(function(x){return groupsOn[gkey(x)];})?' checked':'')+'></td><td colspan="3">'+esc(g.farm)+'</td><td class="num">'+n0(fg.reduce(function(a,x){return a+x.buckets;},0))+'</td><td class="num">'+n0(fg.reduce(function(a,x){return a+x.stems;},0))+'</td><td></td></tr>';}
+    rows+='<tr><td><input type="checkbox" class="gchk" data-k="'+esc(gkey(g))+'"'+(groupsOn[gkey(g)]?' checked':'')+'></td><td></td><td>'+esc(g.variety)+'</td><td>'+esc(g.length||'—')+'</td><td class="num">'+n0(g.buckets)+'</td><td class="num">'+n0(g.stems)+'</td><td class="num">'+Math.round(g.oldest_days)+'</td></tr>';});
+  el('nRows').innerHTML=rows||'<tr><td colspan="7" class="empty-state">No buckets match. Try fewer filters or a lower age.</td></tr>';
+  var lo=pv.left_out,bits=[];
+  if(lo.on_a_request)bits.push(n0(lo.on_a_request)+' already on a request');if(lo.allocated)bits.push(n0(lo.allocated)+' reserved for an order');
+  if(lo.too_young)bits.push(n0(lo.too_young)+' not old enough');if(lo.other_cold_room)bits.push(n0(lo.other_cold_room)+' in other cold rooms');
+  el('nSummary').innerHTML=bits.length?'<div class="dqnote">Left out: '+bits.join(' · ')+'.</div>':'';
+  sync();
+}
+function sync(){
+  var t=totals();el('allGrp').checked=!!pv&&pv.groups.length>0&&t.b===pv.buckets;
+  el('nInfo').textContent=t.b?n0(t.b)+' buckets · '+n0(t.s)+' stems → '+t.f+' request'+(t.f>1?'s':'')+' (one per farm)':'Nothing ticked.';
+  ['nSend','nDraft','nApprove'].forEach(function(i){el(i).disabled=!t.b;if(t.b)el(i).removeAttribute('disabled');else el(i).setAttribute('disabled','');});
+}
+function create(action){
+  var t=totals();if(!t.b)return;
+  var args=nf();args.groups=pv.groups.filter(function(g){return groupsOn[gkey(g)];}).map(function(g){return[g.farm,g.variety,g.length];});
+  args.remarks=el('nRemarks').value;args.action=action;
+  ['nSend','nDraft','nApprove'].forEach(function(i){el(i).setAttribute('disabled','');});el('nInfo').textContent='Creating…';
+  api('create_requests',args).then(function(r){
+    if(r.failed.length)toast(r.failed.map(function(f){return f.farm+': '+f.error;}).join(' | '),true);
+    if(r.created.length){toast(r.created.length+' request'+(r.created.length>1?'s':'')+' created.');}
+    if(r.created.length&&!r.failed.length)closeAll();
+    el('nRemarks').value='';load();if(el('dNew').classList.contains('on'))schedule(0);
+  }).catch(function(e){toast(e.message,true);sync();});
+}
+/* ---------- wiring ---------- */
+function init(){
+  M.farm=MS('msFarm','All farms');M.var=MS('msVar','All varieties');M.len=MS('msLen','All lengths');M.grp=MS('msGrp','All item groups');M.cold=MS('msCold','All cold rooms');
+  Object.keys(M).forEach(function(k){M[k].change(function(){schedule();});});
+  el('nAge').oninput=function(){schedule();};el('nUnit').onchange=function(){schedule();};
+  el('segOrigin').onclick=function(e){var b=e.target.closest('button');if(!b)return;origin=b.getAttribute('data-v');[].forEach.call(el('segOrigin').children,function(x){x.classList.toggle('on',x===b);});load();};
+  ['fState','fFarm','fFrom','fTo'].forEach(function(i){el(i).onchange=load;});
+  el('btnReset').onclick=function(){origin='';[].forEach.call(el('segOrigin').children,function(x,i){x.classList.toggle('on',i===0);});['fState','fFarm','fFrom','fTo'].forEach(function(i){el(i).value='';});load();};
+  el('btnRefresh').onclick=load;el('btnNew').onclick=function(){if(!opts||!opts.can_create){toast('You do not have permission to create Discard Requests.',true);return;}openNew();};
+  el('rows').onclick=function(e){if(e.target.classList.contains('rc')){bulk();return;}var tr=e.target.closest('tr.clk');if(tr)openView(tr.getAttribute('data-n'));};
+  el('allReq').onchange=function(){var v=this.checked;document.querySelectorAll('.rc').forEach(function(c){c.checked=v;});bulk();};
+  el('bSend').onclick=function(){act('Submit for Approval',checked().filter(function(n){return stateOf(n)==='Draft';}));};
+  el('bApprove').onclick=function(){act('Approve',checked().filter(function(n){return stateOf(n)==='Pending Approval';}));};
+  el('bReject').onclick=function(){act('Reject',checked().filter(function(n){return stateOf(n)==='Pending Approval';}));};
+  el('vClose').onclick=el('nClose').onclick=el('scrim').onclick=closeAll;
+  el('nRows').onchange=function(e){var c=e.target;if(c.classList.contains('gchk')){if(c.checked)groupsOn[c.getAttribute('data-k')]=1;else delete groupsOn[c.getAttribute('data-k')];}
+    else if(c.classList.contains('fchk')){pv.groups.forEach(function(g){if(g.farm===c.getAttribute('data-f')){if(c.checked)groupsOn[gkey(g)]=1;else delete groupsOn[gkey(g)];}});}
+    drawPreview();};
+  el('allGrp').onchange=function(){var v=this.checked;groupsOn={};if(v)pv.groups.forEach(function(g){groupsOn[gkey(g)]=1;});drawPreview();};
+  el('nSend').onclick=function(){create('send');};el('nDraft').onclick=function(){create('draft');};el('nApprove').onclick=function(){create('approve');};
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAll();});
+  api('get_options').then(function(o){
+    opts=o;M.farm.set(o.farms);M.var.set(o.varieties);M.len.set(o.lengths);M.grp.set(o.item_groups);M.cold.set(o.coldrooms);
+    var f=el('fFarm');o.farms.forEach(function(x){var op=document.createElement('option');op.value=op.textContent=x;f.appendChild(op);});
+    var d=new Date();d.setDate(d.getDate()-90);el('fFrom').value=d.toISOString().slice(0,10);
+    load();
+  }).catch(function(e){var b=el('errBox');b.textContent=e.message;b.style.display='block';});
+}
+function stateOf(n){var c=document.querySelector('.rc[value="'+n.replace(/"/g,'')+'"]');return c?c.getAttribute('data-s'):'';}
+init();
+})();
+</script>
+{% endraw %}
+{% endblock %}

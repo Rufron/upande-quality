@@ -12,6 +12,7 @@
   "amber_time",
   "discard_age",
   "max_shelving_age",
+  "inactive_bucket_days",
   "column_break_segn",
   "section_break_rvm8",
   "shelf_locations",
@@ -79,6 +80,13 @@
    "fieldname": "max_shelving_age",
    "fieldtype": "Int",
    "label": "Max Shelving Age (Days)"
+  },
+  {
+   "default": "4",
+   "description": "Bucket Journey > Inactive tab: a bucket still in the process (on a shelf, in transit, allocated, received-not-shelved) with no activity for this many days is flagged. Users can change it per view.",
+   "fieldname": "inactive_bucket_days",
+   "fieldtype": "Int",
+   "label": "Inactive Bucket Days"
   },
   {
    "fieldname": "column_break_segn",
