@@ -29,7 +29,12 @@ class IntegrationTestDiscardRequestsApi(IntegrationTestCase):
 
 	def test_filters_narrow_the_preview(self):
 		g = self.pre["groups"][0]
-		p = dr.preview_buckets(farms=[g["farm"]], varieties=[g["variety"]], lengths=[g["length"]] if g["length"] else None, age_threshold=0)
+		p = dr.preview_buckets(
+			farms=[g["farm"]],
+			varieties=[g["variety"]],
+			lengths=[g["length"]] if g["length"] else None,
+			age_threshold=0,
+		)
 		self.assertTrue(p["groups"])
 		self.assertTrue(all(x["farm"] == g["farm"] and x["variety"] == g["variety"] for x in p["groups"]))
 
@@ -52,7 +57,7 @@ class IntegrationTestDiscardRequestsApi(IntegrationTestCase):
 		self.made += res["created"]
 		self.assertEqual(res["failed"], [])
 		self.assertEqual(len(res["created"]), len(picks))
-		for name, g in zip(res["created"], picks):
+		for name, g in zip(res["created"], picks, strict=True):
 			doc = frappe.get_doc("Discard Request", name)
 			self.assertEqual(doc.farm, g["farm"])
 			self.assertEqual(len(doc.buckets), g["buckets"])
@@ -85,7 +90,11 @@ class IntegrationTestDiscardRequestsApi(IntegrationTestCase):
 		k = o["kpis"]
 		self.assertEqual(k["requests"], k["system"] + k["user"])
 		self.assertEqual(k["requests"], len(o["requests"]))
-		res = dr.create_requests(groups=[[g["farm"], g["variety"], g["length"]] for g in self.pre["groups"][:1]], age_threshold=0, action="draft")
+		res = dr.create_requests(
+			groups=[[g["farm"], g["variety"], g["length"]] for g in self.pre["groups"][:1]],
+			age_threshold=0,
+			action="draft",
+		)
 		self.made += res["created"]
 		mine = [r for r in dr.get_overview(origin="User")["requests"] if r["name"] == res["created"][0]]
 		self.assertEqual(mine, [] if frappe.session.user == "Administrator" else mine)
@@ -97,7 +106,9 @@ class IntegrationTestDiscardRequestsApi(IntegrationTestCase):
 		if not dr._workflow():
 			self.skipTest("no workflow")
 		g = self.pre["groups"][0]
-		res = dr.create_requests(groups=[[g["farm"], g["variety"], g["length"]]], age_threshold=0, action="draft")
+		res = dr.create_requests(
+			groups=[[g["farm"], g["variety"], g["length"]]], age_threshold=0, action="draft"
+		)
 		self.made += res["created"]
 		out = dr.act_on_requests(res["created"], "Submit for Approval")
 		self.assertEqual(out["failed"], [])

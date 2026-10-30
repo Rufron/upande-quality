@@ -7,6 +7,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "quality_tab",
   "sales_section",
   "amber_time",
   "discard_age",
@@ -17,6 +18,16 @@
   "shelf_locations",
   "harvesting_section",
   "harvest_item_group_config",
+  "packhouse_tab",
+  "issuing_packing_section",
+  "allow_issue_out_of_sequence",
+  "allow_pack_out_of_sequence",
+  "allow_partial_packing",
+  "pack_waiting_replacement_pct",
+  "column_break_ip",
+  "show_unscheduled_in_issuing",
+  "show_unscheduled_in_packing",
+  "show_unscheduled_in_scheduler",
   "scheduling_section",
   "takt_time",
   "remote_transfers_tab",
@@ -24,13 +35,7 @@
   "column_break_ozyn",
   "allow_hub_shelving_without_transfer",
   "allow_shelving_in_transit",
-  "allow_issue_out_of_sequence",
-  "allow_pack_out_of_sequence",
   "column_break_jthd",
-  "pack_waiting_replacement_pct",
-  "show_unscheduled_in_issuing",
-  "show_unscheduled_in_packing",
-  "show_unscheduled_in_scheduler",
   "show_unscheduled_in_bucket_requests",
   "group_bucket_requests_by_order",
   "auto_transfer_section",
@@ -40,9 +45,26 @@
   "auto_dispatch_full_trips",
   "carry_over_unshelved_buckets",
   "allow_partial_truck_load",
-  "release_trips_without_confirmation"
+  "release_trips_without_confirmation",
+  "planning_tab",
+  "allocation_section",
+  "hide_allocation_planning_sequence",
+  "allow_partial_allocation",
+  "enforce_allocation_plan",
+  "column_break_alloc",
+  "hide_allocation_planning_team"
  ],
  "fields": [
+  {
+   "fieldname": "quality_tab",
+   "fieldtype": "Tab Break",
+   "label": "Quality"
+  },
+  {
+   "fieldname": "sales_section",
+   "fieldtype": "Section Break",
+   "label": "Sales"
+  },
   {
    "fieldname": "amber_time",
    "fieldtype": "Float",
@@ -60,15 +82,11 @@
    "label": "Max Shelving Age (Days)"
   },
   {
-   "fieldname": "shelf_locations",
-   "fieldtype": "Table",
-   "label": "Shelf Locations",
-   "options": "Shelf Locations"
-  },
-  {
-   "fieldname": "sales_section",
-   "fieldtype": "Section Break",
-   "label": "Sales"
+   "default": "4",
+   "description": "Bucket Journey > Inactive tab: a bucket still in the process (on a shelf, in transit, allocated, received-not-shelved) with no activity for this many days is flagged. Users can change it per view.",
+   "fieldname": "inactive_bucket_days",
+   "fieldtype": "Int",
+   "label": "Inactive Bucket Days"
   },
   {
    "fieldname": "column_break_segn",
@@ -77,6 +95,12 @@
   {
    "fieldname": "section_break_rvm8",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "shelf_locations",
+   "fieldtype": "Table",
+   "label": "Shelf Locations",
+   "options": "Shelf Locations"
   },
   {
    "fieldname": "harvesting_section",
@@ -88,6 +112,64 @@
    "fieldtype": "Table",
    "label": "Max Stems Per Bucket (by Item Group)",
    "options": "Harvest Item Group Config"
+  },
+  {
+   "fieldname": "packhouse_tab",
+   "fieldtype": "Tab Break",
+   "label": "Packhouse"
+  },
+  {
+   "fieldname": "issuing_packing_section",
+   "fieldtype": "Section Break",
+   "label": "Issuing and Packing"
+  },
+  {
+   "default": "0",
+   "description": "Off: a team issues its schedule in order (#2 waits until #1 is fully issued), and remote farms load a team's orders in the same order. On: issue and load in any order.",
+   "fieldname": "allow_issue_out_of_sequence",
+   "fieldtype": "Check",
+   "label": "Allow Issuing Out of Schedule Order"
+  },
+  {
+   "default": "0",
+   "description": "Off: a team packs its schedule in order (#2 waits until #1 is fully packed). On: pack in any order.",
+   "fieldname": "allow_pack_out_of_sequence",
+   "fieldtype": "Check",
+   "label": "Allow Packing Out of Schedule Order"
+  },
+  {
+   "fieldname": "allow_partial_packing",
+   "fieldtype": "Check",
+   "default": "0",
+   "label": "Allow Partial Packing"
+  },
+  {
+   "default": "50",
+   "fieldname": "pack_waiting_replacement_pct",
+   "fieldtype": "Percent",
+   "label": "Pack While Waiting for a Replacement From (%)"
+  },
+  {
+   "fieldname": "column_break_ip",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_unscheduled_in_issuing",
+   "fieldtype": "Check",
+   "label": "Show Unscheduled OPLs in Issuing"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_unscheduled_in_packing",
+   "fieldtype": "Check",
+   "label": "Show Unscheduled OPLs in Packing"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_unscheduled_in_scheduler",
+   "fieldtype": "Check",
+   "label": "Show Unscheduled OPLs in the App Scheduler"
   },
   {
    "fieldname": "scheduling_section",
@@ -112,6 +194,40 @@
    "options": "Farm"
   },
   {
+   "fieldname": "column_break_ozyn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_hub_shelving_without_transfer",
+   "fieldtype": "Check",
+   "label": "Allow Shelving Buckets Not Transferred"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_shelving_in_transit",
+   "fieldtype": "Check",
+   "label": "Allow Shelving Buckets In Transit"
+  },
+  {
+   "fieldname": "column_break_jthd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "On: the farm app's Bucket Requests also lists orders not on a truck yet, greyed out (they can't be loaded until scheduled).",
+   "fieldname": "show_unscheduled_in_bucket_requests",
+   "fieldtype": "Check",
+   "label": "Show Not Scheduled Orders in the App Bucket Requests"
+  },
+  {
+   "default": "0",
+   "description": "On: the farm app's Bucket Requests lists a trip's buckets per order, with the varieties grouped under each order. Off: per variety.",
+   "fieldname": "group_bucket_requests_by_order",
+   "fieldtype": "Check",
+   "label": "Group App Bucket Requests by Order"
+  },
+  {
    "fieldname": "auto_transfer_section",
    "fieldtype": "Section Break",
    "label": "Automatic Scheduling"
@@ -131,10 +247,26 @@
    "options": "5\n10\n15\n20\n30\n60"
   },
   {
+   "fieldname": "column_break_fgfp",
+   "fieldtype": "Column Break"
+  },
+  {
    "default": "0",
    "fieldname": "auto_dispatch_full_trips",
    "fieldtype": "Check",
    "label": "Dispatch Full Trips Automatically"
+  },
+  {
+   "default": "0",
+   "fieldname": "carry_over_unshelved_buckets",
+   "fieldtype": "Check",
+   "label": "Carry Unshelved Buckets to the Truck's Next Trip"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_partial_truck_load",
+   "fieldtype": "Check",
+   "label": "Allow Sending Partly Loaded Trucks"
   },
   {
    "default": "0",
@@ -143,88 +275,49 @@
    "label": "Release Trips Without Request and Confirmation"
   },
   {
-   "default": "0",
-   "fieldname": "allow_hub_shelving_without_transfer",
-   "fieldtype": "Check",
-   "label": "Allow Shelving Buckets Not Transferred"
+   "fieldname": "planning_tab",
+   "fieldtype": "Tab Break",
+   "label": "Allocation Planning"
   },
   {
-   "default": "0",
-   "fieldname": "allow_shelving_in_transit",
-   "fieldtype": "Check",
-   "label": "Allow Shelving Buckets In Transit"
+   "fieldname": "allocation_section",
+   "fieldtype": "Section Break",
+   "label": "Sales Allocation v2"
   },
   {
-   "default": "0",
-   "description": "Off: a team issues its schedule in order (#2 waits until #1 is fully issued), and remote farms load a team's orders in the same order. On: issue and load in any order.",
-   "fieldname": "allow_issue_out_of_sequence",
+   "fieldname": "hide_allocation_planning_sequence",
    "fieldtype": "Check",
-   "label": "Allow Issuing Out of Schedule Order"
+   "default": "0",
+   "label": "Hide the Allocation Planning Sequence"
   },
   {
-   "default": "0",
-   "description": "Off: a team packs its schedule in order (#2 waits until #1 is fully packed). On: pack in any order.",
-   "fieldname": "allow_pack_out_of_sequence",
+   "fieldname": "allow_partial_allocation",
    "fieldtype": "Check",
-   "label": "Allow Packing Out of Schedule Order"
+   "default": "1",
+   "label": "Allow Partial Allocation"
   },
   {
-   "default": "0",
-   "fieldname": "show_unscheduled_in_issuing",
+   "fieldname": "enforce_allocation_plan",
    "fieldtype": "Check",
-   "label": "Show Unscheduled OPLs in Issuing"
+   "default": "0",
+   "label": "Enforce the Allocation Plan"
   },
   {
-   "default": "0",
-   "fieldname": "show_unscheduled_in_packing",
-   "fieldtype": "Check",
-   "label": "Show Unscheduled OPLs in Packing"
-  },
-  {
-   "default": "0",
-   "fieldname": "show_unscheduled_in_scheduler",
-   "fieldtype": "Check",
-   "label": "Show Unscheduled OPLs in the App Scheduler"
-  },
-  {
-   "default": "0",
-   "description": "On: the farm app's Bucket Requests also lists orders not on a truck yet, greyed out (they can't be loaded until scheduled).",
-   "fieldname": "show_unscheduled_in_bucket_requests",
-   "fieldtype": "Check",
-   "label": "Show Not Scheduled Orders in the App Bucket Requests"
-  },
-  {
-   "default": "0",
-   "description": "On: the farm app's Bucket Requests lists a trip's buckets per order, with the varieties grouped under each order. Off: per variety.",
-   "fieldname": "group_bucket_requests_by_order",
-   "fieldtype": "Check",
-   "label": "Group App Bucket Requests by Order"
-  },
-  {
-   "fieldname": "column_break_ozyn",
+   "fieldname": "column_break_alloc",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "column_break_fgfp",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "column_break_jthd",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "4",
-   "description": "Bucket Journey > Inactive tab: a bucket still in the process (on a shelf, in transit, allocated, received-not-shelved) with no activity for this many days is flagged. Users can change it per view.",
-   "fieldname": "inactive_bucket_days",
-   "fieldtype": "Int",
-   "label": "Inactive Bucket Days"
+   "fieldname": "hide_allocation_planning_team",
+   "fieldtype": "Check",
+   "default": "0",
+   "label": "Hide the Allocation Planning Team"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-23 12:00:00.000000",
+ "modified": "2026-10-30 18:20:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",

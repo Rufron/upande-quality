@@ -31,7 +31,9 @@ def _list(v):
 
 def _need(ptype="read"):
 	if not frappe.has_permission("Discard Request", ptype):
-		frappe.throw(_("You do not have permission to {0} Discard Requests.").format(_(ptype)), frappe.PermissionError)
+		frappe.throw(
+			_("You do not have permission to {0} Discard Requests.").format(_(ptype)), frappe.PermissionError
+		)
 
 
 def _state(docstatus, workflow_state):
@@ -61,21 +63,37 @@ def _workflow():
 	moves = frappe.get_all(
 		"Workflow Transition", filters={"parent": name}, fields=["action", "allowed"], limit_page_length=0
 	)
-	can = lambda a: any(m["action"] == a and (m["allowed"] == "All" or m["allowed"] in roles) for m in moves)
-	return {"name": name, "can_approve": can("Approve"), "can_reject": can("Reject"), "can_send": can("Submit for Approval")}
+
+	def can(a):
+		return any(m["action"] == a and (m["allowed"] == "All" or m["allowed"] in roles) for m in moves)
+
+	return {
+		"name": name,
+		"can_approve": can("Approve"),
+		"can_reject": can("Reject"),
+		"can_send": can("Submit for Approval"),
+	}
 
 
 @frappe.whitelist()
 def get_options():
 	"""Everything the filters and the new-request form offer."""
 	_need()
-	shelf = lambda col: [
+
+	def shelf(col):
+		return [
+			r[0]
+			for r in frappe.db.sql(
+				f"SELECT DISTINCT {col} FROM `tabShelf Item` WHERE IFNULL({col}, '') != '' ORDER BY {col}"
+			)
+		]
+
+	farms = [
 		r[0]
 		for r in frappe.db.sql(
-			f"SELECT DISTINCT {col} FROM `tabShelf Item` WHERE IFNULL({col}, '') != '' ORDER BY {col}"
+			"SELECT DISTINCT farm FROM `tabShelf` WHERE IFNULL(farm, '') != '' ORDER BY farm"
 		)
 	]
-	farms = [r[0] for r in frappe.db.sql("SELECT DISTINCT farm FROM `tabShelf` WHERE IFNULL(farm, '') != '' ORDER BY farm")]
 	return {
 		"farms": farms,
 		"varieties": shelf("variety"),
@@ -87,7 +105,10 @@ def get_options():
 				WHERE IFNULL(it.item_group, '') != '' ORDER BY it.item_group"""
 			)
 		],
-		"coldrooms": [r[0] for r in frappe.db.sql("SELECT name FROM `tabWarehouse` WHERE name LIKE '%%Cold%%' ORDER BY name")],
+		"coldrooms": [
+			r[0]
+			for r in frappe.db.sql("SELECT name FROM `tabWarehouse` WHERE name LIKE '%%Cold%%' ORDER BY name")
+		],
 		"discard_age": flt(frappe.db.get_single_value("Production Settings", "discard_age")) or 5.0,
 		"workflow": _workflow(),
 		"can_create": bool(frappe.has_permission("Discard Request", "create")),
@@ -117,7 +138,7 @@ def _requests(origin=None, state=None, farms=None, date_from=None, date_to=None)
 			IFNULL(SUM(IF(b.discarded = 1, b.stem_qty, 0)), 0) AS done_stems
 		FROM `tabDiscard Request` dr
 		LEFT JOIN `tabDiscard Request Bucket` b ON b.parent = dr.name AND b.parenttype = 'Discard Request'
-		WHERE {' AND '.join(cond)}
+		WHERE {" AND ".join(cond)}
 		GROUP BY dr.name ORDER BY dr.creation DESC LIMIT 3000""",
 		p,
 		as_dict=True,
@@ -140,7 +161,16 @@ def get_overview(origin=None, state=None, farms=None, date_from=None, date_to=No
 	"""Requests (newest first) with totals and the breakdowns behind the charts."""
 	_need()
 	reqs = _requests(origin, state, _list(farms), date_from, date_to)
-	k = {"requests": len(reqs), "system": 0, "user": 0, "buckets": 0, "stems": 0, "done_stems": 0, "waiting_stems": 0, "pending": 0}
+	k = {
+		"requests": len(reqs),
+		"system": 0,
+		"user": 0,
+		"buckets": 0,
+		"stems": 0,
+		"done_stems": 0,
+		"waiting_stems": 0,
+		"pending": 0,
+	}
 	by_farm, by_week = {}, {}
 	for r in reqs:
 		k["system" if r["origin"] == "System" else "user"] += 1
@@ -153,7 +183,9 @@ def get_overview(origin=None, state=None, farms=None, date_from=None, date_to=No
 		f["system" if r["origin"] == "System" else "user"] += flt(r["stems"])
 		if r["requested_date"]:
 			d = getdate(r["requested_date"]).isocalendar()
-			w = by_week.setdefault(f"{d[0]}-W{d[1]:02d}", {"week": f"{d[0]}-W{d[1]:02d}", "system": 0, "user": 0})
+			w = by_week.setdefault(
+				f"{d[0]}-W{d[1]:02d}", {"week": f"{d[0]}-W{d[1]:02d}", "system": 0, "user": 0}
+			)
 			w["system" if r["origin"] == "System" else "user"] += flt(r["stems"])
 	by_variety = []
 	if reqs:
@@ -180,8 +212,21 @@ def get_request(name):
 	doc = frappe.get_doc("Discard Request", name)
 	doc.check_permission("read")
 	buckets = [
-		{k: (str(b.get(k)) if k == "harvest_date" and b.get(k) else b.get(k)) for k in
-		 ("bucket_id", "farm", "greenhouse", "shelf", "variety", "stem_length", "stem_qty", "age_days", "harvest_date", "discarded")}
+		{
+			k: (str(b.get(k)) if k == "harvest_date" and b.get(k) else b.get(k))
+			for k in (
+				"bucket_id",
+				"farm",
+				"greenhouse",
+				"shelf",
+				"variety",
+				"stem_length",
+				"stem_qty",
+				"age_days",
+				"harvest_date",
+				"discarded",
+			)
+		}
 		for b in doc.buckets
 	]
 	return {
@@ -228,7 +273,7 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 		FROM `tabShelf Item` si
 		INNER JOIN `tabShelf` sh ON sh.name = si.parent
 		LEFT JOIN `tabItem` it ON it.name = si.variety
-		WHERE {' AND '.join(cond)} LIMIT {MAX_BUCKETS}""",
+		WHERE {" AND ".join(cond)} LIMIT {MAX_BUCKETS}""",
 		p,
 		as_dict=True,
 	)
@@ -248,7 +293,11 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 			)
 			if r[0]
 		}
-	allocated = {str(r[0]).upper() for r in frappe.db.sql("SELECT DISTINCT bucket_id FROM `tabBucket Allocation Status`") if r[0]}
+	allocated = {
+		str(r[0]).upper()
+		for r in frappe.db.sql("SELECT DISTINCT bucket_id FROM `tabBucket Allocation Status`")
+		if r[0]
+	}
 	rooms = {_location(c) for c in coldrooms}
 	now = now_datetime()
 	out, left = [], {"on_a_request": 0, "allocated": 0, "too_young": 0, "other_cold_room": 0}
@@ -279,18 +328,41 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 
 
 @frappe.whitelist()
-def preview_buckets(farms=None, varieties=None, lengths=None, item_groups=None, coldrooms=None, age_threshold=None, age_unit="Days"):
+def preview_buckets(
+	farms=None,
+	varieties=None,
+	lengths=None,
+	item_groups=None,
+	coldrooms=None,
+	age_threshold=None,
+	age_unit="Days",
+):
 	"""What a new request would pick up, grouped by farm / variety / length. Writes nothing."""
 	_need()
 	age_unit = "Hours" if age_unit == "Hours" else "Days"
 	if age_threshold in (None, ""):
 		age_threshold = frappe.db.get_single_value("Production Settings", "discard_age") or 5
-	rows, left, scanned = _candidates(_list(farms), _list(varieties), _list(lengths), _list(item_groups), _list(coldrooms), age_threshold, age_unit)
+	rows, left, scanned = _candidates(
+		_list(farms),
+		_list(varieties),
+		_list(lengths),
+		_list(item_groups),
+		_list(coldrooms),
+		age_threshold,
+		age_unit,
+	)
 	groups = {}
 	for r in rows:
 		g = groups.setdefault(
 			(r["farm"], r["variety"], r["stem_length"] or ""),
-			{"farm": r["farm"], "variety": r["variety"], "length": r["stem_length"] or "", "buckets": 0, "stems": 0, "oldest_days": 0},
+			{
+				"farm": r["farm"],
+				"variety": r["variety"],
+				"length": r["stem_length"] or "",
+				"buckets": 0,
+				"stems": 0,
+				"oldest_days": 0,
+			},
 		)
 		g["buckets"] += 1
 		g["stems"] += flt(r["stem_qty"])
@@ -316,8 +388,16 @@ def _describe(label, vals):
 
 @frappe.whitelist()
 def create_requests(
-	groups=None, farms=None, varieties=None, lengths=None, item_groups=None, coldrooms=None,
-	age_threshold=None, age_unit="Days", remarks=None, action="send",
+	groups=None,
+	farms=None,
+	varieties=None,
+	lengths=None,
+	item_groups=None,
+	coldrooms=None,
+	age_threshold=None,
+	age_unit="Days",
+	remarks=None,
+	action="send",
 ):
 	"""One request per farm for the ticked groups ([[farm, variety, length], ...]; every group when omitted).
 
@@ -326,13 +406,25 @@ def create_requests(
 	age_unit = "Hours" if age_unit == "Hours" else "Days"
 	if age_threshold in (None, ""):
 		age_threshold = frappe.db.get_single_value("Production Settings", "discard_age") or 5
-	farms_f, var_f, len_f, grp_f, cold_f = _list(farms), _list(varieties), _list(lengths), _list(item_groups), _list(coldrooms)
+	farms_f, var_f, len_f, grp_f, cold_f = (
+		_list(farms),
+		_list(varieties),
+		_list(lengths),
+		_list(item_groups),
+		_list(coldrooms),
+	)
 	rows, _left, _n = _candidates(farms_f, var_f, len_f, grp_f, cold_f, age_threshold, age_unit)
 	chosen = {tuple(g) for g in (frappe.parse_json(groups) if isinstance(groups, str) else groups or [])}
 	if groups is not None:
-		rows = [r for r in rows if (r["farm"], r["variety"], r["stem_length"] or "") in {(a, b, c or "") for a, b, c in chosen}]
+		rows = [
+			r
+			for r in rows
+			if (r["farm"], r["variety"], r["stem_length"] or "") in {(a, b, c or "") for a, b, c in chosen}
+		]
 	if not rows:
-		frappe.throw(_("There are no buckets to put on a request. Change the filters or tick at least one line."))
+		frappe.throw(
+			_("There are no buckets to put on a request. Change the filters or tick at least one line.")
+		)
 	wf = _workflow()
 	if action == "approve" and wf and not wf["can_approve"]:
 		frappe.throw(_("Your roles cannot approve Discard Requests. Send it for approval instead."))
@@ -340,13 +432,22 @@ def create_requests(
 	for r in rows:
 		by_farm.setdefault(r["farm"] or "Unknown", []).append(r)
 	note = "; ".join(
-		x for x in (_describe("Varieties", var_f), _describe("Lengths", len_f), _describe("Item groups", grp_f), _describe("Cold rooms", cold_f)) if x
+		x
+		for x in (
+			_describe("Varieties", var_f),
+			_describe("Lengths", len_f),
+			_describe("Item groups", grp_f),
+			_describe("Cold rooms", cold_f),
+		)
+		if x
 	)
 	text = "\n".join(x for x in ((remarks or "").strip(), note) if x)
 	made, failed = [], []
 	for farm, items in by_farm.items():
 		try:
-			made.append(_make(farm, items, age_threshold, age_unit, var_f, len_f, grp_f, cold_f, text, action, wf))
+			made.append(
+				_make(farm, items, age_threshold, age_unit, var_f, len_f, grp_f, cold_f, text, action, wf)
+			)
 			frappe.db.commit()
 		except Exception as e:
 			frappe.db.rollback()
@@ -364,7 +465,8 @@ def _make(farm, items, age_threshold, age_unit, var_f, len_f, grp_f, cold_f, tex
 			"requested_by": user,
 			"requested_date": today(),
 			"farm": farm if farm != "Unknown" else None,
-			"company": (frappe.db.get_value("Farm", farm, "company") if farm != "Unknown" else None) or "Karen Roses",
+			"company": (frappe.db.get_value("Farm", farm, "company") if farm != "Unknown" else None)
+			or "Karen Roses",
 			"variety": _single(var_f),
 			"length": _single(len_f),
 			"item_group": _single(grp_f),
