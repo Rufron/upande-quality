@@ -2,6 +2,12 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on("Production Settings", {
+	setup(frm) {
+		// Enforce at: the sales locations farms belong to (Farm Location), not the farms themselves.
+		frm.set_query("enforce_plan_locations", () => ({
+			query: "upande_quality.upande_quality.doctype.production_settings.production_settings.sales_locations",
+		}));
+	},
 	refresh(frm) {
 		// Remote transfers: end every trip of an earlier day now (the same as the
 		// midnight run), so no trip carries over into today.

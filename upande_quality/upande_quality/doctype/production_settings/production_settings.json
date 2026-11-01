@@ -51,6 +51,7 @@
   "hide_allocation_planning_sequence",
   "allow_partial_allocation",
   "enforce_allocation_plan",
+  "enforce_plan_locations",
   "column_break_alloc",
   "hide_allocation_planning_team"
  ],
@@ -303,6 +304,13 @@
    "label": "Enforce the Allocation Plan"
   },
   {
+   "depends_on": "eval:doc.enforce_allocation_plan",
+   "fieldname": "enforce_plan_locations",
+   "fieldtype": "Table MultiSelect",
+   "label": "Enforce at",
+   "options": "Enforce Plan Location"
+  },
+  {
    "fieldname": "column_break_alloc",
    "fieldtype": "Column Break"
   },
@@ -317,7 +325,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-30 18:20:00.000000",
+ "modified": "2026-10-31 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
