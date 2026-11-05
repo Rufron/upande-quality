@@ -50,8 +50,6 @@
   "allocation_section",
   "hide_allocation_planning_sequence",
   "allow_partial_allocation",
-  "enforce_allocation_plan",
-  "enforce_plan_locations",
   "column_break_alloc",
   "hide_allocation_planning_team"
  ],
@@ -296,19 +294,6 @@
    "fieldtype": "Check",
    "default": "1",
    "label": "Allow Partial Allocation"
-  },
-  {
-   "fieldname": "enforce_allocation_plan",
-   "fieldtype": "Check",
-   "default": "0",
-   "label": "Enforce the Allocation Plan"
-  },
-  {
-   "depends_on": "eval:doc.enforce_allocation_plan",
-   "fieldname": "enforce_plan_locations",
-   "fieldtype": "Table MultiSelect",
-   "label": "Enforce at",
-   "options": "Enforce Plan Location"
   },
   {
    "fieldname": "column_break_alloc",
