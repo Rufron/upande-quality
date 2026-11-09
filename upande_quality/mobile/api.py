@@ -12005,6 +12005,20 @@ def _todays_order_pick_lists():
 	]
 
 
+def _active_specifications():
+	"""Active Specifications for the Vaselife picker. The doctype comes from another
+	app, so a site without it gets an empty list rather than a failed form."""
+	if not frappe.db.exists("DocType", "Specifications"):
+		return []
+	return frappe.get_all(
+		"Specifications",
+		filters={"status": "Active"},
+		fields=["name", "customer"],
+		order_by="name asc",
+		limit_page_length=0,
+	)
+
+
 def _bucket_order_pick_list(bucket_id):
 	"""The Order Pick List created today that this bucket is allocated to, if any."""
 	rows = frappe.db.sql(
@@ -12471,6 +12485,7 @@ def fetchVaselifeFormData():
 			"breeders": [{"name": b} for b in BREEDER_LIST],
 			"varieties": varieties,
 			"order_pick_lists": _todays_order_pick_lists(),
+			"specifications": _active_specifications(),
 			"crops": [{"name": x} for x in crops],
 			"commercial_statuses": [{"name": x} for x in commercial_statuses],
 			"cut_stages": [{"name": x} for x in cut_stages],
@@ -12659,7 +12674,7 @@ def saveVaselifeSample():
 					"no_of_stems": to_int(data.get("no_of_stems")),
 					"bud_height": to_float(data.get("bud_height")),
 					"bud_width": to_float(data.get("bud_width")),
-					"initial_cut_stage": safe_link("Vaselife Cut Stage", data.get("initial_cut_stage") or ""),
+					"initial_cut_stage": data.get("initial_cut_stage") or None,
 					"prepared_by": frappe.session.user,
 				}
 			)
