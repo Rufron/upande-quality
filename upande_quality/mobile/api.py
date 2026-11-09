@@ -2764,6 +2764,22 @@ def _farm_trip_opls_direct(farm_name, opls, on_road=False):
 	)
 
 
+def _on_team_schedule(opls):
+	"""The OPLs among `opls` on a team's Packhouse Schedule: scheduled for packing, whether or not a
+	truck is planned for their buckets yet. The farm prepares them -- onto a trolley -- before then."""
+	opls = [o for o in (opls or []) if o]
+	if not opls:
+		return set()
+	return set(
+		frappe.db.sql_list(
+			"""SELECT DISTINCT pso.order_pick_list FROM `tabPackhouse Schedule Order` pso
+			JOIN `tabPackhouse Schedule` ps ON ps.name = pso.parent
+			WHERE pso.order_pick_list IN %(o)s AND ps.schedule_date >= %(d)s""",
+			{"o": tuple(opls), "d": frappe.utils.add_days(frappe.utils.today(), -1)},
+		)
+	)
+
+
 def _unscheduled_rows(pli_names):
 	"""The Pick List Item rows among `pli_names` that must not go on a trolley: a draft
 	order on no truck trip to the row's farm yet (Not Scheduled in the app). An ASAP
@@ -2788,6 +2804,10 @@ def _unscheduled_rows(pli_names):
 	for farm, rs in by_farm.items():
 		on_trip = _farm_trip_opls(farm, list({r.parent for r in rs}), on_road=True)
 		out |= {r.name for r in rs if r.parent not in on_trip}
+	# on a team's schedule, waiting for its truck: the farm may already put it on a trolley
+	if out:
+		ready = _on_team_schedule(list({r.parent for r in rows if r.name in out}))
+		out = {r.name for r in rows if r.name in out and r.parent not in ready}
 	return out
 
 
@@ -3060,6 +3080,8 @@ def fetchAllocatedBuckets():
 			on_farm_trip = (
 				on_trip & set(opl_map) if on_trip is not None else _farm_trip_opls(farm_name, list(opl_map))
 			)
+			# scheduled for packing but no truck yet: sent so the farm can prepare them on a trolley
+			awaiting_truck = _on_team_schedule([o for o in opl_map if o not in on_farm_trip])
 			show_unscheduled = frappe.utils.cint(
 				frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
 			)
@@ -3071,7 +3093,9 @@ def fetchAllocatedBuckets():
 					(it.get("transfer_priority") or "") == "ASAP"
 					or (
 						not int(opl_map[it["parent"]].get("docstatus") or 0)
-						and (it["parent"] in on_farm_trip or show_unscheduled)
+						and (
+							it["parent"] in on_farm_trip or it["parent"] in awaiting_truck or show_unscheduled
+						)
 					)
 				)
 			]
@@ -3156,6 +3180,17 @@ def fetchAllocatedBuckets():
 						else {}
 					)
 					variety_color = {k: hexes.get(v) or "" for k, v in item_colour.items()}
+				# A remote farm's bucket is requested whole: the stems the whole bucket holds on this
+				# farm's shelves, per variety, whatever part of it the order asked for.
+				whole = {}
+				for bkt, variety, stems in frappe.db.sql(
+					"""SELECT LOWER(si.bucket_id), si.variety, SUM(si.stem_qty)
+					FROM `tabShelf Item` si JOIN `tabShelf` s ON s.name = si.parent AND si.parenttype = 'Shelf'
+					WHERE si.bucket_id IN %(b)s AND s.farm = %(f)s
+					GROUP BY LOWER(si.bucket_id), si.variety""",
+					{"b": tuple(bucket_ids), "f": farm_name},
+				):
+					whole[(bkt, variety)] = frappe.utils.flt(stems)
 				result = []
 				seen_bucket = {}
 				for item in pick_list_items:
@@ -3196,6 +3231,7 @@ def fetchAllocatedBuckets():
 						"qty": item["qty"],
 						"uom": item["uom"],
 						"stem_length": item["stem_length"],
+						"bucket_stems": whole.get((str(bucket_id).lower(), item["item_code"])),
 						# Location Information
 						"shelf_location": item["shelf"],
 						"warehouse": item["source_warehouse"] or item["warehouse"],
@@ -3217,8 +3253,12 @@ def fetchAllocatedBuckets():
 						# 0: the order is not on a truck to this farm yet (sent only when
 						# Production Settings shows not-scheduled orders): look, don't load.
 						"scheduled": 1
-						if item["parent"] in on_farm_trip or (item.get("transfer_priority") or "") == "ASAP"
+						if item["parent"] in on_farm_trip
+						or item["parent"] in awaiting_truck
+						or (item.get("transfer_priority") or "") == "ASAP"
 						else 0,
+						# scheduled for packing, no truck assigned yet: prepare it on a trolley
+						"awaiting_truck": 1 if item["parent"] in awaiting_truck else 0,
 					}
 					seen_bucket[dedupe_key] = row_out
 					result.append(row_out)
@@ -4196,6 +4236,68 @@ def _approved_discard_requests(names=None):
 			+ cond,
 			{"n": tuple(names or ())},
 		)
+	}
+
+
+@frappe.whitelist(methods=["GET", "POST"])
+def getFreeShelves(farm: str | None = None):
+	"""Shelves that can still take a bucket, for the farms configured in Production Settings > Shelf
+	Locations (enabled rows). A shelf holds 2 buckets, counted as distinct bucket ids (a bucket spans
+	several Shelf Item rows when it carries several varieties) -- the rule createShelvingEntry enforces.
+	`farm` narrows to one configured farm. In the code from live's Server Script "Get Free Shelves"
+	(same api_method), so a site without that script answers too."""
+	capacity = 2
+	ps = frappe.get_cached_doc("Production Settings")
+	farms = []
+	for row in ps.get("shelf_locations") or []:
+		if row.get("enabled") and row.get("farm") and row.get("farm") not in farms:
+			farms.append(row.get("farm"))
+	requested = (farm or frappe.form_dict.get("farm") or "").strip()
+	if requested:
+		farms = [f for f in farms if f == requested]
+
+	groups, free_shelves, free_slots, empty = [], 0, 0, 0
+	if farms:
+		shelves = frappe.get_all(
+			"Shelf",
+			filters={"farm": ["in", farms]},
+			fields=["name", "shelf_id", "farm"],
+			order_by="farm asc, shelf_id asc",
+			limit_page_length=0,
+		)
+		buckets_on = {}
+		if shelves:
+			for r in frappe.get_all(
+				"Shelf Item",
+				filters={"parent": ["in", [sh.name for sh in shelves]], "parenttype": "Shelf"},
+				fields=["parent", "bucket_id"],
+				limit_page_length=0,
+			):
+				buckets_on.setdefault(r.parent, set()).add((r.bucket_id or "").lower())
+		by_farm = {}
+		for sh in shelves:
+			held = len(buckets_on.get(sh.name, ()))
+			free = capacity - held
+			if free <= 0:
+				continue
+			by_farm.setdefault(sh.farm, []).append(
+				{"shelf": sh.name, "shelf_id": sh.shelf_id or sh.name, "buckets": held, "free": free}
+			)
+			free_shelves += 1
+			free_slots += free
+			if held == 0:
+				empty += 1
+		for f in farms:
+			items = by_farm.get(f, [])
+			groups.append({"farm": f, "shelves": items, "free_shelves": len(items)})
+
+	frappe.response["message"] = {
+		"status": "success",
+		"capacity": capacity,
+		"farms": groups,
+		"free_shelves": free_shelves,
+		"free_slots": free_slots,
+		"empty_shelves": empty,
 	}
 
 
