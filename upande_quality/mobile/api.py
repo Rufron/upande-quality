@@ -2765,8 +2765,9 @@ def _farm_trip_opls_direct(farm_name, opls, on_road=False):
 
 
 def _on_team_schedule(opls):
-	"""The OPLs among `opls` on a team's Packhouse Schedule: scheduled for packing, whether or not a
-	truck is planned for their buckets yet. The farm prepares them -- onto a trolley -- before then."""
+	"""The OPLs among `opls` on a team's Packhouse Schedule for their own packing day (the day before
+	delivery): scheduled for packing, whether or not a truck is planned for their buckets yet. The farm
+	prepares them -- onto a trolley -- before then. A schedule of another day does not count."""
 	opls = [o for o in (opls or []) if o]
 	if not opls:
 		return set()
@@ -2774,8 +2775,11 @@ def _on_team_schedule(opls):
 		frappe.db.sql_list(
 			"""SELECT DISTINCT pso.order_pick_list FROM `tabPackhouse Schedule Order` pso
 			JOIN `tabPackhouse Schedule` ps ON ps.name = pso.parent
-			WHERE pso.order_pick_list IN %(o)s AND ps.schedule_date >= %(d)s""",
-			{"o": tuple(opls), "d": frappe.utils.add_days(frappe.utils.today(), -1)},
+			JOIN `tabOrder Pick List` o ON o.name = pso.order_pick_list
+			JOIN `tabSales Order` so ON so.name = o.sales_order
+			WHERE pso.order_pick_list IN %(o)s
+			  AND ps.schedule_date = DATE_SUB(so.delivery_date, INTERVAL 1 DAY)""",
+			{"o": tuple(opls)},
 		)
 	)
 
