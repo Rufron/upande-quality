@@ -11,20 +11,27 @@
   "sales_section",
   "amber_time",
   "discard_age",
+  "column_break_segn",
   "max_shelving_age",
   "inactive_bucket_days",
-  "column_break_segn",
   "section_break_rvm8",
   "shelf_locations",
   "harvesting_section",
   "harvest_item_group_config",
+  "planning_tab",
+  "allocation_section",
+  "allow_partial_allocation",
+  "partial_allocation_release_percent",
+  "column_break_alloc",
+  "hide_allocation_planning_team",
+  "hide_allocation_planning_sequence",
   "packhouse_tab",
   "issuing_packing_section",
-  "allow_issue_out_of_sequence",
-  "allow_pack_out_of_sequence",
   "allow_partial_packing",
   "pack_waiting_replacement_pct",
   "column_break_ip",
+  "allow_issue_out_of_sequence",
+  "allow_pack_out_of_sequence",
   "show_unscheduled_in_issuing",
   "show_unscheduled_in_packing",
   "show_unscheduled_in_scheduler",
@@ -45,13 +52,7 @@
   "auto_dispatch_full_trips",
   "carry_over_unshelved_buckets",
   "allow_partial_truck_load",
-  "release_trips_without_confirmation",
-  "planning_tab",
-  "allocation_section",
-  "hide_allocation_planning_sequence",
-  "allow_partial_allocation",
-  "column_break_alloc",
-  "hide_allocation_planning_team"
+  "release_trips_without_confirmation"
  ],
  "fields": [
   {
@@ -82,7 +83,6 @@
   },
   {
    "default": "4",
-   "description": "Bucket Journey > Inactive tab: a bucket still in the process (on a shelf, in transit, allocated, received-not-shelved) with no activity for this many days is flagged. Users can change it per view.",
    "fieldname": "inactive_bucket_days",
    "fieldtype": "Int",
    "label": "Inactive Bucket Days"
@@ -137,9 +137,9 @@
    "label": "Allow Packing Out of Schedule Order"
   },
   {
+   "default": "0",
    "fieldname": "allow_partial_packing",
    "fieldtype": "Check",
-   "default": "0",
    "label": "Allow Partial Packing"
   },
   {
@@ -284,25 +284,33 @@
    "label": "Sales Allocation v2"
   },
   {
+   "default": "0",
    "fieldname": "hide_allocation_planning_sequence",
    "fieldtype": "Check",
-   "default": "0",
    "label": "Hide the Allocation Planning Sequence"
   },
   {
+   "default": "1",
    "fieldname": "allow_partial_allocation",
    "fieldtype": "Check",
-   "default": "1",
    "label": "Allow Partial Allocation"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.allow_partial_allocation",
+   "fieldname": "partial_allocation_release_percent",
+   "fieldtype": "Percent",
+   "label": "Release once this % of an order's boxes is complete",
+   "non_negative": 1
   },
   {
    "fieldname": "column_break_alloc",
    "fieldtype": "Column Break"
   },
   {
+   "default": "0",
    "fieldname": "hide_allocation_planning_team",
    "fieldtype": "Check",
-   "default": "0",
    "label": "Hide the Allocation Planning Team"
   }
  ],
@@ -310,7 +318,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-31 12:00:00.000000",
+ "modified": "2026-11-09 23:46:33.740855",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
