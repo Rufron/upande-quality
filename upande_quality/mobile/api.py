@@ -4256,11 +4256,15 @@ def getDiscardRequestBuckets():
                        FROM `tabStock Entry`
                        WHERE stock_entry_type = 'Harvesting'
                          AND custom_bucket_id IS NOT NULL AND custom_bucket_id != ''
+                         AND custom_bucket_id IN (
+                             SELECT si2.bucket_id FROM `tabShelf Item` si2
+                             JOIN `tabShelf` sh2 ON sh2.name = si2.parent
+                             WHERE sh2.farm = %s)
                        GROUP BY custom_bucket_id
-                   ) h ON UPPER(h.custom_bucket_id) = UPPER(si.bucket_id)
+                   ) h ON h.custom_bucket_id = si.bucket_id
                    WHERE sh.farm = %s AND si.bucket_id IS NOT NULL AND si.bucket_id != ''
                      AND COALESCE(h.hd, DATE(si.date_added)) <= %s""",
-				(farm, cutoff),
+				(farm, farm, cutoff),
 				as_dict=True,
 			)
 			on_shelf = {}
