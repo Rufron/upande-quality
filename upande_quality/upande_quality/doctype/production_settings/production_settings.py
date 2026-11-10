@@ -11,9 +11,10 @@ class ProductionSettings(Document):
 
 
 def discard_age_resolver():
-	"""Returns age(item_code) -> discard age in days. The item's group uses its own row in
-	Discard Age by Item Group, else the nearest parent group with a row (Spray Roses covers
-	Spray Roses - Bombastics), else the top-level Discard Age (5 when blank). Build one per
+	"""Returns age(item_code) -> discard age in days. A variety's own Discard Age (Item > Roses
+	Packhouse) wins; else its item group's row in Discard Age by Item Group, or the nearest
+	parent group with a row (Spray Roses covers Spray Roses - Bombastics); else the top-level
+	Discard Age (5 when blank). age.fallback(item) skips the variety's own age. Build one per
 	request and reuse it in loops; lookups are cached inside."""
 	ps = frappe.get_cached_doc("Production Settings")
 	default = flt(ps.discard_age) or 5.0
@@ -24,7 +25,7 @@ def discard_age_resolver():
 	}
 	by_item = {}
 
-	def age(item_code=None):
+	def fallback(item_code=None):
 		if not ages or not item_code:
 			return default
 		if item_code not in by_item:
@@ -41,7 +42,22 @@ def discard_age_resolver():
 			by_item[item_code] = ages[hit[0][0]] if hit else default
 		return by_item[item_code]
 
-	age.youngest = min([default, *ages.values()])  # for SQL pre-filters
+	own_ages = {}
+
+	def age(item_code=None):
+		if item_code:
+			if item_code not in own_ages:
+				own_ages[item_code] = flt(frappe.db.get_value("Item", item_code, "custom_discard_age"))
+			if own_ages[item_code] > 0:
+				return own_ages[item_code]
+		return fallback(item_code)
+
+	youngest_own = frappe.db.sql(
+		"SELECT MIN(custom_discard_age) FROM `tabItem` WHERE custom_discard_age > 0 AND disabled = 0"
+	)[0][0]
+	age.fallback = fallback
+	# for SQL pre-filters: the youngest age any item can have
+	age.youngest = min([default, *ages.values(), *([flt(youngest_own)] if youngest_own else [])])
 	return age
 
 

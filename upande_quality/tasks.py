@@ -37,8 +37,8 @@ def auto_discard_request():
 	under the wrong company.
 	"""
 	try:
-		# Discard age is per item group (Production Settings > Discard Age by Item Group),
-		# falling back to the top-level Discard Age.
+		# Discard age: the variety's own (Item > Roses Packhouse), else its item group's
+		# (Production Settings > Discard Age by Item Group), else the top-level Discard Age.
 		age_for = discard_age_resolver()
 		discard_age = age_for()  # the default, recorded on the request
 
@@ -104,7 +104,8 @@ def auto_discard_request():
 				age_days = (now - get_datetime(r["date_added"])).total_seconds() / 86400.0
 			else:
 				continue
-			if age_days < age_for(r.get("variety")):
+			bucket_age = age_for(r.get("variety"))
+			if age_days < bucket_age:
 				continue
 
 			farm = r.get("farm") or "Unknown"
@@ -117,6 +118,7 @@ def auto_discard_request():
 				"harvest_date": r.get("date_added"),
 				"age_days": round(age_days, 2),
 				"age_hours": round(age_days * 24, 1),
+				"discard_age": bucket_age,
 				"variety": r.get("variety"),
 				"stem_qty": r.get("stem_qty"),
 				"stem_length": r.get("stem_length"),
