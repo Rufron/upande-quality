@@ -653,5 +653,6 @@ def set_discard_age(item=None, days=None):
 	if not item or not frappe.db.exists("Item", item):
 		frappe.throw(_("Unknown variety."), frappe.DoesNotExistError)
 	value = _age_value(days)
-	frappe.db.set_value("Item", item, "custom_discard_age", value)
+	# The column cannot be NULL: 0 means "none of its own, use the group's or the default".
+	frappe.db.set_value("Item", item, "custom_discard_age", value or 0)
 	return {"item": item, "age": value, "effective": value or discard_age_resolver().fallback(item)}

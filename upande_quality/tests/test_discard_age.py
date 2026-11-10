@@ -66,5 +66,40 @@ class TestAgeValue(unittest.TestCase):
 				dr._age_value(bad)
 
 
+class TestSetAndClear(unittest.TestCase):
+	"""Against a site that has varieties; nothing persists."""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		rows = dr.get_discard_ages()["rows"]
+		if not rows:
+			self.skipTest("needs varieties under Cut Flowers")
+		self.item = rows[0]["item"]
+
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def test_setting_then_clearing_a_varieties_age(self):
+		out = dr.set_discard_age(self.item, 4)
+		self.assertEqual((out["age"], out["effective"]), (4.0, 4.0))
+		row = next(r for r in dr.get_discard_ages()["rows"] if r["item"] == self.item)
+		self.assertEqual(row["age"], 4.0)
+		cleared = dr.set_discard_age(self.item, "")  # the column is NOT NULL: this used to be an integrity error
+		self.assertIsNone(cleared["age"])
+		self.assertEqual(cleared["effective"], dr._default_discard_age())
+		row = next(r for r in dr.get_discard_ages()["rows"] if r["item"] == self.item)
+		self.assertIsNone(row["age"])
+
+	def test_an_out_of_range_age_is_refused_and_changes_nothing(self):
+		dr.set_discard_age(self.item, 4)
+		with self.assertRaises(frappe.ValidationError):
+			dr.set_discard_age(self.item, 999)
+		self.assertEqual(frappe.db.get_value("Item", self.item, "custom_discard_age"), 4.0)
+
+	def test_an_unknown_variety_is_refused(self):
+		with self.assertRaises(frappe.DoesNotExistError):
+			dr.set_discard_age("No Such Variety", 3)
+
+
 if __name__ == "__main__":
 	unittest.main()
