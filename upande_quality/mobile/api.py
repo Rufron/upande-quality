@@ -12,6 +12,11 @@ import re
 import frappe
 from frappe import _
 
+from upande_quality.upande_quality.doctype.production_settings.production_settings import (
+	discard_age_for,
+	discard_age_resolver,
+)
+
 
 @frappe.whitelist()
 def clearOplAllocations():
@@ -3533,10 +3538,24 @@ def fetchPackhouseQCFormData():
 			if fspec:
 				spec_matches.update(todays_orders_by_spec([dict(fspec)]))
 
+		def issue_progress(names):
+			"""OPL -> (issued lines, total lines): the `issued` tick upande_packhouse sets on each
+			Pick List Item as its bucket is issued from the cold store."""
+			if not names:
+				return {}
+			return {
+				r[0]: (int(r[1] or 0), int(r[2] or 0))
+				for r in frappe.db.sql(
+					"SELECT parent, SUM(issued), COUNT(*) FROM `tabPick List Item`"
+					" WHERE parenttype = 'Order Pick List' AND parent IN %(n)s GROUP BY parent",
+					{"n": tuple(names)},
+				)
+			}
+
 		# ── 2b. Active OPLs (draft + submitted), optionally filtered by team
 		# and/or the selected Specification (only that spec's matching orders).
 		team_filter = data.get("team", "").strip() if data.get("team") else ""
-		# Drafts are included (shown read-only in the app); cancelled are excluded.
+		# Drafts are included and can be QC'd like submitted orders; cancelled are excluded.
 		opl_conds = ["docstatus < 2"]
 		opl_vals = {}
 		if spec_filter:
@@ -3581,8 +3600,10 @@ def fetchPackhouseQCFormData():
 					"varieties": lr.get("varieties") or "",
 				}
 		order_specs = []
+		progress = issue_progress(opl_names)
 		for o in opl_rows:
 			meta = meta_by_opl.get(o.get("name")) or {}
+			issued, lines = progress.get(o.get("name"), (0, 0))
 			order_specs.append(
 				{
 					"name": o.get("name"),
@@ -3596,6 +3617,8 @@ def fetchPackhouseQCFormData():
 					"status": o.get("custom_status", ""),
 					"schedule_number": o.get("schedule_number", ""),
 					"docstatus": o.get("docstatus", 1),
+					"issued_lines": issued,
+					"total_lines": lines,
 				}
 			)
 
@@ -3683,10 +3706,20 @@ def fetchPackhouseQCFormData():
 			opl_row = frappe.db.get_value(
 				"Order Pick List",
 				opl_name,
-				["name", "customer", "team", "farm", "custom_total_stems", "order_name", "schedule_number"],
+				[
+					"name",
+					"customer",
+					"team",
+					"farm",
+					"custom_total_stems",
+					"order_name",
+					"schedule_number",
+					"docstatus",
+				],
 				as_dict=1,
 			)
 			if opl_row:
+				issued, lines = issue_progress([opl_name]).get(opl_name, (0, 0))
 				order_pick_list_detail = {
 					"name": opl_row.get("name"),
 					"order_name": opl_row.get("order_name", ""),
@@ -3696,6 +3729,9 @@ def fetchPackhouseQCFormData():
 					"total_stems": opl_row.get("custom_total_stems", 0),
 					"status": opl_row.get("custom_status", ""),
 					"schedule_number": opl_row.get("schedule_number", ""),
+					"docstatus": opl_row.get("docstatus", 1),
+					"issued_lines": issued,
+					"total_lines": lines,
 				}
 
 		# ── 3b. What's actually recorded on the scanned box itself ───────
@@ -4349,12 +4385,12 @@ def getDiscardRequestBuckets():
 			# Discard Request selects. Using the latest harvest makes reuse correct: a
 			# re-harvested bucket is measured on its NEW flowers, so it only qualifies
 			# once those have aged past discard_age.
-			discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-			if not discard_age:
-				discard_age = 5.0
-			cutoff = frappe.utils.add_days(frappe.utils.nowdate(), -int(float(discard_age)))
+			# Discard age is per item group (discard_age_resolver); SQL pre-filters on the youngest.
+			age_for = discard_age_resolver()
+			cutoff = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for.youngest))
 			shelf_rows = frappe.db.sql(
-				"""SELECT DISTINCT UPPER(si.bucket_id) AS b
+				"""SELECT DISTINCT UPPER(si.bucket_id) AS b, si.variety AS v,
+                          COALESCE(h.hd, DATE(si.date_added)) AS d
                    FROM `tabShelf Item` si
                    JOIN `tabShelf` sh ON sh.name = si.parent
                    LEFT JOIN (
@@ -4377,7 +4413,8 @@ def getDiscardRequestBuckets():
 			s = 0
 			while s < len(shelf_rows):
 				b = shelf_rows[s].get("b")
-				if b:
+				due = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for(shelf_rows[s].get("v"))))
+				if b and str(shelf_rows[s].get("d")) <= str(due):
 					on_shelf[b] = 1
 				s = s + 1
 
@@ -4449,9 +4486,113 @@ def getDiscardRequestBuckets():
 				"farm": farm,
 				"buckets": buckets,
 				"count": len(buckets),
+				"requests": _discard_request_groups(farm, rows, approved_names, buckets),
 			}
 	except Exception as e:
 		frappe.response["message"] = {"status": "error", "message": str(e), "buckets": []}
+
+
+def _discard_request_groups(farm, rows, approved, pending):
+	"""The farm's discard list grouped by Discard Request, newest first: each request with its
+	date, requester, approver and buckets, both those still to discard (`pending`, already
+	de-duplicated to the latest request) and those discarded since the request was raised.
+	"Discarded" comes from the Discard Stock Entry, not the row's `discarded` flag, which is set
+	on every request that ever listed the bucket. A request is shown while it has buckets left,
+	or when one of its buckets was discarded today."""
+	listed = {}  # BUCKET -> [(request creation, request, row)]
+	for r in rows:
+		created = approved.get(r.get("parent"))
+		if r.get("bucket_id") and created:
+			listed.setdefault(str(r.get("bucket_id")).upper(), []).append((created, r.get("parent"), r))
+
+	# shortcut: only discards from the last 14 days are matched to requests; widen if older requests stay open.
+	discards = frappe.db.sql(
+		"""SELECT UPPER(custom_bucket_id) AS b, creation, owner FROM `tabStock Entry`
+		WHERE stock_entry_type = 'Discard' AND docstatus = 1 AND farm = %s
+		  AND creation >= %s AND custom_bucket_id > ''
+		ORDER BY creation""",
+		(farm, frappe.utils.add_days(frappe.utils.nowdate(), -14)),
+		as_dict=True,
+	)
+	pending_keys = {(b["discard_request"], str(b["bucket_id"]).upper()) for b in pending}
+	done = {}  # request -> {BUCKET: (row, discard)}
+	for d in discards:
+		# A discard belongs to the latest request that listed the bucket before it was discarded.
+		before = [c for c in listed.get(d.b, []) if c[0] <= str(d.creation)]
+		if before:
+			_, req, row = max(before, key=lambda c: c[0])
+			if (req, d.b) not in pending_keys:
+				done.setdefault(req, {})[d.b] = (row, d)
+
+	today = frappe.utils.nowdate()
+	shown = {b["discard_request"] for b in pending} | {
+		req for req, hits in done.items() if any(str(d.creation)[:10] == today for _, d in hits.values())
+	}
+	if not shown:
+		return []
+	meta = {
+		m.name: m
+		for m in frappe.get_all(
+			"Discard Request",
+			filters={"name": ["in", list(shown)]},
+			fields=["name", "creation", "requested_date", "requested_by", "approved_by", "modified_by"],
+		)
+	}
+	users = set()
+	for m in meta.values():
+		users.update([m.requested_by, m.approved_by or m.modified_by])
+	for hits in done.values():
+		users.update(d.owner for _, d in hits.values())
+	names = {
+		u.name: u.full_name
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", [u for u in users if u]]}, fields=["name", "full_name"]
+		)
+	}
+
+	groups = []
+	for req in shown:
+		m = meta.get(req)
+		if not m:
+			continue
+		# Approval workflow is off (2026-10-01), so approved_by is blank on manual requests:
+		# whoever submitted the request approved it.
+		approver = m.approved_by or m.modified_by
+		items = [dict(b, discarded=0) for b in pending if b["discard_request"] == req]
+		for row, d in done.get(req, {}).values():
+			items.append(
+				{
+					"bucket_id": row.get("bucket_id"),
+					"shelf": row.get("shelf"),
+					"variety": row.get("variety"),
+					"stem_qty": row.get("stem_qty"),
+					"age_days": row.get("age_days"),
+					"is_shelved": 1 if row.get("is_shelved") else 0,
+					"greenhouse": row.get("greenhouse"),
+					"stem_length": row.get("stem_length"),
+					"discard_request": req,
+					"discarded": 1,
+					"discarded_at": str(d.creation),
+					"discarded_by": d.owner,
+					"discarded_by_name": names.get(d.owner) or d.owner,
+				}
+			)
+		groups.append(
+			{
+				"name": req,
+				"creation": str(m.creation),
+				"requested_date": str(m.requested_date or m.creation)[:10],
+				"requested_by": m.requested_by,
+				"requested_by_name": names.get(m.requested_by) or m.requested_by,
+				"approved_by": approver,
+				"approved_by_name": names.get(approver) or approver,
+				"pending": sum(1 for i in items if not i["discarded"]),
+				"discarded": sum(1 for i in items if i["discarded"]),
+				"buckets": items,
+			}
+		)
+	groups.sort(key=lambda g: g["creation"], reverse=True)
+	return groups
 
 
 @frappe.whitelist()
@@ -6723,8 +6864,7 @@ def gradingReplacementOptions():
 							}
 
 						if stem_length and farm:
-							discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-							discard_age = float(discard_age) if discard_age else 5.0
+							discard_age = discard_age_for(variety)
 							max_age = farm_max_age(farm)
 							today = frappe.utils.nowdate()
 
@@ -6991,8 +7131,7 @@ def listBunchDestinations():
 
 		if variety and stem_length and farm:
 			try:
-				discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-				discard_age = float(discard_age) if discard_age else 5.0
+				discard_age = discard_age_for(variety)
 				max_age = farm_max_age(farm)
 				today = frappe.utils.nowdate()
 
@@ -7282,8 +7421,7 @@ def listReplacementCandidates():
 					}
 
 				if variety and stem_length and farm:
-					discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-					discard_age = float(discard_age) if discard_age else 5.0
+					discard_age = discard_age_for(variety)
 					max_age = farm_max_age(farm)
 					today = frappe.utils.nowdate()
 
@@ -8777,8 +8915,7 @@ def replaceBunchInOpl():
 						in_transit = 1 if donor.get("in_transit") else 0
 						on_discard = 1 if donor.get("on_discard_list") else 0
 						harvest_date = donor.get("harvest_date")
-						discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-						discard_age = float(discard_age) if discard_age else 5.0
+						discard_age = discard_age_for(donor_variety)
 						max_age = farm_max_age(donor.get("farm"))
 						age_days = (
 							frappe.utils.date_diff(frappe.utils.nowdate(), str(harvest_date))
@@ -9044,8 +9181,7 @@ def replaceStems():
 						in_transit = 1 if donor.get("in_transit") else 0
 						on_discard = 1 if donor.get("on_discard_list") else 0
 						harvest_date = donor.get("harvest_date")
-						discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-						discard_age = float(discard_age) if discard_age else 5.0
+						discard_age = discard_age_for(donor.get("variety"))
 						max_age = farm_max_age(donor.get("farm"))
 						age_days = (
 							frappe.utils.date_diff(frappe.utils.nowdate(), str(harvest_date))

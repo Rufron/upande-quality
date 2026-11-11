@@ -16,6 +16,8 @@
   "inactive_bucket_days",
   "section_break_rvm8",
   "shelf_locations",
+  "discard_age_section",
+  "discard_age_by_item_group",
   "harvesting_section",
   "harvest_item_group_config",
   "planning_tab",
@@ -73,7 +75,8 @@
   {
    "fieldname": "discard_age",
    "fieldtype": "Float",
-   "label": "Discard Age"
+   "label": "Discard Age",
+   "description": "Default for item groups not listed in Discard Age by Item Group"
   },
   {
    "description": "Shelving refuses a bucket whose harvest is older than this many days",
@@ -100,6 +103,18 @@
    "fieldtype": "Table",
    "label": "Shelf Locations",
    "options": "Shelf Locations"
+  },
+  {
+   "fieldname": "discard_age_section",
+   "fieldtype": "Section Break",
+   "label": "Discard Age by Item Group"
+  },
+  {
+   "description": "A bucket uses the row for its variety's item group, else the nearest parent group listed here (e.g. Spray Roses covers Spray Roses - Bombastics), else Discard Age above.",
+   "fieldname": "discard_age_by_item_group",
+   "fieldtype": "Table",
+   "label": "Discard Age by Item Group",
+   "options": "Discard Age Item Group"
   },
   {
    "fieldname": "harvesting_section",
@@ -318,7 +333,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-09 23:46:33.740855",
+ "modified": "2026-11-11 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",

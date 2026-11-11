@@ -287,7 +287,7 @@ function load(){
 }
 function filterText(r){
   var a=[];if(r.variety)a.push(r.variety);if(r.length)a.push(r.length);if(r.item_group)a.push(r.item_group);if(r.coldroom)a.push(r.coldroom);
-  a.push('older than '+(r.age_threshold||0)+' '+String(r.age_unit||'Days').toLowerCase());return a.join(' · ');
+  a.push(r.age_threshold?'older than '+r.age_threshold+' '+String(r.age_unit||'Days').toLowerCase():'older than its item group discard age');return a.join(' · ');
 }
 function stPill(s){return '<span class="dqpill s-'+esc(s.split(' ')[0])+'">'+esc(s)+'</span>';}
 function who(r){return r.origin==='System'?'<span class="dqpill p-system">System</span>':'<span class="dqpill p-user">'+esc((r.owner||'').split('@')[0])+'</span>';}
@@ -352,7 +352,7 @@ function closeAll(){['dView','dNew'].forEach(function(i){el(i).classList.remove(
 function nf(){return{farms:M.farm.get(),varieties:M.var.get(),lengths:M.len.get(),item_groups:M.grp.get(),coldrooms:M.cold.get(),age_threshold:el('nAge').value===''?null:+el('nAge').value,age_unit:el('nUnit').value};}
 function openNew(){
   el('dNew').classList.add('on');el('scrim').classList.add('on');
-  if(el('nAge').value==='')el('nAge').value=opts.discard_age;
+  el('nAge').placeholder='Item group age';el('nAge').title='Blank: each item group uses its discard age from Production Settings (default '+opts.discard_age+' days)';
   el('nApprove').style.display=(!opts.workflow||opts.workflow.can_approve)&&opts.workflow?'':'none';
   el('nDraft').style.display=opts.workflow?'':'none';
   el('nSend').textContent=opts.workflow?'Create and send for approval':'Create requests';
