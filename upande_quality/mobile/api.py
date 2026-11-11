@@ -4545,7 +4545,9 @@ def _discard_request_groups(farm, rows, approved, pending):
 		users.update(d.owner for _, d in hits.values())
 	names = {
 		u.name: u.full_name
-		for u in frappe.get_all("User", filters={"name": ["in", [u for u in users if u]]}, fields=["name", "full_name"])
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", [u for u in users if u]]}, fields=["name", "full_name"]
+		)
 	}
 
 	groups = []
