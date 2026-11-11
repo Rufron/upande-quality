@@ -4457,6 +4457,7 @@ def getDiscardRequestBuckets():
 			# creation), keyed case-insensitively by bucket id.
 			best = {}
 			best_created = {}
+			hidden = {}
 			j = 0
 			while j < len(rows):
 				r = rows[j]
@@ -4466,7 +4467,17 @@ def getDiscardRequestBuckets():
 				up = str(bid).upper() if bid else ""
 				# parent Approved (created truthy) AND currently on a shelf at this
 				# farm AND not allocated.
-				if bid and created and (up in on_shelf) and (up not in allocated):
+				if bid and created and not (on_shelf.get(up) and up not in allocated):
+					# Listed on an approved request but not offered to the operator: say why,
+					# so the app count can be reconciled with the request.
+					if up not in on_shelf:
+						why = "Not on a shelf at this farm (already discarded, issued or moved)"
+					elif not on_shelf[up]:
+						why = "Re-harvested, the new flowers are not old enough"
+					else:
+						why = "Allocated to an order"
+					hidden[str(bid).lower()] = {"bucket_id": bid, "reason": why, "discard_request": parent}
+				if bid and created and (on_shelf.get(up)) and (up not in allocated):
 					key = str(bid).lower()
 					if (key not in best) or (created > best_created.get(key, "")):
 						best[key] = {
@@ -4483,6 +4494,7 @@ def getDiscardRequestBuckets():
 						best_created[key] = created
 				j = j + 1
 			buckets = list(best.values())
+			hidden_list = [h for k, h in hidden.items() if k not in best]
 			frappe.response["message"] = {
 				"status": "success",
 				"farm": farm,
@@ -12253,6 +12265,20 @@ def _todays_order_pick_lists():
 	]
 
 
+def _active_specifications():
+	"""Active Specifications for the Vaselife picker. The doctype comes from another
+	app, so a site without it gets an empty list rather than a failed form."""
+	if not frappe.db.exists("DocType", "Specifications"):
+		return []
+	return frappe.get_all(
+		"Specifications",
+		filters={"status": "Active"},
+		fields=["name", "customer"],
+		order_by="name asc",
+		limit_page_length=0,
+	)
+
+
 def _bucket_order_pick_list(bucket_id):
 	"""The Order Pick List created today that this bucket is allocated to, if any."""
 	rows = frappe.db.sql(
@@ -12719,6 +12745,7 @@ def fetchVaselifeFormData():
 			"breeders": [{"name": b} for b in BREEDER_LIST],
 			"varieties": varieties,
 			"order_pick_lists": _todays_order_pick_lists(),
+			"specifications": _active_specifications(),
 			"crops": [{"name": x} for x in crops],
 			"commercial_statuses": [{"name": x} for x in commercial_statuses],
 			"cut_stages": [{"name": x} for x in cut_stages],
@@ -12907,7 +12934,7 @@ def saveVaselifeSample():
 					"no_of_stems": to_int(data.get("no_of_stems")),
 					"bud_height": to_float(data.get("bud_height")),
 					"bud_width": to_float(data.get("bud_width")),
-					"initial_cut_stage": safe_link("Vaselife Cut Stage", data.get("initial_cut_stage") or ""),
+					"initial_cut_stage": data.get("initial_cut_stage") or None,
 					"prepared_by": frappe.session.user,
 				}
 			)

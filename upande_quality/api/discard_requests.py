@@ -580,3 +580,79 @@ def act_on_requests(names, action):
 			frappe.db.rollback()
 			failed.append({"name": n, "error": str(e)})
 	return {"done": done, "failed": failed}
+
+
+# --------------------------------------------------------------------------- #
+# Discard age per variety (Item > Roses Packhouse > Discard Age). The nightly job and the Discard Request rows read it.
+# --------------------------------------------------------------------------- #
+VARIETY_ROOT = "Cut Flowers"
+
+
+def _default_discard_age():
+	try:
+		return flt(frappe.db.get_single_value("Production Settings", "discard_age")) or 5.0
+	except Exception:
+		return 5.0
+
+
+def _age_value(days):
+	"""A valid discard age in days (0.5 to 365, one decimal), or None to clear it."""
+	if days in (None, ""):
+		return None
+	value = flt(days)
+	if value <= 0:
+		return None
+	if value < 0.5 or value > 365:
+		frappe.throw(_("A discard age is between 0.5 and 365 days."))
+	return round(value, 1)
+
+
+@frappe.whitelist()
+def get_discard_ages(search=None, group=None, set_only=0):
+	"""Every variety with its discard age (empty = the default in Production Settings), and the default."""
+	_need("read")
+	default = _default_discard_age()
+	fallback = discard_age_resolver().fallback  # the item group's age, else the default
+	cond, p = ["it.disabled = 0"], {"root": VARIETY_ROOT}
+	if search:
+		cond.append("(it.name LIKE %(q)s OR it.item_name LIKE %(q)s)")
+		p["q"] = "%" + str(search).strip().replace("%", "")[:60] + "%"
+	if group:
+		cond.append("it.item_group = %(g)s")
+		p["g"] = group
+	if cint(set_only):
+		cond.append("IFNULL(it.custom_discard_age, 0) > 0")
+	rows = frappe.db.sql(
+		f"""SELECT it.name, it.item_name, it.item_group, it.custom_discard_age AS age
+		FROM `tabItem` it
+		JOIN `tabItem Group` g ON g.name = it.item_group
+		JOIN `tabItem Group` r ON r.name = %(root)s AND g.lft >= r.lft AND g.rgt <= r.rgt
+		WHERE {' AND '.join(cond)} ORDER BY g.name, it.item_name LIMIT 2000""",
+		p,
+		as_dict=True,
+	)
+	return {
+		"default": default,
+		"rows": [
+			{
+				"item": r.name,
+				"name": r.item_name or r.name,
+				"group": r.item_group,
+				"age": flt(r.age) or None,
+				"effective": flt(r.age) if flt(r.age) > 0 else fallback(r.name),
+			}
+			for r in rows
+		],
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def set_discard_age(item=None, days=None):
+	"""Set (or clear, with an empty value) a variety's discard age. Needs write access to Discard Requests."""
+	_need("write")
+	if not item or not frappe.db.exists("Item", item):
+		frappe.throw(_("Unknown variety."), frappe.DoesNotExistError)
+	value = _age_value(days)
+	# The column cannot be NULL: 0 means "none of its own, use the group's or the default".
+	frappe.db.set_value("Item", item, "custom_discard_age", value or 0)
+	return {"item": item, "age": value, "effective": value or discard_age_resolver().fallback(item)}
