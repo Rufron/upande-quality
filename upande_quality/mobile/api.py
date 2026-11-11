@@ -3538,10 +3538,24 @@ def fetchPackhouseQCFormData():
 			if fspec:
 				spec_matches.update(todays_orders_by_spec([dict(fspec)]))
 
+		def issue_progress(names):
+			"""OPL -> (issued lines, total lines): the `issued` tick upande_packhouse sets on each
+			Pick List Item as its bucket is issued from the cold store."""
+			if not names:
+				return {}
+			return {
+				r[0]: (int(r[1] or 0), int(r[2] or 0))
+				for r in frappe.db.sql(
+					"SELECT parent, SUM(issued), COUNT(*) FROM `tabPick List Item`"
+					" WHERE parenttype = 'Order Pick List' AND parent IN %(n)s GROUP BY parent",
+					{"n": tuple(names)},
+				)
+			}
+
 		# ── 2b. Active OPLs (draft + submitted), optionally filtered by team
 		# and/or the selected Specification (only that spec's matching orders).
 		team_filter = data.get("team", "").strip() if data.get("team") else ""
-		# Drafts are included (shown read-only in the app); cancelled are excluded.
+		# Drafts are included and can be QC'd like submitted orders; cancelled are excluded.
 		opl_conds = ["docstatus < 2"]
 		opl_vals = {}
 		if spec_filter:
@@ -3586,8 +3600,10 @@ def fetchPackhouseQCFormData():
 					"varieties": lr.get("varieties") or "",
 				}
 		order_specs = []
+		progress = issue_progress(opl_names)
 		for o in opl_rows:
 			meta = meta_by_opl.get(o.get("name")) or {}
+			issued, lines = progress.get(o.get("name"), (0, 0))
 			order_specs.append(
 				{
 					"name": o.get("name"),
@@ -3601,6 +3617,8 @@ def fetchPackhouseQCFormData():
 					"status": o.get("custom_status", ""),
 					"schedule_number": o.get("schedule_number", ""),
 					"docstatus": o.get("docstatus", 1),
+					"issued_lines": issued,
+					"total_lines": lines,
 				}
 			)
 
@@ -3688,10 +3706,20 @@ def fetchPackhouseQCFormData():
 			opl_row = frappe.db.get_value(
 				"Order Pick List",
 				opl_name,
-				["name", "customer", "team", "farm", "custom_total_stems", "order_name", "schedule_number"],
+				[
+					"name",
+					"customer",
+					"team",
+					"farm",
+					"custom_total_stems",
+					"order_name",
+					"schedule_number",
+					"docstatus",
+				],
 				as_dict=1,
 			)
 			if opl_row:
+				issued, lines = issue_progress([opl_name]).get(opl_name, (0, 0))
 				order_pick_list_detail = {
 					"name": opl_row.get("name"),
 					"order_name": opl_row.get("order_name", ""),
@@ -3701,6 +3729,9 @@ def fetchPackhouseQCFormData():
 					"total_stems": opl_row.get("custom_total_stems", 0),
 					"status": opl_row.get("custom_status", ""),
 					"schedule_number": opl_row.get("schedule_number", ""),
+					"docstatus": opl_row.get("docstatus", 1),
+					"issued_lines": issued,
+					"total_lines": lines,
 				}
 
 		# ── 3b. What's actually recorded on the scanned box itself ───────
