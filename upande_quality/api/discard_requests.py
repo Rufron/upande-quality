@@ -17,6 +17,10 @@ from frappe import _
 from frappe.model.workflow import apply_workflow, get_workflow_name
 from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, today
 
+from upande_quality.upande_quality.doctype.production_settings.production_settings import (
+	discard_age_resolver,
+)
+
 MAX_BUCKETS = 20000
 
 
@@ -256,7 +260,11 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 	"""Shelved buckets that qualify, plus what was left out and why. Age is from the shelf line's harvest date (the
 	nightly job reads the Harvesting stock entry, which agrees; that lookup scans every stock entry and takes minutes, so it is
 	not repeated per click), else from when the bucket was shelved."""
-	threshold = flt(age_threshold) / 24.0 if age_unit == "Hours" else flt(age_threshold)
+	if age_threshold in (None, ""):
+		threshold = discard_age_resolver()  # per item group, see Production Settings
+	else:
+		t = flt(age_threshold) / 24.0 if age_unit == "Hours" else flt(age_threshold)
+		threshold = lambda _item: t  # noqa: E731
 	cond, p = ["si.bucket_id IS NOT NULL AND si.bucket_id != ''"], {}
 	for col, vals, key in (
 		("sh.farm", farms, "farms"),
@@ -315,7 +323,7 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 			age = (now - get_datetime(r["date_added"])).total_seconds() / 86400.0
 		else:
 			continue
-		if age < threshold:
+		if age < threshold(r["variety"]):
 			left["too_young"] += 1
 			continue
 		if rooms and _location(r["greenhouse"]) not in rooms and (r["warehouse"] or "") not in coldrooms:
@@ -325,6 +333,58 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 		r["age_hours"] = round(age * 24, 1)
 		out.append(r)
 	return out, left, len(rows)
+
+
+@frappe.whitelist()
+def get_shelf_items_for_discard(
+	age_threshold=None,
+	age_unit="Days",
+	variety=None,
+	item_group=None,
+	farm=None,
+	company=None,
+	length=None,
+	coldroom=None,
+):
+	"""The Discard Request form's "Fetch Buckets", replacing the live Server Script of the same name with the
+	same filters and response. A blank age threshold uses each item group's discard age (Production Settings),
+	and buckets already on an open request are left out, as on the dashboard and in the nightly job."""
+	_need()
+	age_unit = "Hours" if age_unit == "Hours" else "Days"
+	one = lambda v: [v.strip()] if v and v.strip() else []  # noqa: E731
+	farms = one(farm)
+	if company:
+		of_company = frappe.get_all("Farm", filters={"company": company}, pluck="name")
+		farms = [f for f in farms if f in of_company] if farms else of_company
+	if company and not farms:
+		rows, left, scanned = [], {"allocated": 0, "on_a_request": 0}, 0
+	else:
+		rows, left, scanned = _candidates(
+			farms, one(variety), one(length), one(item_group), one(coldroom), age_threshold, age_unit
+		)
+	for r in rows:
+		r["date_source"] = "harvest" if r.get("harvest_date") else "shelved"
+		r["company"] = company or None
+	rows.sort(key=lambda r: -r["age_days"])
+	return {
+		"success": True,
+		"shelf_items": rows,
+		"total_scanned": scanned,
+		"total_qualifying": len(rows),
+		"buckets_without_harvest_entry": sum(1 for r in rows if r["date_source"] == "shelved"),
+		"allocated_skipped": left["allocated"],
+		"already_on_request": left["on_a_request"],
+		"applied_filters": {
+			"age_threshold": age_threshold if age_threshold not in (None, "") else "item group",
+			"age_unit": age_unit,
+			"variety": variety,
+			"item_group": item_group,
+			"farm": farm,
+			"company": company,
+			"length": length,
+			"coldroom": coldroom,
+		},
+	}
 
 
 @frappe.whitelist()
@@ -340,8 +400,6 @@ def preview_buckets(
 	"""What a new request would pick up, grouped by farm / variety / length. Writes nothing."""
 	_need()
 	age_unit = "Hours" if age_unit == "Hours" else "Days"
-	if age_threshold in (None, ""):
-		age_threshold = frappe.db.get_single_value("Production Settings", "discard_age") or 5
 	rows, left, scanned = _candidates(
 		_list(farms),
 		_list(varieties),
@@ -404,8 +462,6 @@ def create_requests(
 	action: "draft" (leave as a draft), "send" (send for approval; just submit when there is no workflow) or "approve"."""
 	_need("create")
 	age_unit = "Hours" if age_unit == "Hours" else "Days"
-	if age_threshold in (None, ""):
-		age_threshold = frappe.db.get_single_value("Production Settings", "discard_age") or 5
 	farms_f, var_f, len_f, grp_f, cold_f = (
 		_list(farms),
 		_list(varieties),

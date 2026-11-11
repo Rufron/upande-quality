@@ -12,6 +12,11 @@ import re
 import frappe
 from frappe import _
 
+from upande_quality.upande_quality.doctype.production_settings.production_settings import (
+	discard_age_for,
+	discard_age_resolver,
+)
+
 
 @frappe.whitelist()
 def clearOplAllocations():
@@ -4349,12 +4354,12 @@ def getDiscardRequestBuckets():
 			# Discard Request selects. Using the latest harvest makes reuse correct: a
 			# re-harvested bucket is measured on its NEW flowers, so it only qualifies
 			# once those have aged past discard_age.
-			discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-			if not discard_age:
-				discard_age = 5.0
-			cutoff = frappe.utils.add_days(frappe.utils.nowdate(), -int(float(discard_age)))
+			# Discard age is per item group (discard_age_resolver); SQL pre-filters on the youngest.
+			age_for = discard_age_resolver()
+			cutoff = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for.youngest))
 			shelf_rows = frappe.db.sql(
-				"""SELECT DISTINCT UPPER(si.bucket_id) AS b
+				"""SELECT DISTINCT UPPER(si.bucket_id) AS b, si.variety AS v,
+                          COALESCE(h.hd, DATE(si.date_added)) AS d
                    FROM `tabShelf Item` si
                    JOIN `tabShelf` sh ON sh.name = si.parent
                    LEFT JOIN (
@@ -4377,7 +4382,8 @@ def getDiscardRequestBuckets():
 			s = 0
 			while s < len(shelf_rows):
 				b = shelf_rows[s].get("b")
-				if b:
+				due = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for(shelf_rows[s].get("v"))))
+				if b and str(shelf_rows[s].get("d")) <= str(due):
 					on_shelf[b] = 1
 				s = s + 1
 
@@ -6825,8 +6831,7 @@ def gradingReplacementOptions():
 							}
 
 						if stem_length and farm:
-							discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-							discard_age = float(discard_age) if discard_age else 5.0
+							discard_age = discard_age_for(variety)
 							max_age = farm_max_age(farm)
 							today = frappe.utils.nowdate()
 
@@ -7093,8 +7098,7 @@ def listBunchDestinations():
 
 		if variety and stem_length and farm:
 			try:
-				discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-				discard_age = float(discard_age) if discard_age else 5.0
+				discard_age = discard_age_for(variety)
 				max_age = farm_max_age(farm)
 				today = frappe.utils.nowdate()
 
@@ -7384,8 +7388,7 @@ def listReplacementCandidates():
 					}
 
 				if variety and stem_length and farm:
-					discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-					discard_age = float(discard_age) if discard_age else 5.0
+					discard_age = discard_age_for(variety)
 					max_age = farm_max_age(farm)
 					today = frappe.utils.nowdate()
 
@@ -8879,8 +8882,7 @@ def replaceBunchInOpl():
 						in_transit = 1 if donor.get("in_transit") else 0
 						on_discard = 1 if donor.get("on_discard_list") else 0
 						harvest_date = donor.get("harvest_date")
-						discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-						discard_age = float(discard_age) if discard_age else 5.0
+						discard_age = discard_age_for(donor_variety)
 						max_age = farm_max_age(donor.get("farm"))
 						age_days = (
 							frappe.utils.date_diff(frappe.utils.nowdate(), str(harvest_date))
@@ -9146,8 +9148,7 @@ def replaceStems():
 						in_transit = 1 if donor.get("in_transit") else 0
 						on_discard = 1 if donor.get("on_discard_list") else 0
 						harvest_date = donor.get("harvest_date")
-						discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-						discard_age = float(discard_age) if discard_age else 5.0
+						discard_age = discard_age_for(donor.get("variety"))
 						max_age = farm_max_age(donor.get("farm"))
 						age_days = (
 							frappe.utils.date_diff(frappe.utils.nowdate(), str(harvest_date))

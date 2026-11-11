@@ -1,6 +1,10 @@
 import frappe
 from frappe.utils import get_datetime, getdate, now_datetime, today
 
+from upande_quality.upande_quality.doctype.production_settings.production_settings import (
+	discard_age_resolver,
+)
+
 
 def auto_discard_request():
 	"""Nightly (cron 0 0 * * *) equivalent of the old "Auto Discard Request"
@@ -33,10 +37,10 @@ def auto_discard_request():
 	under the wrong company.
 	"""
 	try:
-		discard_age = frappe.db.get_single_value("Production Settings", "discard_age")
-		if not discard_age:
-			discard_age = 5.0
-		threshold_days = float(discard_age)
+		# Discard age is per item group (Production Settings > Discard Age by Item Group),
+		# falling back to the top-level Discard Age.
+		age_for = discard_age_resolver()
+		discard_age = age_for()  # the default, recorded on the request
 
 		today_date = today()
 		run_user = frappe.session.user
@@ -100,7 +104,7 @@ def auto_discard_request():
 				age_days = (now - get_datetime(r["date_added"])).total_seconds() / 86400.0
 			else:
 				continue
-			if age_days < threshold_days:
+			if age_days < age_for(r.get("variety")):
 				continue
 
 			farm = r.get("farm") or "Unknown"
