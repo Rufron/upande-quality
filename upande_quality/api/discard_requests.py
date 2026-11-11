@@ -627,7 +627,7 @@ def get_discard_ages(search=None, group=None, set_only=0):
 		FROM `tabItem` it
 		JOIN `tabItem Group` g ON g.name = it.item_group
 		JOIN `tabItem Group` r ON r.name = %(root)s AND g.lft >= r.lft AND g.rgt <= r.rgt
-		WHERE {' AND '.join(cond)} ORDER BY g.name, it.item_name LIMIT 2000""",
+		WHERE {" AND ".join(cond)} ORDER BY g.name, it.item_name LIMIT 2000""",
 		p,
 		as_dict=True,
 	)

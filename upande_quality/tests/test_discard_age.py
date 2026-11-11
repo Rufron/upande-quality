@@ -25,13 +25,21 @@ class TestResolverOrder(unittest.TestCase):
 			mock.patch.object(frappe, "get_cached_value", return_value=group),
 			mock.patch.object(frappe.db, "get_value", return_value=own),
 			mock.patch.object(
-				frappe.db, "sql", side_effect=lambda q, *a, **k: [[group]] if group in group_ages else [[None]] if "MIN(" in q else []
+				frappe.db,
+				"sql",
+				side_effect=lambda q, *a, **k: [[group]]
+				if group in group_ages
+				else [[None]]
+				if "MIN(" in q
+				else [],
 			),
 		]
 		for pt in patches:
 			pt.start()
 			self.addCleanup(pt.stop)
-		from upande_quality.upande_quality.doctype.production_settings.production_settings import discard_age_resolver
+		from upande_quality.upande_quality.doctype.production_settings.production_settings import (
+			discard_age_resolver,
+		)
 
 		return discard_age_resolver()
 
@@ -84,7 +92,9 @@ class TestSetAndClear(unittest.TestCase):
 		self.assertEqual((out["age"], out["effective"]), (4.0, 4.0))
 		row = next(r for r in dr.get_discard_ages()["rows"] if r["item"] == self.item)
 		self.assertEqual(row["age"], 4.0)
-		cleared = dr.set_discard_age(self.item, "")  # the column is NOT NULL: this used to be an integrity error
+		cleared = dr.set_discard_age(
+			self.item, ""
+		)  # the column is NOT NULL: this used to be an integrity error
 		self.assertIsNone(cleared["age"])
 		self.assertEqual(cleared["effective"], dr._default_discard_age())
 		row = next(r for r in dr.get_discard_ages()["rows"] if r["item"] == self.item)
