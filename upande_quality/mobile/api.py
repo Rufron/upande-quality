@@ -4455,6 +4455,7 @@ def getDiscardRequestBuckets():
 			# creation), keyed case-insensitively by bucket id.
 			best = {}
 			best_created = {}
+			hidden = {}
 			j = 0
 			while j < len(rows):
 				r = rows[j]
@@ -4464,7 +4465,17 @@ def getDiscardRequestBuckets():
 				up = str(bid).upper() if bid else ""
 				# parent Approved (created truthy) AND currently on a shelf at this
 				# farm AND not allocated.
-				if bid and created and (up in on_shelf) and (up not in allocated):
+				if bid and created and not (on_shelf.get(up) and up not in allocated):
+					# Listed on an approved request but not offered to the operator: say why,
+					# so the app count can be reconciled with the request.
+					if up not in on_shelf:
+						why = "Not on a shelf at this farm (already discarded, issued or moved)"
+					elif not on_shelf[up]:
+						why = "Re-harvested, the new flowers are not old enough"
+					else:
+						why = "Allocated to an order"
+					hidden[str(bid).lower()] = {"bucket_id": bid, "reason": why, "discard_request": parent}
+				if bid and created and (on_shelf.get(up)) and (up not in allocated):
 					key = str(bid).lower()
 					if (key not in best) or (created > best_created.get(key, "")):
 						best[key] = {
@@ -4481,6 +4492,7 @@ def getDiscardRequestBuckets():
 						best_created[key] = created
 				j = j + 1
 			buckets = list(best.values())
+			hidden_list = [h for k, h in hidden.items() if k not in best]
 			frappe.response["message"] = {
 				"status": "success",
 				"farm": farm,
