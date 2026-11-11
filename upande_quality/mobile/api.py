@@ -4415,24 +4415,26 @@ def getDiscardRequestBuckets():
 				b = shelf_rows[s].get("b")
 				due = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for(shelf_rows[s].get("v"))))
 				if b and str(shelf_rows[s].get("d")) <= str(due):
-					on_shelf[b] = 1
+					on_shelf[b] = max(on_shelf.get(b) or "", str(shelf_rows[s].get("d")))
 				s = s + 1
 
-			# Allocated buckets must never be discarded — checked against the live
-			# (cleared-nightly) Bucket Allocation Status. UPPER()-folded.
+			# Allocated buckets must never be discarded. Bucket Allocation Status is not
+			# cleared, and buckets are reused, so a row only counts when it still has stems
+			# allocated and is for the bucket's current flowers (harvested no earlier than
+			# the date its age is measured from). Older rows belong to earlier harvests.
 			alloc_rows = frappe.get_all(
 				"Bucket Allocation Status",
-				filters={},
-				fields=["bucket_id"],
+				filters={"allocated_quantity": [">", 0]},
+				fields=["bucket_id", "harvest_date"],
 				limit_page_length=0,
 			)
 			allocated = {}
-			k = 0
-			while k < len(alloc_rows):
-				bid = alloc_rows[k].get("bucket_id")
-				if bid:
-					allocated[str(bid).upper()] = 1
-				k = k + 1
+			for a in alloc_rows:
+				up = str(a.get("bucket_id") or "").upper()
+				if up in on_shelf and (
+					not a.get("harvest_date") or str(a.get("harvest_date")) >= on_shelf[up]
+				):
+					allocated[up] = 1
 
 			rows = frappe.get_all(
 				"Discard Request Bucket",
