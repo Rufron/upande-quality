@@ -17,6 +17,91 @@ from upande_quality.upande_quality.doctype.production_settings.production_settin
 	discard_age_resolver,
 )
 
+# Who a CAR is assigned to, per farm, as Karen Roses asked on 2026-11-11 (Intake CARs also email
+# the assignee). Packhouse/Grading CARs go to Post Harvest, with no email. Farms not listed fall back to the farm's
+# "Farm Manager <farm>" role profile. Farm mailboxes are left out except Kaptumbo's,
+# the only address given for that farm.
+CAR_ASSIGNEES = {
+	"Chepsito": "rbundotich@karenroses.com",
+	"Kapkolia": "amutai@karenroses.com",
+	"Kaptumbo": "kaptumbo@karenroses.com",
+	"Torongo": "lwadeya@karenroses.com",
+	"Post Harvest": "nouma@karenroses.com",
+}
+
+# Only these concerns raise a CAR (Karen Roses, 2026-11-11): pests and diseases, not handling issues.
+CAR_PEST_DISEASE = {
+	"Helicoverpa Egg",
+	"Helicoverpa Damage",
+	"Helicoverpa Larvae",
+	"FCM Egg",
+	"FCM Damages",
+	"FCM Larvae",
+	"Spodoptera Egg",
+	"Spodoptera Damage",
+	"Spodoptera Larvae",
+	"Aphids",
+	"Live Aphids",
+	"Mites",
+	"Mite Damage",
+	"Thrips",
+	"Thrips Damage",
+	"Mealy Bugs",
+	"White Flies",
+	"Leaf Miner",
+	"Slugs",
+	"Poor Defoliation",
+	"Poor Sizing",
+	"Botrytis",
+	"Fresh Powdery Mildew",
+	"Dry Powdery Mildew",
+	"Fresh Downy Mildew",
+	"Dry Downy Mildew",
+	"Black Spot",
+	"Rust",
+	"Rotting",
+}
+
+
+def is_pest_or_disease(concern):
+	return (concern or "").strip().lower() in {c.lower() for c in CAR_PEST_DISEASE}
+
+
+# CAR issue text: intake writes "Thrips Damage (6), Bruises (5)", packhouse "Thrips Damage x6; Bruises x5"
+_CAR_CONCERN = re.compile(r"\s*([^,;(]+?)\s*(?:\((\d+)\)|\bx(\d+))\s*(?=[,;]|$)")
+
+
+def car_concerns(issue):
+	"""[(concern, stems)] from a CAR's issue text; free text with no counts stays one row."""
+	found = [(c.strip(), int(a or b)) for c, a, b in _CAR_CONCERN.findall(issue or "")]
+	return found or [((issue or "").strip(), None)]
+
+
+def open_car_for_concerns(greenhouse, concerns, variety=None):
+	"""Name of an open CAR (Pending / In Progress, target date not passed) in this greenhouse that
+	already covers any of `concerns`, whatever its variety; None when a new CAR is needed. With no
+	concerns to compare, an open CAR for the same variety in the greenhouse counts instead."""
+	if not greenhouse:
+		return None
+	wanted = {c.strip().lower() for c in concerns if c and c.strip()}
+	for car in frappe.get_all(
+		"Corrective Action Report",
+		filters={
+			"custom_greenhouse": greenhouse,
+			"status": ["in", ["Pending", "In Progress"]],
+		},
+		fields=["name", "variety", "issue", "target_date"],
+		order_by="creation desc",
+	):
+		if car.target_date and str(car.target_date) < frappe.utils.nowdate():
+			continue
+		if wanted:
+			if wanted & {c.lower() for c, _n in car_concerns(car.issue) if c}:
+				return car.name
+		elif variety and car.variety == variety:
+			return car.name
+	return None
+
 
 @frappe.whitelist()
 def clearOplAllocations():
@@ -9679,48 +9764,8 @@ def savePackhouseQC():
 		created_cars = []
 		car_errors = []
 
-		PEST_DISEASE_PARAMS = {
-			"Helicoverpa Egg",
-			"Helicoverpa Damage",
-			"Helicoverpa Larvae",
-			"FCM Egg",
-			"FCM Damages",
-			"FCM Larvae",
-			"Spodoptera Egg",
-			"Spodoptera Damage",
-			"Spodoptera Larvae",
-			"Aphids",
-			"Live Aphids",
-			"Mites",
-			"Mite Damage",
-			"Thrips",
-			"Thrips Damage",
-			"Mealy Bugs",
-			"White Flies",
-			"Leaf Miner",
-			"Slugs",
-			"Poor Defoliation",
-			"Poor Sizing",
-			"Botrytis",
-			"Fresh Powdery Mildew",
-			"Dry Powdery Mildew",
-			"Fresh Downy Mildew",
-			"Dry Downy Mildew",
-			"Black Spot",
-			"Rust",
-			"Rotting",
-		}
-		CAR_OTHER_THRESHOLD_PCT = 6.0
-		car_base = sampled_stems if sampled_stems > 0 else stems_checked
-
-		def issue_warrants_car(iss):
-			param = iss.get("parameter", "")
-			if param in PEST_DISEASE_PARAMS:
-				return True
-			cnt = int(iss.get("count", 0) or 0)
-			return car_base > 0 and (cnt * 100.0 / car_base) > CAR_OTHER_THRESHOLD_PCT
-
-		car_worthy = any(issue_warrants_car(r) for r in issue_rows)
+		car_rows = [r for r in issue_rows if is_pest_or_disease(r.get("parameter"))]
+		car_worthy = bool(car_rows)
 		# Airport Returns never raise CARs -- a customer return isn't a farm defect.
 		has_issues = (
 			bool(issue_rows)
@@ -9730,16 +9775,14 @@ def savePackhouseQC():
 			and not is_reject_recorder
 		)
 
-		CAR_ASSIGNEE = "nouma@karenroses.com"
+		CAR_ASSIGNEE = CAR_ASSIGNEES["Post Harvest"]
 
+		# CAR.control_point links to QC Control Point; "Grading"/"Packing" don't exist there, so
+		# every packhouse CAR insert used to fail link validation.
 		CAR_CP_MAP = {
 			"intake": "Intake",
-			"cold room": "Cold Room",
-			"coldroom": "Cold Room",
-			"grading": "Grading",
-			"packhouse": "Packing",
-			"packing": "Packing",
-			"dispatch": "Dispatch",
+			"cold room": "Coldroom",
+			"coldroom": "Coldroom",
 		}
 
 		def to_car_control_point(*texts):
@@ -9748,17 +9791,13 @@ def savePackhouseQC():
 				for key, val in CAR_CP_MAP.items():
 					if key in lowered:
 						return val
-			return "Packing"
+			return "Packhouse"
 
 		car_control_point = to_car_control_point(control_area, control_point)
 
 		if has_issues and opl_variety_gh_pairs:
-			issue_summary = "; ".join(
-				r["parameter"] + " x" + str(r["count"])
-				for r in issue_rows
-				if r.get("action") in ("Reject", "Quarantine")
-			)
-			week_start = frappe.utils.add_days(date_val, -7)
+			issue_summary = "; ".join(r["parameter"] + " x" + str(r["count"]) for r in car_rows)
+			concern_names = [r["parameter"] for r in car_rows]
 
 			for pair in opl_variety_gh_pairs:
 				pair_variety = pair.get("variety", "")
@@ -9777,17 +9816,8 @@ def savePackhouseQC():
 					continue
 
 				try:
-					existing_car = frappe.db.get_value(
-						"Corrective Action Report",
-						{
-							"custom_greenhouse": pair_warehouse,
-							"control_point": car_control_point,
-							"variety": pair_variety,
-							"date_of_incident": [">=", week_start],
-							"status": ["!=", "Complete"],
-						},
-						"name",
-					)
+					# one open CAR per greenhouse + concern, whatever the variety
+					existing_car = open_car_for_concerns(pair_warehouse, concern_names, pair_variety)
 
 					if existing_car:
 						created_cars.append(
@@ -10679,35 +10709,6 @@ def submitBatchQuality():
 
 	unit_manager = ""
 
-	def should_create_car(greenhouse, variety):
-		if not variety or not greenhouse:
-			return True
-		existing_cars = frappe.db.sql(
-			"""
-            SELECT name, status, target_date, actual_completion_date
-            FROM `tabCorrective Action Report`
-            WHERE variety = %s
-                AND custom_greenhouse = %s
-                AND status IN ('Pending', 'WIP')
-            ORDER BY creation DESC
-            LIMIT 1
-        """,
-			(variety, greenhouse),
-			as_dict=1,
-		)
-		if not existing_cars:
-			return True
-		car = existing_cars[0]
-		today = frappe.utils.getdate(frappe.utils.nowdate())
-		target = frappe.utils.getdate(car.target_date) if car.target_date else None
-		if target and target >= today:
-			return False
-		if target and target < today and not car.actual_completion_date:
-			return True
-		if not target:
-			return False
-		return True
-
 	def build_child_entries(item_code, action):
 		"""Per-variety quality_parameters rows, resolving each param key to a valid
 		QC Parameters Link. Unknown keys are skipped so the insert never crashes."""
@@ -11007,32 +11008,34 @@ def submitBatchQuality():
 		# ── Corrective Action Report (isolated: never rolls back the report) ──
 		if effective_action in ("Quarantined", "Rejected") and variety_val:
 			try:
-				if should_create_car(greenhouse, item_code):
-					# Build issue text from quality concerns for this variety
-					issue_parts = []
-					variety_concerns = concerns_by_variety.get(item_code, {}) or {}
-					if isinstance(variety_concerns, dict):
-						for param_key, param_details in variety_concerns.items():
-							if isinstance(param_details, dict):
-								param_count = int(param_details.get("count") or 0)
-								if param_count > 0:
-									issue_parts.append(
-										str(param_key).replace("_", " ").title()
-										+ " ("
-										+ str(param_count)
-										+ ")"
-									)
-							elif param_details:
-								issue_parts.append(str(param_key).replace("_", " ").title())
-					issue_text = ", ".join(issue_parts) if issue_parts else ""
-
+				# Build issue text from quality concerns for this variety
+				issue_parts = []
+				variety_concerns = concerns_by_variety.get(item_code, {}) or {}
+				if isinstance(variety_concerns, dict):
+					for param_key, param_details in variety_concerns.items():
+						if isinstance(param_details, dict):
+							param_count = int(param_details.get("count") or 0)
+							if param_count > 0:
+								issue_parts.append(
+									str(param_key).replace("_", " ").title() + " (" + str(param_count) + ")"
+								)
+						elif param_details:
+							issue_parts.append(str(param_key).replace("_", " ").title())
+				# only pest/disease concerns raise a CAR; none means no CAR (never an empty one)
+				issue_parts = [p for p in issue_parts if is_pest_or_disease(p.split(" (")[0])]
+				issue_text = ", ".join(issue_parts)
+				# one open CAR per greenhouse + concern, whatever the variety
+				concern_names = [p.split(" (")[0] for p in issue_parts]
+				if issue_parts and not open_car_for_concerns(greenhouse, concern_names, item_code):
 					car_data = {
 						"doctype": "Corrective Action Report",
 						"variety": variety_val,
 						"date_of_incident": frappe.utils.nowdate(),
 						"requested_by": frappe.session.user,
 						"control_point": car_control_point,
-						"assigned_to": group_unit_manager or frappe.session.user,
+						"assigned_to": CAR_ASSIGNEES.get(group_farm)
+						or group_unit_manager
+						or frappe.session.user,
 						"status": "Pending",
 						"issue": issue_text,
 						"root_cause": "To be determined",

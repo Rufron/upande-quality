@@ -8,6 +8,24 @@
  "filters": [
   {
    "default": "",
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "mandatory": 0,
+   "options": "Farm",
+   "wildcard_filter": 0
+  },
+  {
+   "default": "",
+   "fieldname": "greenhouse",
+   "fieldtype": "Link",
+   "label": "Greenhouse",
+   "mandatory": 0,
+   "options": "Warehouse",
+   "wildcard_filter": 0
+  },
+  {
+   "default": "",
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",

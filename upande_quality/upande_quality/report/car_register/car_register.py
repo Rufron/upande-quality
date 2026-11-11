@@ -5,21 +5,16 @@ import re
 
 import frappe
 
-# CAR issue text looks like "Thrips Damage (6), Bruises (5)"
-CONCERN = re.compile(r"\s*([^,(]+?)\s*\((\d+)\)")
+from upande_quality.mobile.api import car_concerns
+
 GH_NO = re.compile(r"GH\s*0*(\w+)", re.I)
-
-
-def split_concerns(issue):
-	"""[(concern, stems)] from the CAR issue text; free text with no counts stays one row."""
-	found = [(c.strip(), int(n)) for c, n in CONCERN.findall(issue or "")]
-	return found or [((issue or "").strip(), None)]
 
 
 def execute(filters=None):
 	filters = filters or {}
 	conditions = []
 	for key, sql in (
+		("greenhouse", "custom_greenhouse = %(greenhouse)s"),
 		("status", "status = %(status)s"),
 		("control_point", "control_point = %(control_point)s"),
 		("from_date", "date_of_incident >= %(from_date)s"),
@@ -30,12 +25,19 @@ def execute(filters=None):
 	where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
 	cars = frappe.db.sql(
-		"SELECT name, custom_greenhouse, variety, issue, root_cause, corrective_action_plan,"
+		"SELECT name, farm, custom_greenhouse, variety, issue, root_cause, corrective_action_plan,"
 		" target_date, actual_completion_date"
 		" FROM `tabCorrective Action Report` " + where + " ORDER BY date_of_incident DESC, creation DESC",
 		filters,
 		as_dict=1,
 	)
+
+	# farm is mostly blank on CARs; the greenhouse name starts with it ("Kapkolia GH 15 - KR")
+	for c in cars:
+		gh_name = c.custom_greenhouse or ""
+		c.farm = c.farm or (gh_name.split(" GH")[0].strip() if " GH" in gh_name else "")
+	if filters.get("farm"):
+		cars = [c for c in cars if c.farm == filters.get("farm")]
 
 	files = {}
 	if cars:
@@ -54,11 +56,12 @@ def execute(filters=None):
 	data = []
 	for c in cars:
 		gh = GH_NO.search(c.custom_greenhouse or "")
-		for i, (concern, stems) in enumerate(split_concerns(c.issue)):
+		for i, (concern, stems) in enumerate(car_concerns(c.issue)):
 			row = {
 				"name": c.name,
 				"concern": concern,
 				"stems": stems,
+				"farm": c.farm,
 				"gh": gh.group(1) if gh else c.custom_greenhouse,
 				"variety": c.variety,
 			}
@@ -82,6 +85,7 @@ def execute(filters=None):
 		},
 		{"label": "Concern", "fieldname": "concern", "fieldtype": "Data", "width": 170},
 		{"label": "Affected Stems", "fieldname": "stems", "fieldtype": "Int", "width": 110},
+		{"label": "Farm", "fieldname": "farm", "fieldtype": "Data", "width": 100},
 		{"label": "GH", "fieldname": "gh", "fieldtype": "Data", "width": 60},
 		{"label": "Variety", "fieldname": "variety", "fieldtype": "Link", "options": "Item", "width": 140},
 		{"label": "Root Cause", "fieldname": "root_cause", "fieldtype": "Data", "width": 220},
