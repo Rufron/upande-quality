@@ -15,8 +15,9 @@ user's roles allow it); without a workflow it is submitted.
 import frappe
 from frappe import _
 from frappe.model.workflow import apply_workflow, get_workflow_name
-from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, today
+from frappe.utils import cint, flt, getdate, today
 
+from upande_quality.discard import listed_today, shelf_buckets
 from upande_quality.upande_quality.doctype.production_settings.production_settings import (
 	discard_age_resolver,
 )
@@ -257,82 +258,36 @@ def get_request(name):
 
 
 def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold, age_unit):
-	"""Shelved buckets that qualify, plus what was left out and why. Age is from the shelf line's harvest date (the
-	nightly job reads the Harvesting stock entry, which agrees; that lookup scans every stock entry and takes minutes, so it is
-	not repeated per click), else from when the bucket was shelved."""
-	if age_threshold in (None, ""):
-		threshold = discard_age_resolver()  # per item group, see Production Settings
-	else:
+	"""Discardable shelved buckets matching the filters, plus what was left out and why. The rule is shared with
+	the nightly job and the app list (upande_quality/discard.py); a typed age threshold replaces each variety's
+	discard age. Buckets already on a request made today are left out so they are not listed twice."""
+	if age_threshold not in (None, ""):
 		t = flt(age_threshold) / 24.0 if age_unit == "Hours" else flt(age_threshold)
-		threshold = lambda _item: t  # noqa: E731
-	cond, p = ["si.bucket_id IS NOT NULL AND si.bucket_id != ''"], {}
-	for col, vals, key in (
-		("sh.farm", farms, "farms"),
-		("si.variety", varieties, "varieties"),
-		("si.stem_length", lengths, "lengths"),
-		("it.item_group", item_groups, "groups"),
-	):
-		if vals:
-			cond.append(f"{col} IN %({key})s")
-			p[key] = tuple(vals)
-	rows = frappe.db.sql(
-		f"""SELECT si.bucket_id, si.parent AS shelf, si.date_added, si.variety, si.stem_qty, si.stem_length,
-			si.greenhouse, si.warehouse, sh.farm, it.item_group, si.harvest_date
-		FROM `tabShelf Item` si
-		INNER JOIN `tabShelf` sh ON sh.name = si.parent
-		LEFT JOIN `tabItem` it ON it.name = si.variety
-		WHERE {" AND ".join(cond)} LIMIT {MAX_BUCKETS}""",
-		p,
-		as_dict=True,
-	)
-	open_names = [
-		r[0]
-		for r in frappe.db.sql(
-			"SELECT name FROM `tabDiscard Request` WHERE docstatus != 2 AND IFNULL(workflow_state, '') != 'Rejected'"
-		)
-	]
-	listed = set()
-	if open_names:
-		listed = {
-			str(r[0]).upper()
-			for r in frappe.db.sql(
-				"SELECT bucket_id FROM `tabDiscard Request Bucket` WHERE parenttype = 'Discard Request' AND parent IN %(n)s",
-				{"n": tuple(open_names)},
-			)
-			if r[0]
-		}
-	allocated = {
-		str(r[0]).upper()
-		for r in frappe.db.sql("SELECT DISTINCT bucket_id FROM `tabBucket Allocation Status`")
-		if r[0]
-	}
+	listed = listed_today()
 	rooms = {_location(c) for c in coldrooms}
-	now = now_datetime()
+	buckets = shelf_buckets(farms)
 	out, left = [], {"on_a_request": 0, "allocated": 0, "too_young": 0, "other_cold_room": 0}
-	for r in rows:
-		key = str(r["bucket_id"]).upper()
+	for key, b in buckets.items():
+		if (
+			(varieties and b.variety not in varieties)
+			or (lengths and b.stem_length not in lengths)
+			or (item_groups and b.item_group not in item_groups)
+		):
+			continue
 		if key in listed:
 			left["on_a_request"] += 1
-			continue
-		if key in allocated:
+		elif b.allocated:
 			left["allocated"] += 1
-			continue
-		if r["harvest_date"]:
-			age = (now.date() - getdate(r["harvest_date"])).days + 0.0
-		elif r["date_added"]:
-			age = (now - get_datetime(r["date_added"])).total_seconds() / 86400.0
-		else:
-			continue
-		if age < threshold(r["variety"]):
+		# shortcut: age is whole days (date of harvest / shelving), so an "Hours" threshold rounds to days.
+		elif b.age_days < (t if age_threshold not in (None, "") else b.discard_age):
 			left["too_young"] += 1
-			continue
-		if rooms and _location(r["greenhouse"]) not in rooms and (r["warehouse"] or "") not in coldrooms:
+		elif rooms and _location(b.greenhouse) not in rooms and (b.warehouse or "") not in coldrooms:
 			left["other_cold_room"] += 1
-			continue
-		r["age_days"] = round(age, 2)
-		r["age_hours"] = round(age * 24, 1)
-		out.append(r)
-	return out, left, len(rows)
+		else:
+			b.harvest_date = b.since
+			b.age_hours = b.age_days * 24
+			out.append(b)
+	return out[:MAX_BUCKETS], left, len(buckets)
 
 
 @frappe.whitelist()
@@ -363,7 +318,6 @@ def get_shelf_items_for_discard(
 			farms, one(variety), one(length), one(item_group), one(coldroom), age_threshold, age_unit
 		)
 	for r in rows:
-		r["date_source"] = "harvest" if r.get("harvest_date") else "shelved"
 		r["company"] = company or None
 	rows.sort(key=lambda r: -r["age_days"])
 	return {

@@ -12,10 +12,96 @@ import re
 import frappe
 from frappe import _
 
+from upande_quality.discard import shelf_buckets, todays_requests
 from upande_quality.upande_quality.doctype.production_settings.production_settings import (
 	discard_age_for,
 	discard_age_resolver,
 )
+
+# Who a CAR is assigned to, per farm, as Karen Roses asked on 2026-11-11 (Intake CARs also email
+# the assignee). Packhouse/Grading CARs go to Post Harvest, with no email. Farms not listed fall back to the farm's
+# "Farm Manager <farm>" role profile. Farm mailboxes are left out except Kaptumbo's,
+# the only address given for that farm.
+CAR_ASSIGNEES = {
+	"Chepsito": "rbundotich@karenroses.com",
+	"Kapkolia": "amutai@karenroses.com",
+	"Kaptumbo": "kaptumbo@karenroses.com",
+	"Torongo": "lwadeya@karenroses.com",
+	"Post Harvest": "nouma@karenroses.com",
+}
+
+# Only these concerns raise a CAR (Karen Roses, 2026-11-11): pests and diseases, not handling issues.
+CAR_PEST_DISEASE = {
+	"Helicoverpa Egg",
+	"Helicoverpa Damage",
+	"Helicoverpa Larvae",
+	"FCM Egg",
+	"FCM Damages",
+	"FCM Larvae",
+	"Spodoptera Egg",
+	"Spodoptera Damage",
+	"Spodoptera Larvae",
+	"Aphids",
+	"Live Aphids",
+	"Mites",
+	"Mite Damage",
+	"Thrips",
+	"Thrips Damage",
+	"Mealy Bugs",
+	"White Flies",
+	"Leaf Miner",
+	"Slugs",
+	"Poor Defoliation",
+	"Poor Sizing",
+	"Botrytis",
+	"Fresh Powdery Mildew",
+	"Dry Powdery Mildew",
+	"Fresh Downy Mildew",
+	"Dry Downy Mildew",
+	"Black Spot",
+	"Rust",
+	"Rotting",
+}
+
+
+def is_pest_or_disease(concern):
+	return (concern or "").strip().lower() in {c.lower() for c in CAR_PEST_DISEASE}
+
+
+# CAR issue text: intake writes "Thrips Damage (6), Bruises (5)", packhouse "Thrips Damage x6; Bruises x5"
+_CAR_CONCERN = re.compile(r"\s*([^,;(]+?)\s*(?:\((\d+)\)|\bx(\d+))\s*(?=[,;]|$)")
+
+
+def car_concerns(issue):
+	"""[(concern, stems)] from a CAR's issue text; free text with no counts stays one row."""
+	found = [(c.strip(), int(a or b)) for c, a, b in _CAR_CONCERN.findall(issue or "")]
+	return found or [((issue or "").strip(), None)]
+
+
+def open_car_for_concerns(greenhouse, concerns, variety=None):
+	"""Name of an open CAR (Pending / In Progress, target date not passed) in this greenhouse that
+	already covers any of `concerns`, whatever its variety; None when a new CAR is needed. With no
+	concerns to compare, an open CAR for the same variety in the greenhouse counts instead."""
+	if not greenhouse:
+		return None
+	wanted = {c.strip().lower() for c in concerns if c and c.strip()}
+	for car in frappe.get_all(
+		"Corrective Action Report",
+		filters={
+			"custom_greenhouse": greenhouse,
+			"status": ["in", ["Pending", "In Progress"]],
+		},
+		fields=["name", "variety", "issue", "target_date"],
+		order_by="creation desc",
+	):
+		if car.target_date and str(car.target_date) < frappe.utils.nowdate():
+			continue
+		if wanted:
+			if wanted & {c.lower() for c, _n in car_concerns(car.issue) if c}:
+				return car.name
+		elif variety and car.variety == variety:
+			return car.name
+	return None
 
 
 @frappe.whitelist()
@@ -4343,266 +4429,146 @@ def getFreeShelves(farm: str | None = None):
 
 @frappe.whitelist()
 def getDiscardRequestBuckets():
-	# Frappe Server Script (Type: API), api_method = getDiscardRequestBuckets
-	# The discard work-list for a farm: Discard Request Bucket child rows of an
-	# APPROVED Discard Request whose bucket is STILL PHYSICALLY ON A SHELF AT THAT
-	# FARM. The operator "can only discard what's on the list", and can only discard
-	# what's actually on the shelf in front of them. frappe.get_all ignores user
-	# permissions so any logged-in operator can read it.
-	# Payload: { "farm": "<Farm>" }  ->  { status, farm, buckets:[...], count }
-	#
-	# Why "currently on a shelf at the farm" is the right filter (not "ever
-	# discarded"): buckets are REUSED across many harvest cycles. A bucket discarded
-	# in a PRIOR cycle can be re-harvested, re-shelved, re-aged and legitimately
-	# re-listed — the old "ever-discarded" exclusion wrongly hid all of those, badly
-	# under-reporting the list. The live `Shelf Item` is the physical truth: a bucket
-	# that has been discarded / issued / transferred away has NO Shelf Item at this
-	# farm, while a re-shelved bucket has a fresh one. Allocated buckets are also
-	# excluded (reserved for an order, must not be discarded).
+	"""The farm's discard list for the app: today's Discard Requests, newest first, with EVERY bucket row on them so
+	the app always matches the request in the desk. Each row is "to discard", "discarded" (by whom, when) or blocked
+	with a reason when the bucket changed after it was listed. Which buckets are discardable is the shared rule in
+	upande_quality/discard.py, the same one the nightly job and Fetch Buckets use.
+	Payload: { "farm": "<Farm>" } -> { status, farm, buckets: [to discard], count, requests: [...] }"""
 	frappe.response["message"] = {"status": "error", "buckets": []}
 	try:
 		data = frappe.request.get_json() or {}
 		farm = data.get("farm")
 		if not farm:
 			frappe.response["message"] = {"status": "error", "message": "farm is required.", "buckets": []}
-		else:
-			# Approved requests: name -> creation, so a bucket listed on several
-			# requests resolves to the LATEST one (max creation).
-			approved_names = _approved_discard_requests()
-
-			# Live shelf state at THIS farm — the physical set of buckets currently on
-			# a shelf whose farm = the requested farm AND that have been sitting there
-			# long enough to be discardable. Discarded / issued / transferred buckets
-			# aren't here; a re-shelved (reused) bucket IS here but only qualifies once
-			# its CURRENT occupancy has aged past `discard_age` — so a bucket that was
-			# discarded in a prior cycle and freshly re-shelved with new flowers is not
-			# flagged for discard while those flowers are still fresh. Age = now minus
-			# Shelf Item.date_added (how long the current flowers have sat on the shelf,
-			# matching how the nightly Auto Discard Request selects). UPPER()-folded
-			# because bucket_id casing is inconsistent across tables.
-			# Age basis = the bucket's LATEST Harvesting Stock Entry (falling back to
-			# when the current flowers were shelved), exactly as the nightly Auto
-			# Discard Request selects. Using the latest harvest makes reuse correct: a
-			# re-harvested bucket is measured on its NEW flowers, so it only qualifies
-			# once those have aged past discard_age.
-			# Discard age is per item group (discard_age_resolver); SQL pre-filters on the youngest.
-			age_for = discard_age_resolver()
-			cutoff = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for.youngest))
-			shelf_rows = frappe.db.sql(
-				"""SELECT DISTINCT UPPER(si.bucket_id) AS b, si.variety AS v,
-                          COALESCE(h.hd, DATE(si.date_added)) AS d
-                   FROM `tabShelf Item` si
-                   JOIN `tabShelf` sh ON sh.name = si.parent
-                   LEFT JOIN (
-                       SELECT custom_bucket_id, MAX(posting_date) AS hd
-                       FROM `tabStock Entry`
-                       WHERE stock_entry_type = 'Harvesting'
-                         AND custom_bucket_id IS NOT NULL AND custom_bucket_id != ''
-                         AND custom_bucket_id IN (
-                             SELECT si2.bucket_id FROM `tabShelf Item` si2
-                             JOIN `tabShelf` sh2 ON sh2.name = si2.parent
-                             WHERE sh2.farm = %s)
-                       GROUP BY custom_bucket_id
-                   ) h ON h.custom_bucket_id = si.bucket_id
-                   WHERE sh.farm = %s AND si.bucket_id IS NOT NULL AND si.bucket_id != ''
-                     AND COALESCE(h.hd, DATE(si.date_added)) <= %s""",
-				(farm, farm, cutoff),
-				as_dict=True,
-			)
-			on_shelf = {}
-			s = 0
-			while s < len(shelf_rows):
-				b = shelf_rows[s].get("b")
-				due = frappe.utils.add_days(frappe.utils.nowdate(), -int(age_for(shelf_rows[s].get("v"))))
-				if b and str(shelf_rows[s].get("d")) <= str(due):
-					on_shelf[b] = max(on_shelf.get(b) or "", str(shelf_rows[s].get("d")))
-				s = s + 1
-
-			# Allocated buckets must never be discarded. Bucket Allocation Status is not
-			# cleared, and buckets are reused, so a row only counts when it still has stems
-			# allocated and is for the bucket's current flowers (harvested no earlier than
-			# the date its age is measured from). Older rows belong to earlier harvests.
-			alloc_rows = frappe.get_all(
-				"Bucket Allocation Status",
-				filters={"allocated_quantity": [">", 0]},
-				fields=["bucket_id", "harvest_date"],
-				limit_page_length=0,
-			)
-			allocated = {}
-			for a in alloc_rows:
-				up = str(a.get("bucket_id") or "").upper()
-				if up in on_shelf and (
-					not a.get("harvest_date") or str(a.get("harvest_date")) >= on_shelf[up]
-				):
-					allocated[up] = 1
-
-			rows = frappe.get_all(
-				"Discard Request Bucket",
-				filters={"farm": farm, "parenttype": "Discard Request"},
-				fields=[
-					"bucket_id",
-					"shelf",
-					"variety",
-					"stem_qty",
-					"age_days",
-					"is_shelved",
-					"greenhouse",
-					"stem_length",
-					"parent",
-				],
-				limit_page_length=0,
-			)
-			# De-duplicate: a bucket can appear on several Approved requests (nightly
-			# re-lists + manual). Keep only the row from the LATEST request (max
-			# creation), keyed case-insensitively by bucket id.
-			best = {}
-			best_created = {}
-			hidden = {}
-			j = 0
-			while j < len(rows):
-				r = rows[j]
-				bid = r.get("bucket_id")
-				parent = r.get("parent")
-				created = approved_names.get(parent) or ""
-				up = str(bid).upper() if bid else ""
-				# parent Approved (created truthy) AND currently on a shelf at this
-				# farm AND not allocated.
-				if bid and created and not (on_shelf.get(up) and up not in allocated):
-					# Listed on an approved request but not offered to the operator: say why,
-					# so the app count can be reconciled with the request.
-					if up not in on_shelf:
-						why = "Not on a shelf at this farm (already discarded, issued or moved)"
-					elif not on_shelf[up]:
-						why = "Re-harvested, the new flowers are not old enough"
-					else:
-						why = "Allocated to an order"
-					hidden[str(bid).lower()] = {"bucket_id": bid, "reason": why, "discard_request": parent}
-				if bid and created and (on_shelf.get(up)) and (up not in allocated):
-					key = str(bid).lower()
-					if (key not in best) or (created > best_created.get(key, "")):
-						best[key] = {
-							"bucket_id": bid,
-							"shelf": r.get("shelf"),
-							"variety": r.get("variety"),
-							"stem_qty": r.get("stem_qty"),
-							"age_days": r.get("age_days"),
-							"is_shelved": 1 if r.get("is_shelved") else 0,
-							"greenhouse": r.get("greenhouse"),
-							"stem_length": r.get("stem_length"),
-							"discard_request": parent,
-						}
-						best_created[key] = created
-				j = j + 1
-			buckets = list(best.values())
-			hidden_list = [h for k, h in hidden.items() if k not in best]
-			frappe.response["message"] = {
-				"status": "success",
-				"farm": farm,
-				"buckets": buckets,
-				"count": len(buckets),
-				"requests": _discard_request_groups(farm, rows, approved_names, buckets),
-			}
+			return
+		requests = todays_requests(farm)
+		groups = _discard_request_groups(farm, requests) if requests else []
+		# Flat list of what is still to discard, one row per bucket (older app versions read this).
+		buckets = {}
+		for g in groups:
+			for b in g["buckets"]:
+				if not b["discarded"] and not b["blocked_reason"]:
+					buckets.setdefault(str(b["bucket_id"]).upper(), b)
+		frappe.response["message"] = {
+			"status": "success",
+			"farm": farm,
+			"buckets": list(buckets.values()),
+			"count": len(buckets),
+			"requests": groups,
+		}
 	except Exception as e:
 		frappe.response["message"] = {"status": "error", "message": str(e), "buckets": []}
 
 
-def _discard_request_groups(farm, rows, approved, pending):
-	"""The farm's discard list grouped by Discard Request, newest first: each request with its
-	date, requester, approver and buckets, both those still to discard (`pending`, already
-	de-duplicated to the latest request) and those discarded since the request was raised.
-	"Discarded" comes from the Discard Stock Entry, not the row's `discarded` flag, which is set
-	on every request that ever listed the bucket. A request is shown while it has buckets left,
-	or when one of its buckets was discarded today."""
-	listed = {}  # BUCKET -> [(request creation, request, row)]
-	for r in rows:
-		created = approved.get(r.get("parent"))
-		if r.get("bucket_id") and created:
-			listed.setdefault(str(r.get("bucket_id")).upper(), []).append((created, r.get("parent"), r))
-
-	# shortcut: only discards from the last 14 days are matched to requests; widen if older requests stay open.
-	discards = frappe.db.sql(
+def _discard_request_groups(farm, requests):
+	"""Today's requests (name -> creation) for the farm with every bucket row and its state."""
+	rows = frappe.get_all(
+		"Discard Request Bucket",
+		filters={"farm": farm, "parenttype": "Discard Request", "parent": ["in", list(requests)]},
+		fields=[
+			"bucket_id",
+			"shelf",
+			"variety",
+			"stem_qty",
+			"age_days",
+			"is_shelved",
+			"greenhouse",
+			"stem_length",
+			"parent",
+		],
+		order_by="idx asc",
+		limit_page_length=0,
+	)
+	shelf = shelf_buckets([farm])
+	# Discards since the oldest of today's requests; a row is discarded when its bucket was discarded after
+	# its request was made.
+	discards = {}
+	for d in frappe.db.sql(
 		"""SELECT UPPER(custom_bucket_id) AS b, creation, owner FROM `tabStock Entry`
 		WHERE stock_entry_type = 'Discard' AND docstatus = 1 AND farm = %s
 		  AND creation >= %s AND custom_bucket_id > ''
 		ORDER BY creation""",
-		(farm, frappe.utils.add_days(frappe.utils.nowdate(), -14)),
+		(farm, min(requests.values())),
 		as_dict=True,
-	)
-	pending_keys = {(b["discard_request"], str(b["bucket_id"]).upper()) for b in pending}
-	done = {}  # request -> {BUCKET: (row, discard)}
-	for d in discards:
-		# A discard belongs to the latest request that listed the bucket before it was discarded.
-		before = [c for c in listed.get(d.b, []) if c[0] <= str(d.creation)]
-		if before:
-			_, req, row = max(before, key=lambda c: c[0])
-			if (req, d.b) not in pending_keys:
-				done.setdefault(req, {})[d.b] = (row, d)
+	):
+		discards.setdefault(d.b, []).append(d)
 
-	today = frappe.utils.nowdate()
-	shown = {b["discard_request"] for b in pending} | {
-		req for req, hits in done.items() if any(str(d.creation)[:10] == today for _, d in hits.values())
-	}
-	if not shown:
-		return []
 	meta = {
 		m.name: m
 		for m in frappe.get_all(
 			"Discard Request",
-			filters={"name": ["in", list(shown)]},
+			filters={"name": ["in", list(requests)]},
 			fields=["name", "creation", "requested_date", "requested_by", "approved_by", "modified_by"],
 		)
 	}
-	users = set()
-	for m in meta.values():
-		users.update([m.requested_by, m.approved_by or m.modified_by])
-	for hits in done.values():
-		users.update(d.owner for _, d in hits.values())
+	users = {u for m in meta.values() for u in (m.requested_by, m.approved_by or m.modified_by)}
+	users |= {d.owner for ds in discards.values() for d in ds}
 	names = {
 		u.name: u.full_name
 		for u in frappe.get_all(
-			"User", filters={"name": ["in", [u for u in users if u]]}, fields=["name", "full_name"]
+			"User", filters={"name": ["in", [u for u in users if u] or ["-"]]}, fields=["name", "full_name"]
 		)
 	}
 
+	items = {}
+	for r in rows:
+		key = str(r.bucket_id or "").upper()
+		if not key:
+			continue
+		item = {
+			"bucket_id": r.bucket_id,
+			"shelf": r.shelf,
+			"variety": r.variety,
+			"stem_qty": r.stem_qty,
+			"age_days": r.age_days,
+			"is_shelved": 1 if r.is_shelved else 0,
+			"greenhouse": r.greenhouse,
+			"stem_length": r.stem_length,
+			"discard_request": r.parent,
+			"discarded": 0,
+			"blocked_reason": None,
+		}
+		done = [d for d in discards.get(key, []) if str(d.creation) >= requests[r.parent]]
+		b = shelf.get(key)
+		if done:
+			item.update(
+				discarded=1,
+				discarded_at=str(done[0].creation),
+				discarded_by=done[0].owner,
+				discarded_by_name=names.get(done[0].owner) or done[0].owner,
+			)
+		elif not b:
+			item["blocked_reason"] = "Not on a shelf at this farm (moved or issued)"
+		elif b.allocated:
+			item["blocked_reason"] = "Allocated to an order"
+		elif not b.discardable:
+			item["blocked_reason"] = "Re-harvested, the new flowers are not old enough"
+		else:
+			item["shelf"] = b.shelf  # where it is now, in case it was moved
+		items.setdefault(r.parent, []).append(item)
+
 	groups = []
-	for req in shown:
+	for req, created in requests.items():
 		m = meta.get(req)
 		if not m:
 			continue
 		# Approval workflow is off (2026-10-01), so approved_by is blank on manual requests:
 		# whoever submitted the request approved it.
 		approver = m.approved_by or m.modified_by
-		items = [dict(b, discarded=0) for b in pending if b["discard_request"] == req]
-		for row, d in done.get(req, {}).values():
-			items.append(
-				{
-					"bucket_id": row.get("bucket_id"),
-					"shelf": row.get("shelf"),
-					"variety": row.get("variety"),
-					"stem_qty": row.get("stem_qty"),
-					"age_days": row.get("age_days"),
-					"is_shelved": 1 if row.get("is_shelved") else 0,
-					"greenhouse": row.get("greenhouse"),
-					"stem_length": row.get("stem_length"),
-					"discard_request": req,
-					"discarded": 1,
-					"discarded_at": str(d.creation),
-					"discarded_by": d.owner,
-					"discarded_by_name": names.get(d.owner) or d.owner,
-				}
-			)
+		its = items.get(req, [])
 		groups.append(
 			{
 				"name": req,
-				"creation": str(m.creation),
+				"creation": created,
 				"requested_date": str(m.requested_date or m.creation)[:10],
 				"requested_by": m.requested_by,
 				"requested_by_name": names.get(m.requested_by) or m.requested_by,
 				"approved_by": approver,
 				"approved_by_name": names.get(approver) or approver,
-				"pending": sum(1 for i in items if not i["discarded"]),
-				"discarded": sum(1 for i in items if i["discarded"]),
-				"buckets": items,
+				"pending": sum(1 for i in its if not i["discarded"] and not i["blocked_reason"]),
+				"discarded": sum(1 for i in its if i["discarded"]),
+				"blocked": sum(1 for i in its if i["blocked_reason"]),
+				"buckets": its,
 			}
 		)
 	groups.sort(key=lambda g: g["creation"], reverse=True)
@@ -9679,48 +9645,8 @@ def savePackhouseQC():
 		created_cars = []
 		car_errors = []
 
-		PEST_DISEASE_PARAMS = {
-			"Helicoverpa Egg",
-			"Helicoverpa Damage",
-			"Helicoverpa Larvae",
-			"FCM Egg",
-			"FCM Damages",
-			"FCM Larvae",
-			"Spodoptera Egg",
-			"Spodoptera Damage",
-			"Spodoptera Larvae",
-			"Aphids",
-			"Live Aphids",
-			"Mites",
-			"Mite Damage",
-			"Thrips",
-			"Thrips Damage",
-			"Mealy Bugs",
-			"White Flies",
-			"Leaf Miner",
-			"Slugs",
-			"Poor Defoliation",
-			"Poor Sizing",
-			"Botrytis",
-			"Fresh Powdery Mildew",
-			"Dry Powdery Mildew",
-			"Fresh Downy Mildew",
-			"Dry Downy Mildew",
-			"Black Spot",
-			"Rust",
-			"Rotting",
-		}
-		CAR_OTHER_THRESHOLD_PCT = 6.0
-		car_base = sampled_stems if sampled_stems > 0 else stems_checked
-
-		def issue_warrants_car(iss):
-			param = iss.get("parameter", "")
-			if param in PEST_DISEASE_PARAMS:
-				return True
-			cnt = int(iss.get("count", 0) or 0)
-			return car_base > 0 and (cnt * 100.0 / car_base) > CAR_OTHER_THRESHOLD_PCT
-
-		car_worthy = any(issue_warrants_car(r) for r in issue_rows)
+		car_rows = [r for r in issue_rows if is_pest_or_disease(r.get("parameter"))]
+		car_worthy = bool(car_rows)
 		# Airport Returns never raise CARs -- a customer return isn't a farm defect.
 		has_issues = (
 			bool(issue_rows)
@@ -9730,16 +9656,14 @@ def savePackhouseQC():
 			and not is_reject_recorder
 		)
 
-		CAR_ASSIGNEE = "nouma@karenroses.com"
+		CAR_ASSIGNEE = CAR_ASSIGNEES["Post Harvest"]
 
+		# CAR.control_point links to QC Control Point; "Grading"/"Packing" don't exist there, so
+		# every packhouse CAR insert used to fail link validation.
 		CAR_CP_MAP = {
 			"intake": "Intake",
-			"cold room": "Cold Room",
-			"coldroom": "Cold Room",
-			"grading": "Grading",
-			"packhouse": "Packing",
-			"packing": "Packing",
-			"dispatch": "Dispatch",
+			"cold room": "Coldroom",
+			"coldroom": "Coldroom",
 		}
 
 		def to_car_control_point(*texts):
@@ -9748,17 +9672,13 @@ def savePackhouseQC():
 				for key, val in CAR_CP_MAP.items():
 					if key in lowered:
 						return val
-			return "Packing"
+			return "Packhouse"
 
 		car_control_point = to_car_control_point(control_area, control_point)
 
 		if has_issues and opl_variety_gh_pairs:
-			issue_summary = "; ".join(
-				r["parameter"] + " x" + str(r["count"])
-				for r in issue_rows
-				if r.get("action") in ("Reject", "Quarantine")
-			)
-			week_start = frappe.utils.add_days(date_val, -7)
+			issue_summary = "; ".join(r["parameter"] + " x" + str(r["count"]) for r in car_rows)
+			concern_names = [r["parameter"] for r in car_rows]
 
 			for pair in opl_variety_gh_pairs:
 				pair_variety = pair.get("variety", "")
@@ -9777,17 +9697,8 @@ def savePackhouseQC():
 					continue
 
 				try:
-					existing_car = frappe.db.get_value(
-						"Corrective Action Report",
-						{
-							"custom_greenhouse": pair_warehouse,
-							"control_point": car_control_point,
-							"variety": pair_variety,
-							"date_of_incident": [">=", week_start],
-							"status": ["!=", "Complete"],
-						},
-						"name",
-					)
+					# one open CAR per greenhouse + concern, whatever the variety
+					existing_car = open_car_for_concerns(pair_warehouse, concern_names, pair_variety)
 
 					if existing_car:
 						created_cars.append(
@@ -10679,35 +10590,6 @@ def submitBatchQuality():
 
 	unit_manager = ""
 
-	def should_create_car(greenhouse, variety):
-		if not variety or not greenhouse:
-			return True
-		existing_cars = frappe.db.sql(
-			"""
-            SELECT name, status, target_date, actual_completion_date
-            FROM `tabCorrective Action Report`
-            WHERE variety = %s
-                AND custom_greenhouse = %s
-                AND status IN ('Pending', 'WIP')
-            ORDER BY creation DESC
-            LIMIT 1
-        """,
-			(variety, greenhouse),
-			as_dict=1,
-		)
-		if not existing_cars:
-			return True
-		car = existing_cars[0]
-		today = frappe.utils.getdate(frappe.utils.nowdate())
-		target = frappe.utils.getdate(car.target_date) if car.target_date else None
-		if target and target >= today:
-			return False
-		if target and target < today and not car.actual_completion_date:
-			return True
-		if not target:
-			return False
-		return True
-
 	def build_child_entries(item_code, action):
 		"""Per-variety quality_parameters rows, resolving each param key to a valid
 		QC Parameters Link. Unknown keys are skipped so the insert never crashes."""
@@ -11007,32 +10889,34 @@ def submitBatchQuality():
 		# ── Corrective Action Report (isolated: never rolls back the report) ──
 		if effective_action in ("Quarantined", "Rejected") and variety_val:
 			try:
-				if should_create_car(greenhouse, item_code):
-					# Build issue text from quality concerns for this variety
-					issue_parts = []
-					variety_concerns = concerns_by_variety.get(item_code, {}) or {}
-					if isinstance(variety_concerns, dict):
-						for param_key, param_details in variety_concerns.items():
-							if isinstance(param_details, dict):
-								param_count = int(param_details.get("count") or 0)
-								if param_count > 0:
-									issue_parts.append(
-										str(param_key).replace("_", " ").title()
-										+ " ("
-										+ str(param_count)
-										+ ")"
-									)
-							elif param_details:
-								issue_parts.append(str(param_key).replace("_", " ").title())
-					issue_text = ", ".join(issue_parts) if issue_parts else ""
-
+				# Build issue text from quality concerns for this variety
+				issue_parts = []
+				variety_concerns = concerns_by_variety.get(item_code, {}) or {}
+				if isinstance(variety_concerns, dict):
+					for param_key, param_details in variety_concerns.items():
+						if isinstance(param_details, dict):
+							param_count = int(param_details.get("count") or 0)
+							if param_count > 0:
+								issue_parts.append(
+									str(param_key).replace("_", " ").title() + " (" + str(param_count) + ")"
+								)
+						elif param_details:
+							issue_parts.append(str(param_key).replace("_", " ").title())
+				# only pest/disease concerns raise a CAR; none means no CAR (never an empty one)
+				issue_parts = [p for p in issue_parts if is_pest_or_disease(p.split(" (")[0])]
+				issue_text = ", ".join(issue_parts)
+				# one open CAR per greenhouse + concern, whatever the variety
+				concern_names = [p.split(" (")[0] for p in issue_parts]
+				if issue_parts and not open_car_for_concerns(greenhouse, concern_names, item_code):
 					car_data = {
 						"doctype": "Corrective Action Report",
 						"variety": variety_val,
 						"date_of_incident": frappe.utils.nowdate(),
 						"requested_by": frappe.session.user,
 						"control_point": car_control_point,
-						"assigned_to": group_unit_manager or frappe.session.user,
+						"assigned_to": CAR_ASSIGNEES.get(group_farm)
+						or group_unit_manager
+						or frappe.session.user,
 						"status": "Pending",
 						"issue": issue_text,
 						"root_cause": "To be determined",
