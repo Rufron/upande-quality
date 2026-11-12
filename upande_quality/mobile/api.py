@@ -16405,6 +16405,100 @@ def getNotReceivedBuckets():
 
 
 @frappe.whitelist()
+def getNeedsAttentionBuckets():
+	"""What the Quality home's Needs Attention tile counts, one row each: bunches graded
+	out of a bucket and waiting to be reshelved, and open Bucket Replacements. Not
+	tied to a day, like the tile; limited to the dashboard's farm scope."""
+	farms, all_farms, farm = _quality_farm_scope(
+		(frappe.form_dict.get("farm") or "").strip(),
+		(frappe.form_dict.get("station_farm") or "").strip(),
+		(frappe.form_dict.get("company") or "").strip(),
+	)
+	scope = [farm] if farm else (None if all_farms else farms)
+	scoped = {"farm": ["in", scope]} if scope else {}
+
+	pending = frappe.get_all(
+		"Stock Entry",
+		filters={"custom_pending_reshelving": 1, "stock_entry_type": "Grading", **scoped},
+		fields=[
+			"name",
+			"farm",
+			"custom_bunch_id",
+			"custom_bucket_id",
+			*(["custom_pending_source_bucket"] if _has_pending_source_bucket() else []),
+			"custom_pending_since",
+			"custom_stem_length",
+		],
+		order_by="custom_pending_since asc",
+	)
+	bunch_ids = list({r.custom_bunch_id for r in pending if r.custom_bunch_id})
+	bunches = (
+		{
+			b.name: b
+			for b in frappe.get_all(
+				"Bunch QR Code",
+				filters={"name": ["in", bunch_ids]},
+				fields=["name", "item_code", "stem_length", "bunch_size"],
+			)
+		}
+		if bunch_ids
+		else {}
+	)
+	rows = []
+	for r in pending:
+		b = bunches.get(r.custom_bunch_id) or {}
+		rows.append(
+			{
+				"kind": "reshelve",
+				"name": r.name,
+				"bucket": r.get("custom_pending_source_bucket") or r.custom_bucket_id or "",
+				"bunch": r.custom_bunch_id or "",
+				"farm": r.farm or "",
+				"variety": b.get("item_code") or "",
+				"stem_length": str(b.get("stem_length") or r.custom_stem_length or ""),
+				"stems": frappe.utils.flt(b.get("bunch_size")),
+				"reason": "",
+				"since": str(r.custom_pending_since or ""),
+			}
+		)
+
+	# Bucket Replacement ships with upande_packhouse, which not every site has.
+	if frappe.db.table_exists("Bucket Replacement"):
+		for r in frappe.get_all(
+			"Bucket Replacement",
+			filters={"status": "Open", **scoped},
+			fields=[
+				"name",
+				"old_bucket",
+				"farm",
+				"item_code",
+				"stem_length",
+				"stems",
+				"reason",
+				"reported_at",
+				"creation",
+			],
+			order_by="reported_at asc",
+		):
+			rows.append(
+				{
+					"kind": "replacement",
+					"name": r.name,
+					"bucket": r.old_bucket or "",
+					"bunch": "",
+					"farm": r.farm or "",
+					"variety": r.item_code or "",
+					"stem_length": str(r.stem_length or ""),
+					"stems": frappe.utils.flt(r.stems),
+					"reason": r.reason or "",
+					"since": str(r.reported_at or r.creation or ""),
+				}
+			)
+
+	return {"farm": farm or "", "items": rows}
+
+
+@frappe.whitelist()
 def getQualityDashboardData():
 	"""Quality app home: the Intake FTR Overview figures for one day, in one read-only call.
 
