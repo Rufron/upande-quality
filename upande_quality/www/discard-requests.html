@@ -165,6 +165,7 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
         <div class="plive"><span class="dot"></span>Old stock on the shelves, asked to be discarded</div>
       </div>
       <div class="tools">
+        <div class="dqseg" id="segTab"><button data-v="req" class="on">Requests</button><button data-v="age">Discard ages</button></div>
         <div class="dqseg" id="segOrigin"><button data-v="" class="on">All</button><button data-v="System">By the system</button><button data-v="User">By people</button></div>
         <div class="fgrp"><label>Status</label><select id="fState"><option value="">All</option><option>Draft</option><option>Pending Approval</option><option>Approved</option><option>Rejected</option><option>Cancelled</option></select></div>
         <div class="fgrp"><label>Farm</label><select id="fFarm"><option value="">All</option></select></div>
@@ -175,6 +176,7 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
     </div>
     <div id="errBox" class="empty-state" style="display:none;color:#c4302b"></div>
 
+    <div id="tabReq">
     <div class="kpi-grid">
       <div class="kpi" style="--ka:#0a0a0a"><div class="lbl">Requests</div><div class="v" id="kReq">—</div><div class="sub" id="kReqSub"></div></div>
       <div class="kpi" style="--ka:#a16207"><div class="lbl">Waiting for approval</div><div class="v" id="kPend">—</div><div class="sub">draft or pending</div></div>
@@ -196,6 +198,23 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
       <div class="tblscroll" style="max-height:560px">
         <table class="tbl"><thead><tr><th style="width:26px"><input type="checkbox" id="allReq"></th><th>Request</th><th>Made by</th><th>Date</th><th>Farm</th><th>Filters</th><th>Status</th><th class="num">Buckets</th><th class="num">Stems</th><th>Discarded</th></tr></thead>
         <tbody id="rows"><tr><td colspan="10" class="empty-state">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+    </div>
+
+    <div id="tabAge" style="display:none">
+      <div class="card">
+        <div class="card__head"><h3>Discard age by variety</h3><div class="meta" id="ageMeta"></div></div>
+        <p style="margin:0 0 12px;color:var(--ink-4);font-size:13px">A bucket of a variety goes on the nightly automatic Discard Request once it is this many days past harvest. A variety with no age of its own uses the default in Production Settings. This sets <b>Item &rsaquo; Roses Packhouse &rsaquo; Discard Age</b>.</p>
+        <div class="tools" style="margin-bottom:12px;flex-wrap:wrap">
+          <div class="fgrp"><label>Search</label><input type="text" id="ageQ" placeholder="Variety"></div>
+          <div class="fgrp"><label>Group</label><select id="ageG"><option value="">All</option></select></div>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" id="ageSet"> Only varieties with their own age</label>
+        </div>
+        <div class="tblscroll" style="max-height:62vh">
+          <table class="tbl"><thead><tr><th>Variety</th><th>Group</th><th class="num" style="width:150px">Discard age (days)</th><th class="num">Used</th><th style="width:90px"></th></tr></thead>
+          <tbody id="ageRows"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody></table>
+        </div>
       </div>
     </div>
   </div>
@@ -287,7 +306,7 @@ function load(){
 }
 function filterText(r){
   var a=[];if(r.variety)a.push(r.variety);if(r.length)a.push(r.length);if(r.item_group)a.push(r.item_group);if(r.coldroom)a.push(r.coldroom);
-  a.push('older than '+(r.age_threshold||0)+' '+String(r.age_unit||'Days').toLowerCase());return a.join(' · ');
+  a.push(r.age_threshold?'older than '+r.age_threshold+' '+String(r.age_unit||'Days').toLowerCase():'older than its item group discard age');return a.join(' · ');
 }
 function stPill(s){return '<span class="dqpill s-'+esc(s.split(' ')[0])+'">'+esc(s)+'</span>';}
 function who(r){return r.origin==='System'?'<span class="dqpill p-system">System</span>':'<span class="dqpill p-user">'+esc((r.owner||'').split('@')[0])+'</span>';}
@@ -352,7 +371,7 @@ function closeAll(){['dView','dNew'].forEach(function(i){el(i).classList.remove(
 function nf(){return{farms:M.farm.get(),varieties:M.var.get(),lengths:M.len.get(),item_groups:M.grp.get(),coldrooms:M.cold.get(),age_threshold:el('nAge').value===''?null:+el('nAge').value,age_unit:el('nUnit').value};}
 function openNew(){
   el('dNew').classList.add('on');el('scrim').classList.add('on');
-  if(el('nAge').value==='')el('nAge').value=opts.discard_age;
+  el('nAge').placeholder='Item group age';el('nAge').title='Blank: each item group uses its discard age from Production Settings (default '+opts.discard_age+' days)';
   el('nApprove').style.display=(!opts.workflow||opts.workflow.can_approve)&&opts.workflow?'':'none';
   el('nDraft').style.display=opts.workflow?'':'none';
   el('nSend').textContent=opts.workflow?'Create and send for approval':'Create requests';
@@ -419,6 +438,36 @@ function init(){
   el('allGrp').onchange=function(){var v=this.checked;groupsOn={};if(v)pv.groups.forEach(function(g){groupsOn[gkey(g)]=1;});drawPreview();};
   el('nSend').onclick=function(){create('send');};el('nDraft').onclick=function(){create('draft');};el('nApprove').onclick=function(){create('approve');};
   document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAll();});
+
+  /* ---------- discard ages ---------- */
+  var ageData=null,ageTimer=null,ageGroupsSeen=false;
+  function loadAges(){
+    var args={search:el('ageQ').value,group:el('ageG').value,set_only:el('ageSet').checked?1:0};
+    return api('get_discard_ages',args).then(function(d){
+      ageData=d;
+      if(!ageGroupsSeen){var gs={};d.rows.forEach(function(r){gs[r.group]=1;});var g=el('ageG');Object.keys(gs).sort().forEach(function(x){var o=document.createElement('option');o.value=o.textContent=x;g.appendChild(o);});ageGroupsSeen=true;}
+      el('ageMeta').textContent='Default '+d.default+' days · '+d.rows.length+' varieties';
+      el('ageRows').innerHTML=d.rows.length?d.rows.map(function(r){
+        return '<tr data-i="'+esc(r.item)+'"><td>'+esc(r.name)+'</td><td>'+esc(r.group)+'</td><td class="num"><input type="number" min="0.5" max="365" step="0.5" class="ageIn" value="'+(r.age==null?'':r.age)+'" placeholder="'+d.default+'" style="width:100px;text-align:right"></td><td class="num ageUsed">'+r.effective+(r.age==null?' <span style="color:var(--ink-4)">(default)</span>':'')+'</td><td><button class="btn ageClr"'+(r.age==null?' disabled':'')+'>Use default</button></td></tr>';}).join(''):'<tr><td colspan="5" class="empty-state">No varieties match.</td></tr>';
+    }).catch(function(e){toast(e.message,true);});
+  }
+  function saveAge(tr,days){
+    return api('set_discard_age',{item:tr.getAttribute('data-i'),days:days}).then(function(r){
+      tr.querySelector('.ageIn').value=r.age==null?'':r.age;
+      tr.querySelector('.ageUsed').innerHTML=r.effective+(r.age==null?' <span style="color:var(--ink-4)">(default)</span>':'');
+      tr.querySelector('.ageClr').disabled=r.age==null;
+      toast(r.age==null?'Using the default age':'Discard age set to '+r.age+' days');
+    }).catch(function(e){toast(e.message,true);loadAges();});
+  }
+  el('ageRows').onchange=function(e){if(e.target.classList.contains('ageIn'))saveAge(e.target.closest('tr'),e.target.value);};
+  el('ageRows').onclick=function(e){var b=e.target.closest('.ageClr');if(b)saveAge(b.closest('tr'),'');};
+  el('ageQ').oninput=function(){clearTimeout(ageTimer);ageTimer=setTimeout(loadAges,250);};
+  el('ageG').onchange=loadAges;el('ageSet').onchange=loadAges;
+  el('segTab').onclick=function(e){var b=e.target.closest('button');if(!b)return;var age=b.getAttribute('data-v')==='age';
+    [].forEach.call(el('segTab').children,function(x){x.classList.toggle('on',x===b);});
+    el('tabReq').style.display=age?'none':'';el('tabAge').style.display=age?'':'none';
+    ['segOrigin','fState','fFarm','fFrom','fTo','btnReset'].forEach(function(i){var n=el(i);var h=n.closest?(n.closest('.fgrp')||n):n;h.style.display=age?'none':'';});
+    if(age)loadAges();};
   api('get_options').then(function(o){
     opts=o;M.farm.set(o.farms);M.var.set(o.varieties);M.len.set(o.lengths);M.grp.set(o.item_groups);M.cold.set(o.coldrooms);
     var f=el('fFarm');o.farms.forEach(function(x){var op=document.createElement('option');op.value=op.textContent=x;f.appendChild(op);});
