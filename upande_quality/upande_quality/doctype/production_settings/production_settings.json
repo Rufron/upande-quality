@@ -54,7 +54,12 @@
   "auto_dispatch_full_trips",
   "carry_over_unshelved_buckets",
   "allow_partial_truck_load",
-  "release_trips_without_confirmation"
+  "release_trips_without_confirmation",
+  "production_tab",
+  "harvest_entry_section",
+  "enable_head_size_mandatory",
+  "forecast_section",
+  "forecast_lock_weeks"
  ],
  "fields": [
   {
@@ -327,13 +332,41 @@
    "fieldname": "hide_allocation_planning_team",
    "fieldtype": "Check",
    "label": "Hide the Allocation Planning Team"
+  },
+  {
+   "fieldname": "production_tab",
+   "fieldtype": "Tab Break",
+   "label": "Production"
+  },
+  {
+   "fieldname": "harvest_entry_section",
+   "fieldtype": "Section Break",
+   "label": "Harvest Entry"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_head_size_mandatory",
+   "fieldtype": "Check",
+   "label": "Enable Head Size Mandatory"
+  },
+  {
+   "fieldname": "forecast_section",
+   "fieldtype": "Section Break",
+   "label": "Production Forecast"
+  },
+  {
+   "default": "5",
+   "fieldname": "forecast_lock_weeks",
+   "fieldtype": "Int",
+   "label": "Forecast Locked for the Next (Weeks)",
+   "non_negative": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-11 09:00:00.000000",
+ "modified": "2026-11-12 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
