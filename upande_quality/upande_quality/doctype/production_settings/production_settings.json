@@ -2,7 +2,7 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "creation": "2026-09-10 06:19:02.594776",
+ "creation": "2026-11-12 21:26:21.762219",
  "default_view": "List",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -18,8 +18,6 @@
   "shelf_locations",
   "discard_age_section",
   "discard_age_by_item_group",
-  "harvesting_section",
-  "harvest_item_group_config",
   "planning_tab",
   "allocation_section",
   "allow_partial_allocation",
@@ -27,6 +25,11 @@
   "column_break_alloc",
   "hide_allocation_planning_team",
   "hide_allocation_planning_sequence",
+  "allocation_planning_section",
+  "allocation_horizon_days",
+  "allocation_planning_col",
+  "allocation_conversion_minutes",
+  "allocation_use_first_alert_stems",
   "packhouse_tab",
   "issuing_packing_section",
   "allow_partial_packing",
@@ -34,30 +37,29 @@
   "column_break_ip",
   "allow_issue_out_of_sequence",
   "allow_pack_out_of_sequence",
-  "show_unscheduled_in_issuing",
-  "show_unscheduled_in_packing",
-  "show_unscheduled_in_scheduler",
   "scheduling_section",
   "takt_time",
   "remote_transfers_tab",
-  "transfer_hub_farm",
-  "column_break_ozyn",
-  "allow_hub_shelving_without_transfer",
-  "allow_shelving_in_transit",
+  "sales_farms",
   "column_break_jthd",
   "show_unscheduled_in_bucket_requests",
+  "allow_hub_shelving_without_transfer",
+  "allow_shelving_in_transit",
   "group_bucket_requests_by_order",
   "auto_transfer_section",
   "auto_remote_transfer_scheduling",
-  "auto_transfer_frequency",
   "column_break_fgfp",
-  "auto_dispatch_full_trips",
-  "carry_over_unshelved_buckets",
-  "allow_partial_truck_load",
-  "release_trips_without_confirmation",
+  "auto_transfer_frequency",
   "production_tab",
+  "harvesting_section",
+  "harvest_item_group_config",
   "harvest_entry_section",
   "enable_head_size_mandatory",
+  "column_break_bktc",
+  "default_head_size",
+  "section_break_pdfz",
+  "head_size_mandatory_for",
+  "forecast_tab",
   "forecast_section",
   "forecast_lock_weeks"
  ],
@@ -80,11 +82,9 @@
   {
    "fieldname": "discard_age",
    "fieldtype": "Float",
-   "label": "Discard Age",
-   "description": "Default for item groups not listed in Discard Age by Item Group"
+   "label": "Discard Age"
   },
   {
-   "description": "Shelving refuses a bucket whose harvest is older than this many days",
    "fieldname": "max_shelving_age",
    "fieldtype": "Int",
    "label": "Max Shelving Age (Days)"
@@ -115,7 +115,6 @@
    "label": "Discard Age by Item Group"
   },
   {
-   "description": "A bucket uses the row for its variety's item group, else the nearest parent group listed here (e.g. Spray Roses covers Spray Roses - Bombastics), else Discard Age above.",
    "fieldname": "discard_age_by_item_group",
    "fieldtype": "Table",
    "label": "Discard Age by Item Group",
@@ -144,14 +143,12 @@
   },
   {
    "default": "0",
-   "description": "Off: a team issues its schedule in order (#2 waits until #1 is fully issued), and remote farms load a team's orders in the same order. On: issue and load in any order.",
    "fieldname": "allow_issue_out_of_sequence",
    "fieldtype": "Check",
    "label": "Allow Issuing Out of Schedule Order"
   },
   {
    "default": "0",
-   "description": "Off: a team packs its schedule in order (#2 waits until #1 is fully packed). On: pack in any order.",
    "fieldname": "allow_pack_out_of_sequence",
    "fieldtype": "Check",
    "label": "Allow Packing Out of Schedule Order"
@@ -173,24 +170,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "0",
-   "fieldname": "show_unscheduled_in_issuing",
-   "fieldtype": "Check",
-   "label": "Show Unscheduled OPLs in Issuing"
-  },
-  {
-   "default": "0",
-   "fieldname": "show_unscheduled_in_packing",
-   "fieldtype": "Check",
-   "label": "Show Unscheduled OPLs in Packing"
-  },
-  {
-   "default": "0",
-   "fieldname": "show_unscheduled_in_scheduler",
-   "fieldtype": "Check",
-   "label": "Show Unscheduled OPLs in the App Scheduler"
-  },
-  {
    "fieldname": "scheduling_section",
    "fieldtype": "Section Break",
    "label": "Scheduling"
@@ -205,16 +184,6 @@
    "fieldname": "remote_transfers_tab",
    "fieldtype": "Tab Break",
    "label": "Remote Transfers"
-  },
-  {
-   "fieldname": "transfer_hub_farm",
-   "fieldtype": "Link",
-   "label": "Remote Transfer Sales Farm",
-   "options": "Farm"
-  },
-  {
-   "fieldname": "column_break_ozyn",
-   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -234,14 +203,12 @@
   },
   {
    "default": "0",
-   "description": "On: the farm app's Bucket Requests also lists orders not on a truck yet, greyed out (they can't be loaded until scheduled).",
    "fieldname": "show_unscheduled_in_bucket_requests",
    "fieldtype": "Check",
    "label": "Show Not Scheduled Orders in the App Bucket Requests"
   },
   {
    "default": "0",
-   "description": "On: the farm app's Bucket Requests lists a trip's buckets per order, with the varieties grouped under each order. Off: per variety.",
    "fieldname": "group_bucket_requests_by_order",
    "fieldtype": "Check",
    "label": "Group App Bucket Requests by Order"
@@ -270,30 +237,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "0",
-   "fieldname": "auto_dispatch_full_trips",
-   "fieldtype": "Check",
-   "label": "Dispatch Full Trips Automatically"
-  },
-  {
-   "default": "0",
-   "fieldname": "carry_over_unshelved_buckets",
-   "fieldtype": "Check",
-   "label": "Carry Unshelved Buckets to the Truck's Next Trip"
-  },
-  {
-   "default": "0",
-   "fieldname": "allow_partial_truck_load",
-   "fieldtype": "Check",
-   "label": "Allow Sending Partly Loaded Trucks"
-  },
-  {
-   "default": "0",
-   "fieldname": "release_trips_without_confirmation",
-   "fieldtype": "Check",
-   "label": "Release Trips Without Request and Confirmation"
-  },
-  {
    "fieldname": "planning_tab",
    "fieldtype": "Tab Break",
    "label": "Allocation Planning"
@@ -308,6 +251,33 @@
    "fieldname": "hide_allocation_planning_sequence",
    "fieldtype": "Check",
    "label": "Hide the Allocation Planning Sequence"
+  },
+  {
+   "fieldname": "allocation_planning_section",
+   "fieldtype": "Section Break",
+   "label": "Planning"
+  },
+  {
+   "default": "3",
+   "fieldname": "allocation_horizon_days",
+   "fieldtype": "Int",
+   "label": "Days ahead people can plan"
+  },
+  {
+   "fieldname": "allocation_planning_col",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "15",
+   "fieldname": "allocation_conversion_minutes",
+   "fieldtype": "Int",
+   "label": "Check for new stock every (minutes)"
+  },
+  {
+   "default": "500",
+   "fieldname": "allocation_use_first_alert_stems",
+   "fieldtype": "Int",
+   "label": "Tell me when old stock is at least (stems)"
   },
   {
    "default": "1",
@@ -336,7 +306,7 @@
   {
    "fieldname": "production_tab",
    "fieldtype": "Tab Break",
-   "label": "Production"
+   "label": "Harvesting"
   },
   {
    "fieldname": "harvest_entry_section",
@@ -350,6 +320,18 @@
    "label": "Enable Head Size Mandatory"
   },
   {
+   "fieldname": "default_head_size",
+   "fieldtype": "Link",
+   "label": "Default Head Size",
+   "options": "Head Size"
+  },
+  {
+   "fieldname": "head_size_mandatory_for",
+   "fieldtype": "Table",
+   "label": "Head Size Mandatory For",
+   "options": "Head Size Mandatory Item"
+  },
+  {
    "fieldname": "forecast_section",
    "fieldtype": "Section Break",
    "label": "Production Forecast"
@@ -360,13 +342,32 @@
    "fieldtype": "Int",
    "label": "Forecast Locked for the Next (Weeks)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_bktc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_pdfz",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "forecast_tab",
+   "fieldtype": "Tab Break",
+   "label": "Forecast"
+  },
+  {
+   "fieldname": "sales_farms",
+   "fieldtype": "Table",
+   "label": "Remote Transfer Sales Farms",
+   "options": "Remote Transfer Sales Farm"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-12 10:00:00.000000",
+ "modified": "2026-11-12 22:59:59.468052",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",

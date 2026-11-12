@@ -7,7 +7,23 @@ from frappe.utils import flt
 
 
 class ProductionSettings(Document):
-	pass
+	def validate(self):
+		seen = set()
+		for row in self.get("sales_farms") or []:
+			if row.farm in seen:
+				frappe.throw(
+					frappe._("Remote Transfer Sales Farms row {0}: {1} is already listed.").format(
+						row.idx, row.farm
+					)
+				)
+			seen.add(row.farm)
+		for row in self.get("head_size_mandatory_for") or []:
+			if not row.item_group and not row.variety:
+				frappe.throw(
+					frappe._("Head Size Mandatory For row {0}: pick an item group or a variety.").format(
+						row.idx
+					)
+				)
 
 
 def discard_age_resolver():

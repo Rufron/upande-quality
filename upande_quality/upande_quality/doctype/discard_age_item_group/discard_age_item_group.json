@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
- "creation": "2026-11-11 09:00:00.000000",
+ "creation": "2026-11-12 10:46:38.199265",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -16,6 +16,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item Group",
+   "link_filters": "[[\"Item Group\",\"name\",\"=\",\"Alstroemeria\"],[\"Item Group\",\"name\",\"=\",\"Alstroemeria - Regular\"],[\"Item Group\",\"name\",\"=\",\"Standard Roses\"],[\"Item Group\",\"name\",\"=\",\"Standard Roses - Garden\"],[\"Item Group\",\"name\",\"=\",\"Standard Roses - Intermediate\"],[\"Item Group\",\"name\",\"=\",\"Standard Roses - Premium\"],[\"Item Group\",\"name\",\"=\",\"Standard Roses - Retail\"],[\"Item Group\",\"name\",\"=\",\"Spray Roses\"],[\"Item Group\",\"name\",\"=\",\"Spray Roses - Bombastics\"],[\"Item Group\",\"name\",\"=\",\"Spray Roses - Garden\"],[\"Item Group\",\"name\",\"=\",\"Spray Roses - Garden Stars\"]]",
    "options": "Item Group",
    "reqd": 1
   },
@@ -32,7 +33,7 @@
  "grid_page_length": 50,
  "istable": 1,
  "links": [],
- "modified": "2026-11-11 09:00:00.000000",
+ "modified": "2026-11-12 21:05:07.945122",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Discard Age Item Group",

@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-11-12 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "greenhouse",
+  "item_group",
+  "variety",
+  "head_size"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "greenhouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Greenhouse",
+   "options": "Greenhouse"
+  },
+  {
+   "columns": 2,
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Group",
+   "options": "Item Group"
+  },
+  {
+   "columns": 3,
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item"
+  },
+  {
+   "columns": 2,
+   "fieldname": "head_size",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Default Head Size",
+   "options": "Head Size"
+  }
+ ],
+ "grid_page_length": 50,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-12 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Head Size Mandatory Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
