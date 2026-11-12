@@ -16330,6 +16330,80 @@ def _quality_farm_scope(requested, station_farm, company):
 	return farms, True, requested if requested in farms else None
 
 
+def _not_received_buckets(day, scope):
+	"""Buckets harvested on `day` whose harvest round has no Receiving / Late Receipt yet.
+
+	A bucket is reused round after round, so the round is the bucket's harvests
+	after its last closing entry before its final harvest of the day; a Grading
+	also closes it (bunches graded at the farm never go through Receiving).
+	`scope` is a list of farms, or None for every farm."""
+	close_types = "('Receiving', 'Late Receipt', 'Grading')"
+	rows = frappe.db.sql(
+		"SELECT y.bucket, y.last_harvest, h.farm, h.custom_greenhouse AS greenhouse,"
+		" sed.item_code, sed.qty"
+		" FROM ("
+		"  SELECT x.bucket, x.last_harvest, IFNULL(("
+		"   SELECT MAX(TIMESTAMP(c.posting_date, c.posting_time)) FROM `tabStock Entry` c"
+		"   WHERE c.custom_bucket_id = x.bucket AND c.docstatus = 1"
+		"   AND c.stock_entry_type IN " + close_types + ""
+		"   AND TIMESTAMP(c.posting_date, c.posting_time) < x.last_harvest), '1900-01-01') AS round_start"
+		"  FROM ("
+		"   SELECT h.custom_bucket_id AS bucket, MAX(TIMESTAMP(h.posting_date, h.posting_time)) AS last_harvest"
+		"   FROM `tabStock Entry` h"
+		"   WHERE h.stock_entry_type = 'Harvesting' AND h.docstatus = 1 AND h.posting_date = %(day)s"
+		"   AND IFNULL(h.custom_bucket_id, '') != ''"
+		+ (" AND h.farm IN %(farms)s" if scope else "")
+		+ "   GROUP BY h.custom_bucket_id"
+		"  ) AS x"
+		"  WHERE NOT EXISTS ("
+		"   SELECT 1 FROM `tabStock Entry` r"
+		"   WHERE r.custom_bucket_id = x.bucket AND r.docstatus = 1"
+		"   AND r.stock_entry_type IN " + close_types + ""
+		"   AND TIMESTAMP(r.posting_date, r.posting_time) >= x.last_harvest)"
+		" ) AS y"
+		" INNER JOIN `tabStock Entry` h ON h.custom_bucket_id = y.bucket"
+		"  AND h.stock_entry_type = 'Harvesting' AND h.docstatus = 1 AND h.posting_date = %(day)s"
+		"  AND TIMESTAMP(h.posting_date, h.posting_time) > y.round_start"
+		" INNER JOIN `tabStock Entry Detail` sed ON sed.parent = h.name",
+		{"day": day, "farms": scope},
+		as_dict=True,
+	)
+	buckets = {}
+	for r in rows:
+		b = buckets.setdefault(
+			r.bucket,
+			{
+				"bucket": r.bucket,
+				"farm": r.farm or "",
+				"greenhouse": r.greenhouse or "",
+				"varieties": [],
+				"stems": 0.0,
+				"last_harvest": str(r.last_harvest) if r.last_harvest else "",
+			},
+		)
+		b["stems"] += frappe.utils.flt(r.qty)
+		if r.item_code and r.item_code not in b["varieties"]:
+			b["varieties"].append(r.item_code)
+		if not b["greenhouse"] and r.greenhouse:
+			b["greenhouse"] = r.greenhouse
+	out = list(buckets.values())
+	out.sort(key=lambda b: (b["last_harvest"], b["bucket"]))
+	return out
+
+
+@frappe.whitelist()
+def getNotReceivedBuckets():
+	"""Every bucket the Quality home's Not Received tile counts, for one day and farm scope."""
+	day = frappe.utils.getdate(frappe.form_dict.get("date") or frappe.utils.nowdate())
+	farms, all_farms, farm = _quality_farm_scope(
+		(frappe.form_dict.get("farm") or "").strip(),
+		(frappe.form_dict.get("station_farm") or "").strip(),
+		(frappe.form_dict.get("company") or "").strip(),
+	)
+	scope = [farm] if farm else (None if all_farms else farms)
+	return {"date": str(day), "farm": farm or "", "buckets": _not_received_buckets(day, scope)}
+
+
 @frappe.whitelist()
 def getQualityDashboardData():
 	"""Quality app home: the Intake FTR Overview figures for one day, in one read-only call.
@@ -16425,42 +16499,7 @@ def getQualityDashboardData():
 		)
 	]
 
-	# Not received: a bucket harvested that day whose harvest round has no
-	# Receiving / Late Receipt yet. A bucket is reused round after round, so the
-	# round is the bucket's harvests after its last closing entry before its final
-	# harvest of the day; a Grading also closes it (bunches graded at the farm
-	# never go through Receiving). Stems are that round's harvested stems.
-	close_types = "('Receiving', 'Late Receipt', 'Grading')"
-	not_received = frappe.db.sql(
-		"SELECT COUNT(*) AS buckets, IFNULL(SUM(("
-		" SELECT SUM(sed.qty) FROM `tabStock Entry` h2"
-		" INNER JOIN `tabStock Entry Detail` sed ON sed.parent = h2.name"
-		" WHERE h2.custom_bucket_id = x.bucket AND h2.stock_entry_type = 'Harvesting'"
-		" AND h2.docstatus = 1 AND h2.posting_date = %(day)s"
-		" AND TIMESTAMP(h2.posting_date, h2.posting_time) > IFNULL(("
-		"  SELECT MAX(TIMESTAMP(c.posting_date, c.posting_time)) FROM `tabStock Entry` c"
-		"  WHERE c.custom_bucket_id = x.bucket AND c.docstatus = 1"
-		"  AND c.stock_entry_type IN "
-		+ close_types
-		+ "  AND TIMESTAMP(c.posting_date, c.posting_time) < x.last_harvest), '1900-01-01')"
-		" )), 0) AS stems"
-		" FROM ("
-		"  SELECT h.custom_bucket_id AS bucket, MAX(TIMESTAMP(h.posting_date, h.posting_time)) AS last_harvest"
-		"  FROM `tabStock Entry` h"
-		"  WHERE h.stock_entry_type = 'Harvesting' AND h.docstatus = 1 AND h.posting_date = %(day)s"
-		"  AND IFNULL(h.custom_bucket_id, '') != ''"
-		+ (" AND h.farm IN %(farms)s" if scope else "")
-		+ "  GROUP BY h.custom_bucket_id"
-		" ) AS x"
-		" WHERE NOT EXISTS ("
-		"  SELECT 1 FROM `tabStock Entry` r"
-		"  WHERE r.custom_bucket_id = x.bucket AND r.docstatus = 1"
-		"  AND r.stock_entry_type IN "
-		+ close_types
-		+ "  AND TIMESTAMP(r.posting_date, r.posting_time) >= x.last_harvest)",
-		values,
-		as_dict=True,
-	)[0]
+	not_received = _not_received_buckets(day, scope)
 
 	scoped = {"farm": ["in", scope]} if scope else {}
 	pending_reshelving = frappe.db.count(
@@ -16485,8 +16524,8 @@ def getQualityDashboardData():
 			"total_quarantined": quarantined,
 			"overall_ftr": _ftr(received, quarantined),
 			"overall_sampled": round(checked / received * 100, 2) if received > 0 else None,
-			"not_received_buckets": int(not_received.buckets or 0),
-			"not_received_stems": frappe.utils.flt(not_received.stems),
+			"not_received_buckets": len(not_received),
+			"not_received_stems": sum(b["stems"] for b in not_received),
 			"pending_reshelving": pending_reshelving,
 			"open_replacements": open_replacements,
 		},
