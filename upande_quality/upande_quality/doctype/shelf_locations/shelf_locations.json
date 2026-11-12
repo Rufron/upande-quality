@@ -50,7 +50,6 @@
   {
    "columns": 2,
    "default": "0",
-   "description": "Minimum hours a bucket must have been on this farm's shelf (since scanning-on) before it can be allocated. 0 = no cooling requirement.",
    "fieldname": "cooling_hours",
    "fieldtype": "Float",
    "in_list_view": 1,
@@ -61,7 +60,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-15 00:00:00.000000",
+ "modified": "2026-11-12 21:37:25.934220",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Shelf Locations",

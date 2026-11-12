@@ -1627,7 +1627,16 @@ def createShelvingEntry():
 				from upande_packhouse.api.transfer_control import hub_shelving_block
 			except ImportError:  # an upande_packhouse without it: no hub check
 				hub_shelving_block = None
-			left_here = remote_shelving_block(bucket_id, req_farm) if req_farm else None
+			# ...unless its truck has left that farm for this shelf's farm, the sales farm the order is for:
+			# then this is the arrival (a phone still set to the remote farm, carried to the sales farm).
+			try:
+				from upande_packhouse.api.transfer_control import arriving_at
+			except ImportError:
+				arriving_at = None
+			arrival = bool(
+				arriving_at and shelf_doc.farm and arriving_at(bucket_id, req_farm, shelf_doc.farm)
+			)
+			left_here = remote_shelving_block(bucket_id, req_farm) if req_farm and not arrival else None
 			if left_here:
 				result["passed"] = False
 				result["reason"] = "already_transferred"
@@ -1785,13 +1794,18 @@ def createShelvingEntry():
 			limit=20 if expect else 1,
 		)
 		if expect and entries:
-			items = {}
+			items, wh_farm = {}, {}
 			for r in frappe.get_all(
 				"Stock Entry Detail",
 				filters={"parent": ["in", [e.name for e in entries]]},
-				fields=["parent", "item_code"],
+				fields=["parent", "item_code", "t_warehouse"],
 			):
 				items.setdefault(r.parent, r.item_code)
+				if r.t_warehouse:
+					wh_farm.setdefault(r.parent, r.t_warehouse.split(" ", 1)[0])
+			# an entry with no farm of its own: the farm of the store it received into
+			for e in entries:
+				e.farm = e.farm or wh_farm.get(e.name) or ""
 			match = [
 				e
 				for e in entries
@@ -1856,7 +1870,7 @@ def createShelvingEntry():
 			filters={"bucket": bucket_id},
 			fields=["name", "parent"],
 		)
-		from upande_packhouse.api.transfer_control import transfer_hub
+		from upande_packhouse.api.transfer_control import opl_hub, transfer_hub
 		from upande_packhouse.roses_warehouse_map import source_warehouse_for_farm
 
 		hub = transfer_hub(required=False)
@@ -1869,7 +1883,8 @@ def createShelvingEntry():
 				continue
 			# Only shelving at the sales farm ends a transfer. Re-shelving at the remote
 			# farm keeps the row awaiting transfer, on its remote shelf.
-			sales_farm = opl_doc.get("farm") or hub
+			# The order's sales farm (Remote Transfer Sales Farms): where its buckets go.
+			sales_farm = opl_hub(opl_doc.name) or opl_doc.get("farm") or hub
 			if farm and sales_farm and farm.lower() != sales_farm.lower():
 				result["transfer_pending"] = sales_farm
 				continue
@@ -2793,8 +2808,8 @@ def _row_farm(r):
 
 
 def _farm_trip_opls(farm_name, opls, on_road=False):
-	"""The OPLs among `opls` on a trip planned to this farm (Draft or Scheduled, from
-	today, or loaded): what the farm app shows. `on_road`: trips on their way to the
+	"""The OPLs among `opls` on an open trip planned to this farm (Draft or Scheduled,
+	whatever its date): what the farm app shows. `on_road`: trips on their way to the
 	hub (Dispatched) count too. An order whose bucket here is shared with an order on
 	such a trip rides that trip with it (transfer_scheduling.shared_buckets)."""
 	if not opls:
@@ -2840,13 +2855,11 @@ def _farm_trip_opls_direct(farm_name, opls, on_road=False):
 			"""SELECT DISTINCT o.order_pick_list
 			FROM `tabBucket Request Trip Order` o
 			INNER JOIN `tabBucket Request Trip` t ON t.name = o.parent
-			WHERE ( (t.status IN ('Draft', 'Requested', 'Scheduled')
-			          AND ( t.trip_date >= %(today)s OR IFNULL(t.loaded_buckets, 0) > 0 ))
+			WHERE ( t.status IN ('Draft', 'Requested', 'Scheduled')
 			        OR (%(road)s AND t.status = 'Dispatched') )
 			  AND ( o.farm = %(farm)s OR %(farm)s LIKE CONCAT('%%', o.farm, '%%') )
 			  AND o.order_pick_list IN %(opls)s""",
 			{
-				"today": frappe.utils.today(),
 				"farm": farm_name,
 				"opls": tuple(opls),
 				"road": 1 if on_road else 0,
@@ -3141,7 +3154,7 @@ def fetchAllocatedBuckets():
 				# the planner tops trucks up with later days' orders.
 				on_trip = _farm_trip_opls(farm_name, list(opl_map))
 				# Rebuild opl_map to only OPLs whose SO is in the delivery window, or on a trip.
-				# An order delivering today or earlier is never sent, trip or not.
+				# An order delivering today or earlier is sent only while a trip still carries it.
 				past_so = (
 					set(
 						frappe.get_all(
@@ -3156,7 +3169,7 @@ def fetchAllocatedBuckets():
 				kept = {}
 				for n in opl_map:
 					so = opl_map[n].get("sales_order")
-					if so in past_so:
+					if so in past_so and n not in on_trip:
 						continue
 					if (so and so in in_window_so) or n in on_trip:
 						kept[n] = opl_map[n]
@@ -3358,6 +3371,12 @@ def fetchAllocatedBuckets():
 					seen_bucket[dedupe_key] = row_out
 					result.append(row_out)
 
+				# The sales farm each order's buckets go to (Remote Transfer Sales Farms).
+				from upande_packhouse.api.transfer_control import opl_hubs
+
+				hubs = opl_hubs([r["opl_name"] for r in result])
+				for r in result:
+					r["sales_farm"] = hubs.get(r["opl_name"]) or ""
 				frappe.response["message"] = (
 					"Found " + str(len(result)) + " remote buckets awaiting transfer for " + farm_name
 				)
@@ -4769,9 +4788,9 @@ def getFarmPlannedTrips():
 			on_farm_trip = _farm_trip_opls(farm_name, list(opl_states), on_road=True)
 			for op in [o for o, v in opl_states.items() if v != "arrived" and o not in on_farm_trip]:
 				del opl_states[op]
-			# An order delivering today or earlier still waiting here is not reported: the
-			# app drops it, as the download no longer sends it.
-			waiting = [o for o, v in opl_states.items() if v == "waiting"]
+			# An order delivering today or earlier still waiting here, on no open trip, is not
+			# reported: the app drops it, as the download no longer sends it.
+			waiting = [o for o, v in opl_states.items() if v == "waiting" and o not in on_farm_trip]
 			if waiting:
 				for op in frappe.db.sql_list(
 					"""SELECT opl.name FROM `tabOrder Pick List` opl
@@ -4789,7 +4808,6 @@ def getFarmPlannedTrips():
             FROM `tabBucket Request Trip` t
             INNER JOIN `tabBucket Request Trip Order` o ON o.parent = t.name
             WHERE t.status IN ('Draft', 'Requested', 'Scheduled')
-              AND ( t.trip_date >= %(today)s OR IFNULL(t.loaded_buckets, 0) > 0 )
               AND ( o.farm = %(farm)s OR o.farm LIKE %(like)s OR %(farm)s LIKE CONCAT('%%', o.farm, '%%') )
         """,
 			{"farm": farm_name, "like": like, "today": frappe.utils.today()},
@@ -4868,9 +4886,6 @@ def getFarmPlannedTrips():
 				limit_page_length=0,
 			)
 
-			# Orders already past their delivery date don't belong on the farm's trip list
-			# (a leftover draft planned for yesterday's orders kept showing up).
-			today_s = str(frappe.utils.today())
 			# Each trip's numbers -- per stop and per order -- are transfer_scheduling's
 			# trip_numbers, the one count the Bucket Logistics dashboard and the packhouse
 			# app show too: each bucket counts on ONE trip (an order's farm portion split
@@ -4958,8 +4973,6 @@ def getFarmPlannedTrips():
 				for (opl, f), p in by.items():
 					if not p["counts"] or not is_mine(f):
 						continue
-					if p["delivery_date"] and p["delivery_date"] < today_s:
-						continue  # delivery date passed: not this farm's job any more
 					moving = p["trolley"] or p["loaded"] or p["transit"] or p["shelved"]
 					# Only riding with another order's buckets: listed with it (one bucket, one scan).
 					rider = p["riding"] and not p["total"]
@@ -4990,7 +5003,12 @@ def getFarmPlannedTrips():
 					)
 
 				# Order the farms the way the truck drives this trip's run, then any extras.
-				from upande_packhouse.api.transfer_control import _stop_complete, _trip_run_info, _trip_stops
+				from upande_packhouse.api.transfer_control import (
+					_stop_complete,
+					_trip_run_info,
+					_trip_stops,
+					trip_hub_of,
+				)
 
 				trip_doc = frappe.get_doc("Bucket Request Trip", tn)
 				run_info = _trip_run_info(trip_doc)
@@ -5103,6 +5121,8 @@ def getFarmPlannedTrips():
 						# Route progress: stops already loaded and left, and where the truck is going.
 						"departed_stops": [f for f in (hd.get("departed_stops") or "").split(",") if f],
 						"heading_to": hd.get("heading_to") or "",
+						# The sales farm the trip delivers to (its orders' -- Remote Transfer Sales Farms).
+						"sales_farm": trip_hub_of(tn) or "",
 						# Which run of the truck's route this is: one trip per run
 						# (packhouse → farms → packhouse).
 						"run": run_info["run"],
@@ -5193,8 +5213,7 @@ def getInTransitBuckets():
 		sales_farms = {
 			r.farm for r in (ps.get("shelf_locations") or []) if r.enabled and r.sales_shelf and r.farm
 		}
-		if ps.get("transfer_hub_farm"):
-			sales_farms.add(ps.get("transfer_hub_farm"))
+		sales_farms |= {r.farm for r in ps.get("sales_farms") or [] if r.farm}
 		rows = frappe.db.sql(
 			"""
             SELECT pli.parent AS opl_name, pli.bucket AS bucket_id,

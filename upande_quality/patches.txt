@@ -4,9 +4,11 @@
 upande_quality.patches.production_settings_remote_transfer_fields_standard
 upande_quality.patches.production_settings_drop_custom_prefix
 upande_quality.patches.production_settings_pack_waiting_pct_standard
+upande_quality.patches.production_settings_allocation_fields_standard
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+upande_quality.patches.production_settings_sales_farms_table
 upande_quality.patches.add_pending_reshelving_fields
 upande_quality.patches.add_bucket_transfer_indexes
 upande_quality.patches.enable_username_login
