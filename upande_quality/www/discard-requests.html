@@ -395,7 +395,7 @@ function drawPreview(){
     rows+='<tr><td><input type="checkbox" class="gchk" data-k="'+esc(gkey(g))+'"'+(groupsOn[gkey(g)]?' checked':'')+'></td><td></td><td>'+esc(g.variety)+'</td><td>'+esc(g.length||'—')+'</td><td class="num">'+n0(g.buckets)+'</td><td class="num">'+n0(g.stems)+'</td><td class="num">'+Math.round(g.oldest_days)+'</td></tr>';});
   el('nRows').innerHTML=rows||'<tr><td colspan="7" class="empty-state">No buckets match. Try fewer filters or a lower age.</td></tr>';
   var lo=pv.left_out,bits=[];
-  if(lo.on_a_request)bits.push(n0(lo.on_a_request)+' already on a request');if(lo.allocated)bits.push(n0(lo.allocated)+' reserved for an order');
+  if(lo.on_a_request)bits.push(n0(lo.on_a_request)+' already on a request');
   if(lo.too_young)bits.push(n0(lo.too_young)+' not old enough');if(lo.other_cold_room)bits.push(n0(lo.other_cold_room)+' in other cold rooms');
   el('nSummary').innerHTML=bits.length?'<div class="dqnote">Left out: '+bits.join(' · ')+'.</div>':'';
   sync();

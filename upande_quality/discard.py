@@ -2,16 +2,19 @@
 Request form's Fetch Buckets and the dashboard (api/discard_requests.py) and the app's discard list (mobile/api.py),
 so a request and the app always agree.
 
-A bucket is discardable when it is on a shelf, is at least its discard age (days since its latest Harvesting entry,
-else since it was shelved; the age comes from the variety, its item group or Production Settings), and none of the
-stems of its current harvest are allocated. Partly allocated buckets are not discardable."""
+A bucket is discardable when it is on a shelf and at least its discard age (days since its latest Harvesting entry,
+else since it was shelved; the age comes from the variety, its item group or Production Settings). Past its discard
+age a bucket is discarded even when it is allocated to an order: allocation only protects buckets that are not yet
+old enough. `allocated` is still reported on each bucket for information."""
 
 import frappe
-from frappe.utils import date_diff, getdate, nowdate
+from frappe.utils import date_diff, flt, getdate, nowdate
 
 from upande_quality.upande_quality.doctype.production_settings.production_settings import (
 	discard_age_resolver,
 )
+
+REJECTS = "Rejects - KR"
 
 
 def shelf_buckets(farms=None):
@@ -67,8 +70,27 @@ def shelf_buckets(farms=None):
 			b.allocated = True
 
 	for b in out.values():
-		b.discardable = not b.allocated and b.age_days >= b.discard_age
+		b.discardable = b.age_days >= b.discard_age
 	return out
+
+
+def bucket_stock(bucket_id, since, item_code):
+	"""Where a bucket's stems are now: {warehouse: qty} netted over every submitted stock entry for the bucket since
+	`since` (its latest receiving), so a bucket that was moved (remote transfer, allocated to Sold, issued) is found
+	where it is, not where it was received. Bucket ids are only on the entry header. Rejects (discarded) is left out."""
+	bal = {}
+	for r in frappe.db.sql(
+		"""SELECT d.s_warehouse, d.t_warehouse, d.qty FROM `tabStock Entry` se
+		JOIN `tabStock Entry Detail` d ON d.parent = se.name
+		WHERE se.docstatus = 1 AND se.custom_bucket_id = %s AND se.creation >= %s AND d.item_code = %s""",
+		(bucket_id, since, item_code),
+		as_dict=True,
+	):
+		if r.s_warehouse:
+			bal[r.s_warehouse] = bal.get(r.s_warehouse, 0) - flt(r.qty)
+		if r.t_warehouse:
+			bal[r.t_warehouse] = bal.get(r.t_warehouse, 0) + flt(r.qty)
+	return {w: q for w, q in bal.items() if q > 0.001 and w != REJECTS}
 
 
 def todays_requests(farm=None):

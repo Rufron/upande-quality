@@ -12,7 +12,7 @@ import re
 import frappe
 from frappe import _
 
-from upande_quality.discard import shelf_buckets, todays_requests
+from upande_quality.discard import REJECTS, bucket_stock, todays_requests
 from upande_quality.upande_quality.doctype.production_settings.production_settings import (
 	discard_age_for,
 	discard_age_resolver,
@@ -798,18 +798,6 @@ def createDiscardEntry():
 		return False
 
 	# ---------------------------------------------------------
-	# CHECK IF BUCKET IS ALLOCATED TO AN ORDER
-	# ---------------------------------------------------------
-	def is_bucket_allocated(bucket_id):
-		"""True if the bucket currently appears in Bucket Allocation Status (allocated
-		to a sales order). Hard backstop: a discard request is a fetch-time snapshot,
-		so a listed bucket may have been allocated afterwards — never discard it."""
-		allocated = frappe.get_all(
-			"Bucket Allocation Status", filters={"bucket_id": bucket_id}, fields=["name"], limit=1
-		)
-		return len(allocated) > 0
-
-	# ---------------------------------------------------------
 	# SET FIELD ONLY IF IT EXISTS ON THE DOCTYPE
 	# ---------------------------------------------------------
 	def set_if_exists(doc, fieldname, value):
@@ -820,12 +808,18 @@ def createDiscardEntry():
 	# ---------------------------------------------------------
 	# CREATE DISCARD STOCK ENTRY
 	# ---------------------------------------------------------
-	def create_discard_entry(receiving_doc, result):
-		"""Create Discard stock entry for discard"""
+	def create_discard_entry(receiving_doc, result, from_list=False):
+		"""Create Discard stock entry for discard. A listed bucket may have moved since it was received
+		(remote transfer, allocated to Sold, issued): its stems are taken from where they are now."""
 
 		try:
 			# Get item details from receiving entry
 			recv_item = receiving_doc.items[0]
+			places = (
+				bucket_stock(receiving_doc.custom_bucket_id, receiving_doc.creation, recv_item.item_code)
+				if from_list
+				else {}
+			) or {recv_item.t_warehouse: recv_item.qty}
 
 			# Create new Stock Entry for discard
 			discard_entry = frappe.new_doc("Stock Entry")
@@ -862,29 +856,32 @@ def createDiscardEntry():
 			)
 
 			# Set warehouses
-			discard_entry.from_warehouse = recv_item.t_warehouse  # Taking from receiving warehouse
-			discard_entry.to_warehouse = "Rejects - KR"
+			discard_entry.from_warehouse = next(iter(places))
+			discard_entry.to_warehouse = REJECTS
 
-			# Add item to discard entry
-			discard_item = discard_entry.append("items", {})
-			discard_item.item_code = recv_item.item_code
-			discard_item.item_name = recv_item.item_name
-			discard_item.description = recv_item.description
-			discard_item.item_group = recv_item.item_group
-			discard_item.qty = recv_item.qty
-			discard_item.uom = recv_item.uom
-			discard_item.stock_uom = recv_item.stock_uom
-			discard_item.conversion_factor = recv_item.conversion_factor
-			discard_item.s_warehouse = recv_item.t_warehouse  # From receiving warehouse
-			discard_item.expense_account = recv_item.expense_account
-			discard_item.cost_center = recv_item.cost_center
-			discard_item.allow_zero_valuation_rate = 1
+			# One line per warehouse holding the bucket's stems
+			for warehouse, qty in places.items():
+				discard_item = discard_entry.append("items", {})
+				discard_item.item_code = recv_item.item_code
+				discard_item.item_name = recv_item.item_name
+				discard_item.description = recv_item.description
+				discard_item.item_group = recv_item.item_group
+				discard_item.qty = qty
+				discard_item.uom = recv_item.uom
+				discard_item.stock_uom = recv_item.stock_uom
+				discard_item.conversion_factor = recv_item.conversion_factor
+				discard_item.s_warehouse = warehouse
+				discard_item.t_warehouse = REJECTS
+				discard_item.expense_account = recv_item.expense_account
+				discard_item.cost_center = recv_item.cost_center
+				discard_item.allow_zero_valuation_rate = 1
 
-			# Copy custom fields from receiving item (guarded, as above)
-			set_if_exists(discard_item, "custom_grower", recv_item.get("custom_grower"))
-			set_if_exists(discard_item, "custom_harvester", recv_item.get("custom_harvester"))
-			set_if_exists(discard_item, "custom_bunched_by", recv_item.get("custom_bunched_by"))
-			set_if_exists(discard_item, "custom_number_of_stems", recv_item.get("custom_number_of_stems"))
+				# Copy custom fields from receiving item (guarded, as above)
+				set_if_exists(discard_item, "custom_grower", recv_item.get("custom_grower"))
+				set_if_exists(discard_item, "custom_harvester", recv_item.get("custom_harvester"))
+				set_if_exists(discard_item, "custom_bunched_by", recv_item.get("custom_bunched_by"))
+				set_if_exists(discard_item, "custom_number_of_stems", recv_item.get("custom_number_of_stems"))
+			result["discarded_from"] = [f"{w}: {q:g}" for w, q in places.items()]
 
 			# Insert and submit
 			discard_entry.insert(ignore_permissions=True)
@@ -973,19 +970,10 @@ def createDiscardEntry():
 			done = False
 
 			# When the discard comes via the discard list, authorise the bypass by
-			# verifying the bucket is actually on an Approved Discard Request — and
-			# hard-block it if it has since been allocated (the list is a fetch-time
-			# snapshot, so a bucket can be allocated after the request was built).
+			# verifying the bucket is actually on an Approved Discard Request. No allocation
+			# check: a listed bucket is past its discard age, which beats allocation.
 			if from_discard_request:
-				if is_bucket_allocated(bucket_id):
-					frappe.response["data"] = {
-						"status": "failed",
-						"reason": "bucket_allocated",
-						"message": "This bucket has been allocated to an order and can no longer be discarded.",
-						"payload": {"bucket_id": bucket_id},
-					}
-					done = True
-				elif is_in_approved_discard_request(bucket_id, farm):
+				if is_in_approved_discard_request(bucket_id, farm):
 					bypass = True
 				else:
 					frappe.response["data"] = {
@@ -1052,7 +1040,7 @@ def createDiscardEntry():
 							}
 						else:
 							# Create discard entry
-							create_discard_entry(receiving_doc, result)
+							create_discard_entry(receiving_doc, result, from_list=bypass)
 
 							# Remove bucket from shelf
 							remove_bucket_from_shelf(bucket_id, result)
@@ -1081,6 +1069,7 @@ def createDiscardEntry():
 									"override_age": override_age,
 									"from_discard_request": bool(from_discard_request),
 									"removed_from_shelves": result.get("removed_from_shelf", []),
+									"discarded_from": result.get("discarded_from", []),
 								},
 							}
 
@@ -4568,9 +4557,9 @@ def getFreeShelves(farm: str | None = None):
 @frappe.whitelist()
 def getDiscardRequestBuckets():
 	"""The farm's discard list for the app: today's Discard Requests, newest first, with EVERY bucket row on them so
-	the app always matches the request in the desk. Each row is "to discard", "discarded" (by whom, when) or blocked
-	with a reason when the bucket changed after it was listed. Which buckets are discardable is the shared rule in
-	upande_quality/discard.py, the same one the nightly job and Fetch Buckets use.
+	the app always matches the request in the desk. Each row is "to discard" or "discarded" (by whom, when): nothing
+	is hidden or blocked, every bucket on the request can be discarded. Which buckets go on a request is the shared
+	rule in upande_quality/discard.py (the nightly job and Fetch Buckets). `blocked_reason` stays None for older apps.
 	Payload: { "farm": "<Farm>" } -> { status, farm, buckets: [to discard], count, requests: [...] }"""
 	frappe.response["message"] = {"status": "error", "buckets": []}
 	try:
@@ -4585,7 +4574,7 @@ def getDiscardRequestBuckets():
 		buckets = {}
 		for g in groups:
 			for b in g["buckets"]:
-				if not b["discarded"] and not b["blocked_reason"]:
+				if not b["discarded"]:
 					buckets.setdefault(str(b["bucket_id"]).upper(), b)
 		frappe.response["message"] = {
 			"status": "success",
@@ -4613,23 +4602,34 @@ def _discard_request_groups(farm, requests):
 			"greenhouse",
 			"stem_length",
 			"parent",
+			"discarded",
 		],
 		order_by="idx asc",
 		limit_page_length=0,
 	)
-	shelf = shelf_buckets([farm])
-	# Discards since the oldest of today's requests; a row is discarded when its bucket was discarded after
-	# its request was made.
+	keys = list({str(r.bucket_id).upper() for r in rows if r.bucket_id}) or ["-"]
+	# Discards since the oldest of today's requests, at any farm (the entry carries the farm the bucket was
+	# received at); a row is discarded when its bucket was discarded after its request was made.
 	discards = {}
 	for d in frappe.db.sql(
 		"""SELECT UPPER(custom_bucket_id) AS b, creation, owner FROM `tabStock Entry`
-		WHERE stock_entry_type = 'Discard' AND docstatus = 1 AND farm = %s
-		  AND creation >= %s AND custom_bucket_id > ''
+		WHERE stock_entry_type = 'Discard' AND docstatus = 1
+		  AND creation >= %s AND UPPER(custom_bucket_id) IN %s
 		ORDER BY creation""",
-		(farm, min(requests.values())),
+		(min(requests.values()), tuple(keys)),
 		as_dict=True,
 	):
 		discards.setdefault(d.b, []).append(d)
+	# Where each bucket is shelved now (it may have moved since the request).
+	shelf_now = {
+		str(s.bucket_id).upper(): s.parent
+		for s in frappe.get_all(
+			"Shelf Item",
+			filters={"bucket_id": ["in", keys]},
+			fields=["bucket_id", "parent"],
+			limit_page_length=0,
+		)
+	}
 
 	meta = {
 		m.name: m
@@ -4655,11 +4655,11 @@ def _discard_request_groups(farm, requests):
 			continue
 		item = {
 			"bucket_id": r.bucket_id,
-			"shelf": r.shelf,
+			"shelf": shelf_now.get(key) or r.shelf,
 			"variety": r.variety,
 			"stem_qty": r.stem_qty,
 			"age_days": r.age_days,
-			"is_shelved": 1 if r.is_shelved else 0,
+			"is_shelved": 1 if key in shelf_now else 0,
 			"greenhouse": r.greenhouse,
 			"stem_length": r.stem_length,
 			"discard_request": r.parent,
@@ -4667,7 +4667,6 @@ def _discard_request_groups(farm, requests):
 			"blocked_reason": None,
 		}
 		done = [d for d in discards.get(key, []) if str(d.creation) >= requests[r.parent]]
-		b = shelf.get(key)
 		if done:
 			item.update(
 				discarded=1,
@@ -4675,14 +4674,8 @@ def _discard_request_groups(farm, requests):
 				discarded_by=done[0].owner,
 				discarded_by_name=names.get(done[0].owner) or done[0].owner,
 			)
-		elif not b:
-			item["blocked_reason"] = "Not on a shelf at this farm (moved or issued)"
-		elif b.allocated:
-			item["blocked_reason"] = "Allocated to an order"
-		elif not b.discardable:
-			item["blocked_reason"] = "Re-harvested, the new flowers are not old enough"
-		else:
-			item["shelf"] = b.shelf  # where it is now, in case it was moved
+		elif r.discarded:
+			item["discarded"] = 1
 		items.setdefault(r.parent, []).append(item)
 
 	groups = []
@@ -4703,9 +4696,9 @@ def _discard_request_groups(farm, requests):
 				"requested_by_name": names.get(m.requested_by) or m.requested_by,
 				"approved_by": approver,
 				"approved_by_name": names.get(approver) or approver,
-				"pending": sum(1 for i in its if not i["discarded"] and not i["blocked_reason"]),
+				"pending": sum(1 for i in its if not i["discarded"]),
 				"discarded": sum(1 for i in its if i["discarded"]),
-				"blocked": sum(1 for i in its if i["blocked_reason"]),
+				"blocked": 0,
 				"buckets": its,
 			}
 		)

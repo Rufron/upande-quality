@@ -31,8 +31,8 @@ def auto_discard_request():
 	under the wrong company.
 	"""
 	try:
-		# One rule with Fetch Buckets and the app list (upande_quality/discard.py): on a shelf, old enough
-		# for its variety, nothing of its current harvest allocated. Every such bucket is listed each night,
+		# One rule with Fetch Buckets and the app list (upande_quality/discard.py): on a shelf and old enough
+		# for its variety, allocated or not. Every such bucket is listed each night,
 		# even when an earlier request listed it, so each day's request is complete on its own; only a bucket
 		# already on a request made today is skipped, so a second run the same day adds nothing twice.
 		discard_age = discard_age_resolver()()  # the default, recorded on the request

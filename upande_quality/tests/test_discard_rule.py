@@ -37,11 +37,17 @@ class TestShelfBuckets(unittest.TestCase):
 	def test_too_young_is_not(self):
 		self.assertFalse(self._run([_shelf("a1", "2026-11-06")], [])["A1"].discardable)
 
-	def test_allocation_for_current_harvest_blocks_even_partly(self):
+	def test_past_age_is_discardable_even_when_allocated(self):
 		out = self._run(
 			[_shelf("X03UBD", "2026-11-05")], [{"bucket_id": "x03ubd", "harvest_date": "2026-11-05"}]
 		)
 		self.assertTrue(out["X03UBD"].allocated)
+		self.assertTrue(out["X03UBD"].discardable)
+
+	def test_allocated_and_too_young_is_not(self):
+		out = self._run(
+			[_shelf("X03UBD", "2026-11-08")], [{"bucket_id": "x03ubd", "harvest_date": "2026-11-08"}]
+		)
 		self.assertFalse(out["X03UBD"].discardable)
 
 	def test_allocation_from_an_earlier_harvest_is_ignored(self):
@@ -55,3 +61,27 @@ class TestShelfBuckets(unittest.TestCase):
 		out = self._run([_shelf("b2", "2026-11-09"), _shelf("b2", "2026-11-01")], [])
 		self.assertEqual(str(out["B2"].since), "2026-11-09")
 		self.assertFalse(out["B2"].discardable)
+
+
+class TestBucketStock(unittest.TestCase):
+	def test_moved_bucket_is_found_where_it_is_now(self):
+		# YWAHU5: received at Simotwo, remote-transferred to Kapkolia; part allocated to Sold.
+		moves = [
+			frappe._dict(
+				s_warehouse="Simotwo GH 20 - KR", t_warehouse="Simotwo Receiving Cold Store - KR", qty=200
+			),
+			frappe._dict(
+				s_warehouse="Simotwo Receiving Cold Store - KR",
+				t_warehouse="Kapkolia Receiving Cold Store - KR",
+				qty=200,
+			),
+			frappe._dict(
+				s_warehouse="Kapkolia Receiving Cold Store - KR",
+				t_warehouse="Kapkolia Graded Sold - KR",
+				qty=50,
+			),
+		]
+		fake = SimpleNamespace(db=SimpleNamespace(sql=lambda *a, **k: moves))
+		with patch.object(discard, "frappe", fake):
+			out = discard.bucket_stock("YWAHU5", "2026-11-06", "Madam Cerise")
+		self.assertEqual(out, {"Kapkolia Receiving Cold Store - KR": 150, "Kapkolia Graded Sold - KR": 50})

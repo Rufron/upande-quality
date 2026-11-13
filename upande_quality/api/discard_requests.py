@@ -6,8 +6,8 @@ Reads: every request with where it came from (the nightly job runs as Administra
 its state and how much of it has been discarded; plus filters for a new request.
 
 Writes: build requests for many farms / varieties / lengths / item groups / cold rooms in one go. The shelf is scanned
-once with every filter applied; the buckets that qualify (old enough, not already on an open request, not allocated)
-are grouped by farm, variety and length so the user can untick groups, and one request is created per farm, the same as
+once with every filter applied; the buckets that qualify (old enough, not already on a request made today; allocated
+or not) are grouped by farm, variety and length so the user can untick groups, and one request is created per farm, the same as
 the nightly job does. Where the Discard Request workflow is active a request is sent for approval (or approved when the
 user's roles allow it); without a workflow it is submitted.
 """
@@ -266,7 +266,7 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 	listed = listed_today()
 	rooms = {_location(c) for c in coldrooms}
 	buckets = shelf_buckets(farms)
-	out, left = [], {"on_a_request": 0, "allocated": 0, "too_young": 0, "other_cold_room": 0}
+	out, left = [], {"on_a_request": 0, "too_young": 0, "other_cold_room": 0}
 	for key, b in buckets.items():
 		if (
 			(varieties and b.variety not in varieties)
@@ -276,8 +276,6 @@ def _candidates(farms, varieties, lengths, item_groups, coldrooms, age_threshold
 			continue
 		if key in listed:
 			left["on_a_request"] += 1
-		elif b.allocated:
-			left["allocated"] += 1
 		# shortcut: age is whole days (date of harvest / shelving), so an "Hours" threshold rounds to days.
 		elif b.age_days < (t if age_threshold not in (None, "") else b.discard_age):
 			left["too_young"] += 1
@@ -312,7 +310,7 @@ def get_shelf_items_for_discard(
 		of_company = frappe.get_all("Farm", filters={"company": company}, pluck="name")
 		farms = [f for f in farms if f in of_company] if farms else of_company
 	if company and not farms:
-		rows, left, scanned = [], {"allocated": 0, "on_a_request": 0}, 0
+		rows, left, scanned = [], {"on_a_request": 0}, 0
 	else:
 		rows, left, scanned = _candidates(
 			farms, one(variety), one(length), one(item_group), one(coldroom), age_threshold, age_unit
@@ -326,7 +324,6 @@ def get_shelf_items_for_discard(
 		"total_scanned": scanned,
 		"total_qualifying": len(rows),
 		"buckets_without_harvest_entry": sum(1 for r in rows if r["date_source"] == "shelved"),
-		"allocated_skipped": left["allocated"],
 		"already_on_request": left["on_a_request"],
 		"applied_filters": {
 			"age_threshold": age_threshold if age_threshold not in (None, "") else "item group",
