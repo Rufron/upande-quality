@@ -16,12 +16,17 @@ def _shelf(bucket, since, variety="Mirabel"):
 
 
 class TestShelfBuckets(unittest.TestCase):
-	def _run(self, shelf_rows, allocations, age=6):
+	def _run(self, shelf_rows, allocations, age=6, processed=()):
 		resolver = lambda _item=None: age  # noqa: E731
-		fake = SimpleNamespace(
-			db=SimpleNamespace(sql=lambda *a, **k: shelf_rows),
-			get_all=lambda *a, **k: [frappe._dict(a) for a in allocations],
-		)
+
+		def sql(query, *a, **k):
+			if "Bucket Allocation Status" in query:
+				return [frappe._dict(x) for x in allocations]
+			if "Pick List Item" in query:
+				return [frappe._dict(bucket=b, sales_order=so) for b, so in processed]
+			return shelf_rows
+
+		fake = SimpleNamespace(db=SimpleNamespace(sql=sql))
 		with (
 			patch.object(discard, "frappe", fake),
 			patch.object(discard, "discard_age_resolver", return_value=resolver),
@@ -55,3 +60,52 @@ class TestShelfBuckets(unittest.TestCase):
 		out = self._run([_shelf("b2", "2026-11-09"), _shelf("b2", "2026-11-01")], [])
 		self.assertEqual(str(out["B2"].since), "2026-11-09")
 		self.assertFalse(out["B2"].discardable)
+
+	def test_allocation_to_a_past_due_order_does_not_hold(self):
+		out = self._run(
+			[_shelf("P1", "2026-11-05")],
+			[
+				{
+					"bucket_id": "p1",
+					"harvest_date": "2026-11-05",
+					"sales_order": "SO-1",
+					"sales_order_item": "soi1",
+					"delivery_date": "2026-11-09",
+				}
+			],
+		)
+		self.assertFalse(out["P1"].allocated)
+		self.assertEqual(len(out["P1"].past_due), 1)
+		self.assertTrue(out["P1"].discardable)
+
+	def test_past_due_order_still_holds_once_issued_or_boxed(self):
+		out = self._run(
+			[_shelf("P2", "2026-11-05")],
+			[
+				{
+					"bucket_id": "p2",
+					"harvest_date": "2026-11-05",
+					"sales_order": "SO-2",
+					"sales_order_item": "soi2",
+					"delivery_date": "2026-11-09",
+				}
+			],
+			processed=[("p2", "SO-2")],
+		)
+		self.assertTrue(out["P2"].allocated)
+		self.assertFalse(out["P2"].discardable)
+
+	def test_order_not_yet_due_holds(self):
+		out = self._run(
+			[_shelf("P3", "2026-11-05")],
+			[
+				{
+					"bucket_id": "p3",
+					"harvest_date": "2026-11-05",
+					"sales_order": "SO-3",
+					"sales_order_item": "soi3",
+					"delivery_date": "2026-11-11",
+				}
+			],
+		)
+		self.assertTrue(out["P3"].allocated)
