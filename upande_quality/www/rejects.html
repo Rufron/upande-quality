@@ -82,6 +82,14 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 .ufd .tbl td.dim{color:var(--ink-mute)}
 .ufd .empty-state{padding:30px;text-align:center;color:var(--ink-mute)}
 .ufd .tblscroll{overflow:auto;border-radius:12px}
+.ufd .tbl td a.lnk{color:var(--signal);font-weight:500;cursor:pointer}
+.ufd .tbl td a.lnk:hover{text-decoration:underline}
+.ufd .tbl td.wrap{white-space:normal;min-width:180px}
+.ufd .tbl td .none{color:var(--bad);font-weight:500}
+.ufd .chip{display:inline-block;border-radius:999px;padding:2px 9px;font:600 10px var(--sans);letter-spacing:.4px;background:rgba(10,10,10,0.06);color:var(--ink-3)}
+.ufd .chip.Intake{background:rgba(161,98,7,.12);color:#a16207}.ufd .chip.Coldroom{background:rgba(26,110,245,.10);color:#1a6ef5}
+.ufd .chip.Packhouse{background:rgba(34,136,131,.12);color:#228883}.ufd .chip.Airport{background:rgba(196,48,43,.10);color:#c4302b}
+.ufd .fgrp input[type=search]{border:0;background:transparent;font:500 12px var(--sans);color:var(--ink);outline:0;width:150px}
 @media (max-width:1100px){.ufd .kpi-grid{grid-template-columns:repeat(2,1fr)}.ufd .row-21{grid-template-columns:1fr}}
 </style>
 
@@ -109,9 +117,10 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
       <div>
         <div class="eyebrow">Upande Quality · Rejects</div>
         <h1 class="ptitle">Rejects</h1>
-        <div class="plive"><span class="dot"></span>Field &amp; intake rejects across the pipeline</div>
+        <div class="plive"><span class="dot"></span>Every rejected bucket, its batch, the QC record and why</div>
       </div>
       <div class="tools">
+        <div class="fgrp"><label>Bucket / batch</label><input type="search" id="filterSearch" placeholder="e.g. RXREVH"></div>
         <div class="fgrp"><label>Year</label><select id="filterYear"><option value="">All</option></select></div>
         <div class="fgrp"><label>Week</label><select id="filterWeek"><option value="">All</option></select></div>
         <div class="fgrp"><label>Farm</label><div id="filterFarm"></div></div>
@@ -124,10 +133,10 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 
     <div class="kpi-grid">
       <div class="kpi" style="--ka:#c4302b"><div class="lbl">Field Rejects</div><div class="v" id="kpiField">—</div><div class="sub" id="kpiFieldSub"></div></div>
-      <div class="kpi" style="--ka:#a16207"><div class="lbl">Intake Rejects</div><div class="v" id="kpiIntake">—</div><div class="sub" id="kpiIntakeSub"></div></div>
+      <div class="kpi" style="--ka:#a16207"><div class="lbl">Bucket Rejects</div><div class="v" id="kpiIntake">—</div><div class="sub" id="kpiIntakeSub"></div></div>
       <div class="kpi" style="--ka:#0a0a0a"><div class="lbl">Top Reason</div><div class="v" id="kpiReason" style="font-size:19px;line-height:1.2">—</div><div class="sub" id="kpiReasonSub"></div></div>
       <div class="kpi" style="--ka:#228883"><div class="lbl">Farms Affected</div><div class="v" id="kpiFarms">—</div><div class="sub">farms</div></div>
-      <div class="kpi" style="--ka:#1a8a3a"><div class="lbl">Varieties</div><div class="v" id="kpiVar">—</div><div class="sub">rejected varieties</div></div>
+      <div class="kpi" style="--ka:#c4302b"><div class="lbl">No Reason Recorded</div><div class="v" id="kpiVar">—</div><div class="sub" id="kpiVarSub">stems rejected without a reason</div></div>
     </div>
 
     <div class="row-21">
@@ -154,18 +163,18 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
     </div>
 
     <div class="card">
-      <div class="card__head"><h3>Field Rejects</h3><div class="meta" id="dataStamp"></div></div>
-      <div class="tblscroll" style="max-height:440px">
-        <table class="tbl"><thead><tr><th>Date</th><th>Farm</th><th>Variety</th><th class="num">Stems</th><th>Rejection Reason</th><th>Owner</th></tr></thead>
-        <tbody id="fieldRows"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table>
+      <div class="card__head"><h3>Rejected buckets</h3><div class="meta" id="qrStamp">Intake, coldroom, packhouse &amp; airport · click a bucket or batch to trace it</div></div>
+      <div class="tblscroll" style="max-height:520px">
+        <table class="tbl"><thead><tr><th>Date</th><th>Stage</th><th>Bucket</th><th>Batch</th><th>Farm</th><th>Greenhouse</th><th>Variety</th><th class="num">Stems</th><th>Reason</th><th>QC record</th><th>Rejected by</th></tr></thead>
+        <tbody id="qrRows"><tr><td colspan="11" class="empty-state">Loading…</td></tr></tbody></table>
       </div>
     </div>
 
     <div class="card">
-      <div class="card__head"><h3>Intake Rejects (Quarantine)</h3><div class="meta">all-time quarantine reject entries</div></div>
-      <div class="tblscroll" style="max-height:320px">
-        <table class="tbl"><thead><tr><th>Date</th><th>Farm</th><th>Greenhouse</th><th>Variety</th><th class="num">Stems</th><th>Owner</th></tr></thead>
-        <tbody id="qrRows"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table>
+      <div class="card__head"><h3>Field Rejects</h3><div class="meta" id="dataStamp"></div></div>
+      <div class="tblscroll" style="max-height:440px">
+        <table class="tbl"><thead><tr><th>Date</th><th>Farm</th><th>Variety</th><th class="num">Stems</th><th>Rejection Reason</th><th>Rejected by</th></tr></thead>
+        <tbody id="fieldRows"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table>
       </div>
     </div>
   </div>
@@ -175,6 +184,7 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 (function(){
 'use strict';
 var farmMS=null,charts={},_defaultSet=false;
+var REJECTS_METHOD='upande_quality.api.rejects.get_rejects';
 function el(id){return document.getElementById(id);}
 function createMultiSelect(id,opts){
   var wrap=document.getElementById(id);if(!wrap)return null;
@@ -213,7 +223,7 @@ function getISOWeek(date){var d=new Date(Date.UTC(date.getFullYear(),date.getMon
 function getFilterRange(){var _df=el('filterDateFrom')?el('filterDateFrom').value:'',_dt=el('filterDateTo')?el('filterDateTo').value:'';if(_df||_dt)return{from:_df||null,to:_dt||null};var yr=el('filterYear').value,wk=el('filterWeek').value;if(!yr&&!wk)return{from:null,to:null};if(yr&&!wk)return{from:yr+'-01-01',to:yr+'-12-31'};if(wk){var y=yr?parseInt(yr):new Date().getFullYear(),w=parseInt(wk);var j=new Date(y,0,4),dow=j.getDay();dow=dow===0?7:dow;var m=new Date(j);m.setDate(j.getDate()-(dow-1));var ws=new Date(m);ws.setDate(m.getDate()+(w-1)*7);var we=new Date(ws);we.setDate(ws.getDate()+6);return{from:ds(ws),to:ds(we)};}return{from:null,to:null};}
 function whenReady(cb){if(window.frappe&&frappe.call&&frappe.csrf_token){cb();return;}setTimeout(function(){whenReady(cb);},120);}
 function fillSel(id,vals,cur){var s=el(id);if(!s)return;var def=s.querySelector('option[value=""]');s.innerHTML='';if(def)s.appendChild(def);vals.forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;if(cur&&String(cur)===String(v))o.selected=true;s.appendChild(o);});}
-function setBadges(yr,wk,fm){var wrap=el('activeFilters');if(!wrap)return;wrap.innerHTML='';function add(k,v,clr){if(!v)return;var sp=document.createElement('span');sp.className='active-filter-badge';sp.innerHTML=k+': '+esc(v)+' <span class="clear-badge" style="cursor:pointer">×</span>';sp.querySelector('.clear-badge').onclick=function(){clr();loadData();};wrap.appendChild(sp);}add('Year',yr,function(){el('filterYear').value='';});add('Week',wk,function(){el('filterWeek').value='';});add('Farm',fm,function(){if(farmMS)farmMS.setValue('');});var _df=el('filterDateFrom')?el('filterDateFrom').value:'',_dt=el('filterDateTo')?el('filterDateTo').value:'';if(_df||_dt)add('Range',(_df||'\u2026')+' \u2192 '+(_dt||'\u2026'),function(){if(el('filterDateFrom'))el('filterDateFrom').value='';if(el('filterDateTo'))el('filterDateTo').value='';});}
+function setBadges(yr,wk,fm,sq){var wrap=el('activeFilters');if(!wrap)return;wrap.innerHTML='';function add(k,v,clr){if(!v)return;var sp=document.createElement('span');sp.className='active-filter-badge';sp.innerHTML=k+': '+esc(v)+' <span class="clear-badge" style="cursor:pointer">×</span>';sp.querySelector('.clear-badge').onclick=function(){clr();loadData();};wrap.appendChild(sp);}add('Year',yr,function(){el('filterYear').value='';});add('Week',wk,function(){el('filterWeek').value='';});add('Farm',fm,function(){if(farmMS)farmMS.setValue('');});add('Bucket / batch',sq,function(){el('filterSearch').value='';});var _df=el('filterDateFrom')?el('filterDateFrom').value:'',_dt=el('filterDateTo')?el('filterDateTo').value:'';if(_df||_dt)add('Range',(_df||'\u2026')+' \u2192 '+(_dt||'\u2026'),function(){if(el('filterDateFrom'))el('filterDateFrom').value='';if(el('filterDateTo'))el('filterDateTo').value='';});}
 function mkChart(id,cfg){if(charts[id]){charts[id].destroy();delete charts[id];}var c=document.getElementById(id);if(!c)return;charts[id]=new Chart(c.getContext('2d'),cfg);}
 function topN(obj,n){return Object.keys(obj).map(function(k){return{key:k,val:obj[k]};}).sort(function(a,b){return b.val-a.val;}).slice(0,n||20);}
 var INKS=['#0a0a0a','#3a3a34','#5a5a52','#8a8780','#228883','#b45309','#a16207','#1a6ef5'];
@@ -244,78 +254,75 @@ function renderTrendChart(d){
   var g=ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(10,10,10,.20)');g.addColorStop(1,'rgba(10,10,10,0)');
   mkChart('chartTrend',{type:'line',data:{labels:keys,datasets:[{data:keys.map(function(k){return d[k];}),borderColor:'#0a0a0a',backgroundColor:g,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:true}]},
     options:{responsive:true,animation:{duration:260},interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y.toLocaleString()+' stems';}}}},scales:{x:{grid:{display:false},ticks:{maxRotation:45,minRotation:30,color:'#8a8780',font:{size:10}}},y:{beginAtZero:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}}}}});}
+function nameOf(r){return r.rejected_by_name||(r.rejected_by||'').split('@')[0];}
+function noReason(r){return '<span class="none">No reason recorded</span>';}
 function renderFieldTable(rows){
   var tb=el('fieldRows');if(!tb)return;
   if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="empty-state">No field rejects for the selected filters.</td></tr>';return;}
-  tb.innerHTML=rows.map(function(r){return'<tr><td>'+esc(r.date)+'</td><td>'+esc(r.farm)+'</td><td>'+esc(r.variety)+'</td><td class="num">'+r.stems.toLocaleString()+'</td><td>'+esc(r.reason)+'</td><td class="dim">'+esc((r.owner||'').split('@')[0])+'</td></tr>';}).join('');}
-function renderQRTable(rows){
+  tb.innerHTML=rows.map(function(r){return'<tr><td>'+esc(r.date)+'</td><td>'+esc(r.farm)+'</td><td>'+esc(r.variety)+'</td><td class="num">'+r.stems.toLocaleString()+'</td><td class="wrap">'+(r.reason?esc(r.reason):noReason())+'</td><td class="dim">'+esc(nameOf(r))+'</td></tr>';}).join('');}
+function renderBucketTable(rows,batches){
   var tb=el('qrRows');if(!tb)return;
-  if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="empty-state">No quarantine rejects data.</td></tr>';return;}
-  tb.innerHTML=rows.map(function(r){return'<tr><td>'+esc(r.date)+'</td><td>'+esc(r.farm)+'</td><td>'+esc(r.gh)+'</td><td>'+esc(r.variety)+'</td><td class="num">'+r.stems.toLocaleString()+'</td><td class="dim">'+esc((r.owner||'').split('@')[0])+'</td></tr>';}).join('');}
-function processAndRender(frSes,frItems,qrSes,qrItems){
-  var frMap={},qrMap={};
-  frSes.forEach(function(s){frMap[s.name]=s;});
-  qrSes.forEach(function(s){qrMap[s.name]=s;});
-  var years={},weeks={};
-  frSes.concat(qrSes).forEach(function(s){if(!s.posting_date)return;years[s.posting_date.substr(0,4)]=1;var iw=getISOWeek(new Date(s.posting_date+'T00:00:00'));weeks[iw.year+'-W'+pad(iw.week)]={y:iw.year,w:iw.week};});
-  var cIW=getISOWeek(new Date()),defYr=_defaultSet?el('filterYear').value:String(cIW.year),defWk=_defaultSet?el('filterWeek').value:String(cIW.week);
-  fillSel('filterYear',Object.keys(years).sort().reverse(),defYr);
-  var wkArr=Object.values(weeks).sort(function(a,b){return b.y-a.y||b.w-a.w;}).map(function(x){return String(x.w);});
-  fillSel('filterWeek',wkArr,defWk);
-  if(!_defaultSet){_defaultSet=true;if(el('filterYear').value||el('filterWeek').value){loadData();return;}}
-  var farmsSet={};frSes.forEach(function(s){if(s.farm)farmsSet[s.farm]=1;});
+  if(!rows.length){tb.innerHTML='<tr><td colspan="11" class="empty-state">No rejected buckets for the selected filters.</td></tr>';return;}
+  tb.innerHTML=rows.map(function(r){
+    var b=batches[r.batch],bt=r.batch?'<a class="lnk" data-q="'+esc(r.batch)+'">'+esc(r.batch)+'</a>'+(b?' <span class="dim">· '+b.rejected_buckets+' of '+b.received_buckets+' buckets</span>':''):'<span class="dim">—</span>';
+    var bk=r.bucket?'<a class="lnk" data-q="'+esc(r.bucket)+'">'+esc(r.bucket)+'</a>':'<span class="dim">—</span>';
+    var qc=r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>'+(r.qc_action?' <span class="dim">'+esc(r.qc_action)+'</span>':''):'<span class="none">No QC record</span>';
+    return'<tr><td><a class="lnk" href="/app/stock-entry/'+encodeURIComponent(r.entry)+'" target="_blank" title="'+esc(r.entry)+'">'+esc(r.date)+' '+esc(r.time)+'</a></td><td><span class="chip '+esc(r.stage)+'">'+esc(r.stage)+'</span></td><td>'+bk+'</td><td>'+bt+'</td><td>'+esc(r.farm)+'</td><td class="dim">'+esc(r.greenhouse||'—')+'</td><td>'+esc(r.variety)+'</td><td class="num">'+r.stems.toLocaleString()+'</td><td class="wrap">'+(r.reason?esc(r.reason):noReason())+'</td><td>'+qc+'</td><td class="dim">'+esc(nameOf(r))+'</td></tr>';}).join('');
+  Array.prototype.forEach.call(tb.querySelectorAll('a[data-q]'),function(a){a.onclick=function(){el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
+var _data=null;
+function topReason(r){return r.reason?r.reason.split(';')[0].replace(/ x\d+$/,'').trim():'No reason recorded';}
+function render(){
+  if(!_data)return;
+  var all=_data.rows,batches=_data.batches||{};
+  var farmsSet={};all.forEach(function(r){if(r.farm&&r.farm!=='?')farmsSet[r.farm]=1;});
   if(farmMS)farmMS.setOptions(Object.keys(farmsSet).sort());
-  var byFarm={},byVariety={},byReason={},byWeek={},totalStems=0,frRows=[];
-  frItems.forEach(function(it){
-    var se=frMap[it.parent];if(!se)return;
-    var stems=Number(it.qty)||0,farm=se.farm||it.farm||'?';
-    var variety=it.item_code||'?',reason=it.custom_rejection_reason||'—',date=se.posting_date||'';
-    totalStems+=stems;byFarm[farm]=(byFarm[farm]||0)+stems;byVariety[variety]=(byVariety[variety]||0)+stems;byReason[reason]=(byReason[reason]||0)+stems;
-    if(date){var iw=getISOWeek(new Date(date+'T00:00:00'));var wk=iw.year+'-W'+pad(iw.week);byWeek[wk]=(byWeek[wk]||0)+stems;}
-    frRows.push({date:date,farm:farm,variety:variety,stems:stems,reason:reason,owner:se.owner||''});});
-  frRows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var qrTotal=0,qrRows=[];
-  qrItems.forEach(function(it){var se=qrMap[it.parent];if(!se)return;var stems=Number(it.qty)||0;qrTotal+=stems;var qfarm=deriveFarm(se);byFarm[qfarm]=(byFarm[qfarm]||0)+stems;var qvar=it.item_code||'?';byVariety[qvar]=(byVariety[qvar]||0)+stems;byReason['Quarantine (no reason recorded)']=(byReason['Quarantine (no reason recorded)']||0)+stems;var qdate=se.posting_date||'';if(qdate){var qiw=getISOWeek(new Date(qdate+'T00:00:00'));var qwk=qiw.year+'-W'+pad(qiw.week);byWeek[qwk]=(byWeek[qwk]||0)+stems;}qrRows.push({date:qdate,farm:qfarm,gh:se.custom_greenhouse||'—',variety:it.item_code||'?',stems:stems,owner:se.owner||''});});
-  qrRows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var kf=el('kpiField'),ks=el('kpiFieldSub'),ki=el('kpiIntake'),kis=el('kpiIntakeSub');
-  if(kf)kf.textContent=totalStems.toLocaleString();
-  if(ks)ks.textContent=frSes.length+' entries';
-  if(ki)ki.textContent=qrTotal>0?qrTotal.toLocaleString():'—';
-  if(kis)kis.textContent=qrSes.length?qrSes.length+' entries':'No recent data';
+  var fv=farmMS?farmMS.getValue():'',farms=fv?fv.split(',').filter(Boolean):[];
+  var rows=farms.length?all.filter(function(r){return farms.indexOf(r.farm)>=0;}):all;
+  var byFarm={},byVariety={},byReason={},byWeek={},fieldStems=0,bucketStems=0,noReasonStems=0,frRows=[],bkRows=[],bks={},fieldN=0;
+  rows.forEach(function(r){
+    var stems=Number(r.stems)||0;
+    byFarm[r.farm]=(byFarm[r.farm]||0)+stems;byVariety[r.variety||'?']=(byVariety[r.variety||'?']||0)+stems;
+    var rk=topReason(r);byReason[rk]=(byReason[rk]||0)+stems;if(!r.reason)noReasonStems+=stems;
+    if(r.date){var iw=getISOWeek(new Date(r.date+'T00:00:00'));var wk=iw.year+'-W'+pad(iw.week);byWeek[wk]=(byWeek[wk]||0)+stems;}
+    if(r.stage==='Field'){fieldStems+=stems;fieldN++;frRows.push(r);}else{bucketStems+=stems;bkRows.push(r);if(r.bucket)bks[r.bucket]=1;}});
+  if(el('kpiField'))el('kpiField').textContent=fieldStems.toLocaleString();
+  if(el('kpiFieldSub'))el('kpiFieldSub').textContent=fieldN+' entries';
+  if(el('kpiIntake'))el('kpiIntake').textContent=bucketStems.toLocaleString();
+  if(el('kpiIntakeSub'))el('kpiIntakeSub').textContent=Object.keys(bks).length+' buckets · '+bkRows.length+' entries';
   var rTop=topN(byReason,1)[0];
   if(el('kpiReason'))el('kpiReason').textContent=rTop?rTop.key:'—';
   if(el('kpiReasonSub'))el('kpiReasonSub').textContent=rTop?rTop.val.toLocaleString()+' stems':'';
   if(el('kpiFarms'))el('kpiFarms').textContent=Object.keys(byFarm).length.toLocaleString();
-  if(el('kpiVar'))el('kpiVar').textContent=Object.keys(byVariety).length.toLocaleString();
-  setBadges(el('filterYear').value,el('filterWeek').value,farmMS?farmMS.getValue():'');
+  if(el('kpiVar'))el('kpiVar').textContent=noReasonStems.toLocaleString();
+  var tot=fieldStems+bucketStems;if(el('kpiVarSub'))el('kpiVarSub').textContent=(tot?Math.round(noReasonStems*100/tot):0)+'% of rejected stems have no reason';
+  var q=el('filterSearch').value.trim();
+  setBadges(q?'':el('filterYear').value,q?'':el('filterWeek').value,fv,q);
   renderFarmChart(byFarm);renderReasonChart(byReason);renderVarietyChart(byVariety);renderTrendChart(byWeek);
-  renderFieldTable(frRows);renderQRTable(qrRows);
+  renderBucketTable(bkRows,batches);renderFieldTable(frRows);
   var now=new Date(),st=el('dataStamp');
-  if(st)st.textContent='Updated '+pad(now.getHours())+':'+pad(now.getMinutes())+' · '+totalStems.toLocaleString()+' stems · '+frSes.length+' entries';}
+  if(st)st.textContent='Updated '+pad(now.getHours())+':'+pad(now.getMinutes())+' · '+fieldStems.toLocaleString()+' stems · '+fieldN+' entries'+(_data.truncated?' · first 20,000 lines only':'');}
 var _loadGen=0;
 function loadData(){
   var myGen=++_loadGen;
   ['kpiField','kpiIntake','kpiReason','kpiFarms','kpiVar'].forEach(function(id){var e=el(id);if(e)e.textContent='…';});
   ['chartFarmWrap','chartReasonWrap','chartVarietyWrap','chartTrendWrap'].forEach(function(id){var e=el(id);if(e)e.innerHTML='<div class="aph-loading">Loading…</div>';});
   var tb=el('fieldRows');if(tb)tb.innerHTML='<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
-  var tb2=el('qrRows');if(tb2)tb2.innerHTML='<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
+  var tb2=el('qrRows');if(tb2)tb2.innerHTML='<tr><td colspan="11" class="empty-state">Loading…</td></tr>';
   var stamp=el('dataStamp');if(stamp)stamp.textContent='Fetching…';
-  var range=getFilterRange(),farmFilter=farmMS?farmMS.getValue():'',farms=farmFilter?farmFilter.split(',').filter(Boolean):[];
-  function buildHdrF(se){var f=[['stock_entry_type','=',se]];if(range.from)f.push(['posting_date','>=',range.from]);if(range.to)f.push(['posting_date','<=',range.to]);if(farms.length===1)f.push(['farm','=',farms[0]]);else if(farms.length>1)f.push(['farm','in',farms]);return f;}
-  function fetchHdr(seType,hdFields,cb){function go(start,acc){if(!window.frappe||!frappe.call||!frappe.csrf_token){setTimeout(function(){go(start,acc);},100);return;}frappe.call({method:'frappe.client.get_list',args:{doctype:'Stock Entry',fields:hdFields,filters:buildHdrF(seType),limit:5000,limit_start:start,order_by:'posting_date desc'},callback:function(r){var b=r&&r.message?r.message:[];var c=acc.concat(b);if(b.length===5000&&c.length<40000)go(start+5000,c);else cb(c);},error:function(){cb(acc);}});}setTimeout(function(){go(0,[]);},40);}
-  function fetchItems(names,itemFields,cb){if(!names.length){cb([]);return;}var BATCH=100,batches=[],all=[],done=0;for(var i=0;i<names.length;i+=BATCH)batches.push(names.slice(i,i+BATCH));batches.forEach(function(batch){frappe.call({method:'frappe.client.get_list',args:{doctype:'Stock Entry',fields:['name'].concat(itemFields),filters:[['name','in',batch]],limit:2000},callback:function(r){var b=r&&r.message?r.message:[];all=all.concat(b);if(++done===batches.length)cb(all);},error:function(){if(++done===batches.length)cb(all);}});});}
-  function toItems(rows){return rows.map(function(r){return{parent:r.name,item_code:r.item_code,qty:r.qty,custom_rejection_reason:r.custom_rejection_reason};});}
-  var frSes=null,frItems=null,qrSes=null,qrItems=null;
-  function tryRender(){if(myGen!==_loadGen)return;if(frSes!==null&&frItems!==null&&qrSes!==null&&qrItems!==null)processAndRender(frSes,frItems,qrSes,qrItems);}
+  var range=getFilterRange(),q=el('filterSearch').value.trim();
   whenReady(function(){
-    fetchHdr('Field Rejects',['name','posting_date','farm','owner'],function(ses){frSes=ses;fetchItems(ses.map(function(s){return s.name;}),['items.item_code','items.qty'],function(rows){frItems=toItems(rows);tryRender();});});
-    fetchHdr('Quarantine Rejects',['name','posting_date','farm','custom_greenhouse','owner'],function(ses){qrSes=ses;fetchItems(ses.map(function(s){return s.name;}),['items.item_code','items.qty'],function(rows){qrItems=toItems(rows);tryRender();});});
+    frappe.call({method:REJECTS_METHOD,args:q?{q:q}:{from_date:range.from,to_date:range.to},
+      callback:function(r){if(myGen!==_loadGen)return;_data=(r&&r.message)||{rows:[],batches:{}};render();},
+      error:function(){if(myGen!==_loadGen)return;_data={rows:[],batches:{}};render();}});
   });}
 farmMS=createMultiSelect('filterFarm',{placeholder:'All farms'});
-if(farmMS)farmMS.onChange(loadData);
+if(farmMS)farmMS.onChange(render);
+el('filterSearch').addEventListener('keydown',function(e){if(e.key==='Enter')loadData();});
+el('filterSearch').addEventListener('search',function(){loadData();});
+(function(){var c=getISOWeek(new Date()),ys=[c.year,c.year-1,c.year-2].map(String),ws=[];for(var w=53;w>=1;w--)ws.push(String(w));fillSel('filterYear',ys,String(c.year));fillSel('filterWeek',ws,String(c.week));})();
 function clearDates(){if(el('filterDateFrom'))el('filterDateFrom').value='';if(el('filterDateTo'))el('filterDateTo').value='';}el('filterYear').addEventListener('change',function(){clearDates();loadData();});
 el('filterWeek').addEventListener('change',function(){clearDates();loadData();});if(el('filterDateFrom'))el('filterDateFrom').addEventListener('change',function(){el('filterYear').value='';el('filterWeek').value='';loadData();});if(el('filterDateTo'))el('filterDateTo').addEventListener('change',function(){el('filterYear').value='';el('filterWeek').value='';loadData();});
-el('resetFiltersBtn').addEventListener('click',function(){el('filterYear').value='';el('filterWeek').value='';clearDates();if(farmMS)farmMS.setValue('');loadData();});
+el('resetFiltersBtn').addEventListener('click',function(){el('filterYear').value='';el('filterWeek').value='';el('filterSearch').value='';clearDates();if(farmMS)farmMS.setValue('');loadData();});
 loadData();
 })();
 </script>
