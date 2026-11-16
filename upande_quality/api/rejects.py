@@ -7,7 +7,8 @@ A reject entry carries the bucket and the receiving batch id but no reason. At i
 its stems are rejected: the intake QC moves it to quarantine ("Receiving Quarantined", same bucket and batch) and
 writes a Quarantined Quality Reporting record (one per variety, with the issues found) in the same submit. So an intake
 reject links to the Quarantined record of whoever quarantined the bucket, for the same variety, closest in time to that
-quarantine move. Accepted and Rejected records are never linked; a reject with no quarantine move is flagged."""
+quarantine move. A reject with no quarantine move is flagged "not quarantined" and links the Rejected record the
+rejecter saved in the same submit (a direct reject); Accepted records are never linked."""
 
 import frappe
 from frappe import _
@@ -29,6 +30,7 @@ STAGE = {
 }
 QC_WINDOW_SECONDS = 15 * 60
 QUARANTINED = ("Quarantined", "Quarantine")
+REJECTED = ("Rejected",)
 MAX_LINES = 20000
 
 
@@ -78,7 +80,9 @@ def get_rejects(from_date=None, to_date=None, q=None):
 		qc = None
 		if l.quarantine:
 			qc = match_qc(l, qcs.get(l.quarantine.owner, []), l.quarantine.creation, QUARANTINED)
-		elif l.stock_entry_type not in ("Field Rejects", "Quarantine Rejects"):
+		elif l.stock_entry_type == "Quarantine Rejects":
+			qc = match_qc(l, qcs.get(l.owner, []), l.creation, REJECTED)  # direct reject, never quarantined
+		elif l.stock_entry_type != "Field Rejects":
 			qc = match_qc(l, [x for x in qcs.get(l.owner, []) if x.control_action != "Accepted"], l.creation)
 		qn = l.quarantine
 		reason = l.custom_rejection_reason or ""

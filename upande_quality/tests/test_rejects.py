@@ -4,7 +4,7 @@ import unittest
 
 import frappe
 
-from upande_quality.api.rejects import QUARANTINED, entry_farm, match_qc, quarantine_for
+from upande_quality.api.rejects import QUARANTINED, REJECTED, entry_farm, match_qc, quarantine_for
 
 
 def _qc(name, creation, variety="Giselle", action="Quarantined"):
@@ -31,6 +31,14 @@ class TestRejects(unittest.TestCase):
 			_qc("Intake-4", "2026-11-16 14:15:03"),
 		]
 		self.assertEqual(match_qc(self.line, qcs, "2026-11-16 14:15:00", QUARANTINED).name, "Intake-4")
+
+	def test_direct_reject_links_the_rejected_record_never_an_accepted_one(self):
+		qcs = [
+			_qc("Intake-Karen-2241", "2026-11-16 15:32:00", action="Accepted"),
+			_qc("Intake-Karen-2218", "2026-11-16 15:32:01", action="Rejected"),
+		]
+		self.assertEqual(match_qc(self.line, qcs, self.line.creation, REJECTED).name, "Intake-Karen-2218")
+		self.assertIsNone(match_qc(self.line, qcs[:1], self.line.creation, REJECTED))
 
 	def test_no_quarantined_record_links_nothing(self):
 		qcs = [_qc("Intake-1", "2026-11-16 14:15:00", action="Accepted")]
