@@ -290,7 +290,7 @@ function reasonCell(r){return r.reason?esc(r.reason):'<span class="none">No reas
 function noReasonPct(rows){var t=sum(rows,function(r){return r.stems;});return t?Math.round(sum(rows.filter(function(r){return !r.reason;}),function(r){return r.stems;})*100/t):0;}
 function topReason(r){return r.reason?r.reason.split(';')[0].replace(/ x\d+$/,'').trim():'No reason recorded';}
 function fmtDate(d,t){if(!d)return'';var x=new Date(d+'T00:00:00');return x.toLocaleDateString(undefined,{day:'numeric',month:'short'})+(t?' '+t:'');}
-function qcLink(r){return r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>':'<span class="none">No QC record</span>';}
+function qcLink(r){if(r.not_quarantined)return'<span class="none">Not quarantined first</span>';return r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>':'<span class="none">No QC record</span>';}
 function entryLink(r,label){return'<a class="lnk" href="/app/stock-entry/'+encodeURIComponent(r.entry)+'" target="_blank" title="'+esc(r.entry)+'">'+label+'</a>';}
 function visibleRows(){
   if(!_data)return[];var fv=farmMS?farmMS.getValue():'',farms=fv?fv.split(',').filter(Boolean):[];
@@ -298,7 +298,7 @@ function visibleRows(){
 function renderTiles(rows){
   var w=el('stageTiles');
   w.innerHTML=STAGES.map(function(st){var rs=rows.filter(function(r){return r.stage===st.k;}),stems=sum(rs,function(r){return r.stems;}),bk=uniq(rs.map(function(r){return r.bucket;})).length;
-    var sub=st.k==='Field'?rs.length+' entries':bk+' buckets';if(rs.length)sub+=' · '+noReasonPct(rs)+'% no reason';
+    var sub=st.k==='Field'?rs.length+' entries':bk+' buckets';if(rs.length)sub+=' · '+noReasonPct(rs)+'% no reason';var nq=rs.filter(function(r){return r.not_quarantined;}).length;if(nq)sub+=' · '+nq+' not quarantined';
     return'<div class="kpi'+(st.k===_stage?' on':'')+(rs.length?'':' zero')+'" style="--ka:'+st.c+'" data-stage="'+st.k+'"><div class="lbl">'+st.k+' rejects</div><div class="v">'+n0(stems)+'</div><div class="sub">'+(rs.length?sub:'none')+'</div></div>';}).join('');
   Array.prototype.forEach.call(w.querySelectorAll('.kpi'),function(t){t.onclick=function(){_stage=t.getAttribute('data-stage');_stageChosen=true;_open={};render();};});}
 function row(level,key,cells,openable){
@@ -306,14 +306,15 @@ function row(level,key,cells,openable){
   return'<tr class="l'+level+'"'+(openable?' data-k="'+esc(key)+'"':'')+'><td>'+car+cells[0]+'</td>'+cells.slice(1).map(function(c,i){return'<td'+(i<2?' class="num"':(i===2?' class="wrap"':''))+'>'+c+'</td>';}).join('')+'</tr>';}
 function renderTree(rows){
   var field=_stage==='Field',batches=_data.batches||{};
-  el('treeHead').innerHTML='<tr><th>'+(field?'Farm / variety / entry':'Farm / batch / bucket')+'</th><th class="num">'+(field?'Entries':'Buckets')+'</th><th class="num">Stems</th><th>Reason</th><th>QC record</th><th>Rejected by</th><th>When</th></tr>';
+  var intake=_stage==='Intake';
+  el('treeHead').innerHTML='<tr><th>'+(field?'Farm / variety / entry':'Farm / batch / bucket')+'</th><th class="num">'+(field?'Entries':'Buckets')+'</th><th class="num">Stems</th><th>Reason</th><th>'+(intake?'Quarantine QC':'QC record')+'</th>'+(intake?'<th>Quarantined by</th>':'')+'<th>Rejected by</th><th>When</th></tr>';
   var tb=el('treeRows');
-  if(!rows.length){tb.innerHTML='<tr><td colspan="7" class="empty-state">No '+_stage.toLowerCase()+' rejects for the selected filters.</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="8" class="empty-state">No '+_stage.toLowerCase()+' rejects for the selected filters.</td></tr>';return;}
   var html=[];
   groupBy(rows,function(r){return r.farm;}).sort(function(a,b){return sum(b.rows,function(r){return r.stems;})-sum(a.rows,function(r){return r.stems;});}).forEach(function(f){
     var fk='f|'+f.key,pct=noReasonPct(f.rows);
     html.push(row(0,fk,[esc(f.key),field?f.rows.length:uniq(f.rows.map(function(r){return r.bucket;})).length,n0(sum(f.rows,function(r){return r.stems;})),
-      pct?'<span class="bar" style="width:'+Math.max(4,pct*0.6)+'px"></span><span class="dim">'+pct+'% no reason</span>':'<span class="dim">all have a reason</span>','','<span class="dim">'+esc(uniq(f.rows.map(nameOf)).join(', '))+'</span>','<span class="dim">'+fmtDate(f.rows[0].date)+'</span>'],true));
+      pct?'<span class="bar" style="width:'+Math.max(4,pct*0.6)+'px"></span><span class="dim">'+pct+'% no reason</span>':'<span class="dim">all have a reason</span>',(function(n){return n?'<span class="none">'+n+' not quarantined first</span>':'';})(f.rows.filter(function(r){return r.not_quarantined;}).length)].concat(intake?['<span class="dim">'+esc(uniq(f.rows.map(function(r){return r.quarantined_by_name;})).join(', '))+'</span>']:[]).concat(['<span class="dim">'+esc(uniq(f.rows.map(nameOf)).join(', '))+'</span>','<span class="dim">'+fmtDate(f.rows[0].date)+'</span>']),true));
     if(!_open[fk])return;
     groupBy(f.rows,function(r){return field?r.variety:(r.batch||'No batch');}).forEach(function(g){
       var gk=fk+'|'+g.key,b=batches[g.key],first=g.rows[0];
@@ -321,11 +322,11 @@ function renderTree(rows){
       var reasons=uniq(g.rows.map(function(r){return r.reason;}));
       html.push(row(1,gk,[label,field?g.rows.length:uniq(g.rows.map(function(r){return r.bucket;})).length,n0(sum(g.rows,function(r){return r.stems;})),
         reasons.length===1?esc(reasons[0]):(reasons.length?esc(reasons.length+' different reasons'):'<span class="none">No reason recorded</span>'),
-        field?'':(function(q){return q.length>1?'<span class="dim">'+q.length+' QC records</span>':(q.length?qcLink(g.rows[0]):'<span class="none">No QC record</span>');})(uniq(g.rows.map(function(r){return r.qc;}))),esc(uniq(g.rows.map(nameOf)).join(', ')),'<span class="dim">'+fmtDate(first.date,first.time)+'</span>'],true));
+        field?'':(function(q){return q.length>1?'<span class="dim">'+q.length+' QC records</span>':(q.length?qcLink(g.rows[0]):qcLink(first));})(uniq(g.rows.map(function(r){return r.qc;})))].concat(intake?[esc(uniq(g.rows.map(function(r){return r.quarantined_by_name;})).join(', '))]:[]).concat([esc(uniq(g.rows.map(nameOf)).join(', ')),'<span class="dim">'+fmtDate(first.date,first.time)+'</span>']),true));
       if(!_open[gk])return;
       g.rows.forEach(function(r){
         var label=field?esc(r.greenhouse||r.farm):'<a class="lnk mono" data-q="'+esc(r.bucket)+'" title="Trace this bucket">'+esc(r.bucket||'—')+'</a><span class="sub">'+esc(r.variety)+(r.greenhouse?' · '+esc(r.greenhouse.replace(/ - KR$/,'')):'')+'</span>';
-        html.push(row(2,'',[label,'',n0(r.stems),reasonCell(r),field?'':qcLink(r),esc(nameOf(r)),entryLink(r,fmtDate(r.date,r.time))],false));});});});
+        html.push(row(2,'',[label,'',n0(r.stems),reasonCell(r),field?'':qcLink(r)].concat(intake?[qtn(r)]:[]).concat([esc(nameOf(r)),entryLink(r,fmtDate(r.date,r.time))]),false));});});});
   tb.innerHTML=html.join('');
   Array.prototype.forEach.call(tb.querySelectorAll('tr[data-k]'),function(tr){tr.onclick=function(e){if(e.target.closest('a'))return;var k=tr.getAttribute('data-k');_open[k]=!_open[k];renderTree(rows);};});
   Array.prototype.forEach.call(tb.querySelectorAll('a[data-q]'),function(a){a.onclick=function(e){e.stopPropagation();el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
@@ -338,13 +339,14 @@ function renderTrace(){
   var isBatch=rows.every(function(r){return(r.batch||'').toUpperCase()===q.toUpperCase();})&&rows.some(function(r){return(r.bucket||'')!==q.toUpperCase();});
   if(isBatch){var b=batches[rows[0].batch]||{};w.innerHTML='<div class="tcard"><div class="thead"><span class="bid">Batch '+esc(rows[0].batch)+'</span><span class="chip">'+(b.rejected_buckets||uniq(rows.map(function(r){return r.bucket;})).length)+' of '+(b.received_buckets||'?')+' buckets rejected</span></div><div class="tgrid">'
     +kv('Stems rejected',n0(b.rejected_stems||sum(rows,function(r){return r.stems;}))+(b.received_stems?' of '+n0(b.received_stems)+' received':''))+kv('Farm',esc(uniq(rows.map(function(r){return r.farm;})).join(', ')))
-    +kv('Rejected by',esc(uniq(rows.map(nameOf)).join(', ')))+kv('QC records',uniq(rows.map(function(r){return r.qc;})).length||'<span class="none">None</span>')+kv('No reason recorded',noReasonPct(rows)+'% of stems')+'</div></div>';return;}
+    +kv('Not quarantined first',(function(n){return n?'<span class="none">'+n+' of '+rows.length+' rejects</span>':'None';})(rows.filter(function(r){return r.not_quarantined;}).length))+kv('Rejected by',esc(uniq(rows.map(nameOf)).join(', ')))+kv('QC records',uniq(rows.map(function(r){return r.qc;})).length||'<span class="none">None</span>')+kv('No reason recorded',noReasonPct(rows)+'% of stems')+'</div></div>';return;}
   w.innerHTML=rows.map(function(r){var b=batches[r.batch];
     return'<div class="tcard"><div class="thead"><span class="bid">'+esc(r.bucket||q.toUpperCase())+'</span><span class="chip '+esc(r.stage)+'">'+esc(r.stage)+'</span><span class="dim">'+n0(r.stems)+' '+esc(r.variety)+' stems rejected '+fmtDate(r.date,r.time)+'</span></div><div class="tgrid">'
-      +kv('Rejected by',esc(nameOf(r)))+kv('Reason',reasonCell(r))+kv('QC record',qcLink(r)+(r.qc_action?' <span class="dim">'+esc(r.qc_action)+'</span>':''))
+      +(r.stage==='Intake'?kv('Quarantined',r.quarantined?esc(r.quarantined_by_name)+' <span class="dim">'+fmtDate(r.quarantined_at.slice(0,10),r.quarantined_at.slice(11,16))+'</span>':'<span class="none">Not quarantined first</span>'):'')+kv('Rejected by',esc(nameOf(r)))+kv('Reason',reasonCell(r))+kv(r.stage==='Intake'?'Quarantine QC':'QC record',qcLink(r))
       +kv('Batch',r.batch?'<a class="lnk mono" data-q="'+esc(r.batch)+'">'+esc(r.batch)+'</a>'+(b?' <span class="dim">· '+b.rejected_buckets+' of '+b.received_buckets+' buckets rejected</span>':''):'—')
       +kv('Farm · greenhouse',esc(r.farm)+(r.greenhouse?' · '+esc(r.greenhouse):''))+kv('Moved',esc(r.from_warehouse||'—')+' → '+esc(r.to_warehouse||'—'))+kv('Stock entry',entryLink(r,esc(r.entry)))+'</div></div>';}).join('');
   Array.prototype.forEach.call(w.querySelectorAll('a[data-q]'),function(a){a.onclick=function(){el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
+function qtn(r){return r.quarantined?esc(r.quarantined_by_name)+' <span class="dim">'+esc((r.quarantined_at||'').slice(11,16))+'</span>':'<span class="dim">—</span>';}
 function kv(k,v){return'<div><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
 function render(){
   if(!_data)return;

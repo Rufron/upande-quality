@@ -3,9 +3,11 @@
 """Rejects dashboard (www/rejects): every reject stock entry line with its bucket, receiving batch, farm, the Quality
 Reporting record it came from and that record's reasons, and who rejected it.
 
-A reject entry carries the bucket and the receiving batch id but no reason; the intake QC writes the reject and its
-Quality Reporting records (one per variety and action, with the issues found) in one submit, seconds apart. So the QC
-record is the same person's record for the same variety closest in time, a Rejected or Quarantined one first."""
+A reject entry carries the bucket and the receiving batch id but no reason. At intake a bucket is quarantined before
+its stems are rejected: the intake QC moves it to quarantine ("Receiving Quarantined", same bucket and batch) and
+writes a Quarantined Quality Reporting record (one per variety, with the issues found) in the same submit. So an intake
+reject links to the Quarantined record of whoever quarantined the bucket, for the same variety, closest in time to that
+quarantine move. Accepted and Rejected records are never linked; a reject with no quarantine move is flagged."""
 
 import frappe
 from frappe import _
@@ -26,6 +28,7 @@ STAGE = {
 	"Airport rejects": "Airport",
 }
 QC_WINDOW_SECONDS = 15 * 60
+QUARANTINED = ("Quarantined", "Quarantine")
 MAX_LINES = 20000
 
 
@@ -57,19 +60,27 @@ def get_rejects(from_date=None, to_date=None, q=None):
 		params,
 		as_dict=True,
 	)
+	quarantines = _quarantine_moves(lines)
+	for l in lines:
+		l.quarantine = quarantine_for(l, quarantines) if l.stock_entry_type == "Quarantine Rejects" else None
 	qcs = _qc_records(lines)
 	batches = _batches({l.custom_receiving_batch_id for l in lines if l.custom_receiving_batch_id})
 	names = {
 		u.name: u.full_name
 		for u in frappe.get_all(
 			"User",
-			filters={"name": ["in", list({l.owner for l in lines}) or ["-"]]},
+			filters={"name": ["in", list(_people(lines)) or ["-"]]},
 			fields=["name", "full_name"],
 		)
 	}
 	rows = []
 	for l in lines:
-		qc = None if l.stock_entry_type == "Field Rejects" else match_qc(l, qcs.get(l.owner, []))
+		qc = None
+		if l.quarantine:
+			qc = match_qc(l, qcs.get(l.quarantine.owner, []), l.quarantine.creation, QUARANTINED)
+		elif l.stock_entry_type not in ("Field Rejects", "Quarantine Rejects"):
+			qc = match_qc(l, [x for x in qcs.get(l.owner, []) if x.control_action != "Accepted"], l.creation)
+		qn = l.quarantine
 		reason = l.custom_rejection_reason or ""
 		if qc:
 			reason = "; ".join(
@@ -98,6 +109,12 @@ def get_rejects(from_date=None, to_date=None, q=None):
 				"to_warehouse": l.t_warehouse or "",
 				"rejected_by": l.owner,
 				"rejected_by_name": names.get(l.owner) or l.owner,
+				"quarantined": 1 if qn else 0,
+				"not_quarantined": 1 if l.stock_entry_type == "Quarantine Rejects" and not qn else 0,
+				"quarantine_entry": qn.name if qn else "",
+				"quarantined_at": str(qn.creation)[:16] if qn else "",
+				"quarantined_by": qn.owner if qn else "",
+				"quarantined_by_name": (names.get(qn.owner) or qn.owner) if qn else "",
 			}
 		)
 	return {"rows": rows, "batches": batches, "truncated": len(lines) >= MAX_LINES}
@@ -115,34 +132,71 @@ def entry_farm(line):
 	)
 
 
-def match_qc(line, candidates):
-	"""The QC record (same person, already filtered) for the same variety closest in time, within the window;
-	a Rejected or Quarantined record wins over an Accepted one."""
-	t = get_datetime(line.creation)
-	best, best_score = None, None
+def match_qc(line, candidates, at, actions=None):
+	"""Of `candidates` (one person's QC records), the one for the line's variety closest to `at`, within the window,
+	and with one of `actions` when given."""
+	t = get_datetime(at)
+	best, best_gap = None, None
 	for qc in candidates:
+		if actions and qc.control_action not in actions:
+			continue
 		if qc.variety and line.item_code and qc.variety != line.item_code:
 			continue
 		gap = abs((get_datetime(qc.creation) - t).total_seconds())
-		if gap > QC_WINDOW_SECONDS:
-			continue
-		score = gap + (0 if qc.control_action in ("Rejected", "Quarantined", "Quarantine") else 10**6)
-		if best_score is None or score < best_score:
-			best, best_score = qc, score
+		if gap <= QC_WINDOW_SECONDS and (best_gap is None or gap < best_gap):
+			best, best_gap = qc, gap
 	return best
 
 
+def quarantine_for(line, quarantines):
+	"""The move that quarantined this bucket before the reject: same receiving batch when both carry one (bucket ids
+	are reused), else the latest one before the reject."""
+	bucket = str(line.custom_bucket_id or "").upper()
+	before = [q for q in quarantines.get(bucket, []) if str(q.creation) <= str(line.creation)]
+	if line.custom_receiving_batch_id and any(q.custom_receiving_batch_id for q in before):
+		before = [q for q in before if q.custom_receiving_batch_id == line.custom_receiving_batch_id]
+	return max(before, key=lambda q: str(q.creation)) if before else None
+
+
+def _quarantine_moves(lines):
+	"""Receiving Quarantined entries for the buckets of the intake rejects, by upper-case bucket id."""
+	buckets = {
+		str(l.custom_bucket_id).upper()
+		for l in lines
+		if l.stock_entry_type == "Quarantine Rejects" and l.custom_bucket_id
+	}
+	out = {}
+	if buckets:
+		for q in frappe.db.sql(
+			"""SELECT name, UPPER(custom_bucket_id) AS bucket, creation, owner, custom_receiving_batch_id
+			FROM `tabStock Entry`
+			WHERE docstatus = 1 AND stock_entry_type = 'Receiving Quarantined'
+			  AND UPPER(custom_bucket_id) IN %(b)s""",
+			{"b": tuple(buckets)},
+			as_dict=True,
+		):
+			out.setdefault(q.bucket, []).append(q)
+	return out
+
+
+def _people(lines):
+	return {l.owner for l in lines} | {l.quarantine.owner for l in lines if l.get("quarantine")}
+
+
 def _qc_records(lines):
-	"""Quality Reporting records by owner, made around the reject lines, each with its `params` (issues)."""
+	"""Quality Reporting records (not Accepted) by owner, made around the reject lines and their quarantine moves,
+	each with its `params` (issues)."""
 	if not lines:
 		return {}
-	created = [str(l.creation) for l in lines]
+	created = [str(l.creation) for l in lines] + [
+		str(l.quarantine.creation) for l in lines if l.get("quarantine")
+	]
 	qcs = frappe.db.sql(
 		"""SELECT name, owner, creation, variety, control_point, control_action, custom_remarks
 		FROM `tabQuality Reporting`
-		WHERE owner IN %(owners)s AND creation BETWEEN DATE_SUB(%(first)s, INTERVAL 15 MINUTE)
-			AND DATE_ADD(%(last)s, INTERVAL 15 MINUTE)""",
-		{"owners": tuple({l.owner for l in lines}), "first": min(created), "last": max(created)},
+		WHERE control_action != 'Accepted' AND owner IN %(owners)s
+		  AND creation BETWEEN DATE_SUB(%(first)s, INTERVAL 15 MINUTE) AND DATE_ADD(%(last)s, INTERVAL 15 MINUTE)""",
+		{"owners": tuple(_people(lines)), "first": min(created), "last": max(created)},
 		as_dict=True,
 	)
 	params = {}
