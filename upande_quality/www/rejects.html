@@ -99,20 +99,43 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 .ufd .searchbar .x{border:0;background:rgba(10,10,10,.06);border-radius:999px;width:24px;height:24px;cursor:pointer;color:var(--ink-4);display:none}
 /* trace card */
 .ufd .trace{display:none;margin-bottom:14px}
-.ufd .trace .tcard{background:var(--surface-2);border-radius:18px;padding:18px 22px;box-shadow:var(--shadow-card);margin-bottom:10px;border-left:3px solid var(--warn)}
+.ufd .trace .tcard{background:var(--surface-2);border-radius:18px;padding:20px 24px;box-shadow:var(--shadow-card);margin-bottom:10px}
+.ufd .trace .thead .right{margin-left:auto;font:500 11.5px var(--sans)}
+.ufd .steps{display:flex;gap:0;margin:4px 0 16px;flex-wrap:wrap}
+.ufd .step{flex:1;min-width:170px;padding:10px 14px;border-left:2px solid var(--hairline);position:relative}
+.ufd .step:first-child{border-left-color:transparent;padding-left:0}
+.ufd .step .k{font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.2px;color:var(--ink-mute);margin-bottom:4px}
+.ufd .step .v{font:500 13px var(--sans);color:var(--ink-2)}
+.ufd .step .s{font:400 12px var(--sans);color:var(--ink-mute);margin-top:2px}
 .ufd .trace .thead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .ufd .trace .bid{font:600 20px var(--display);color:var(--ink);letter-spacing:.5px}
-.ufd .trace .tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 20px}
+.ufd .trace .tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 20px;padding-top:14px;border-top:1px solid var(--hairline)}
 .ufd .trace .k{font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.2px;color:var(--ink-mute);margin-bottom:3px}
 .ufd .trace .v{font:500 13px var(--sans);color:var(--ink-2);word-break:break-word}
 .ufd .trace .empty{background:var(--surface-2);border-radius:18px;padding:22px;box-shadow:var(--shadow-card);color:var(--ink-mute);text-align:center}
+/* tags */
+.ufd .tag{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font:500 11px var(--sans);line-height:18px;white-space:nowrap;background:rgba(10,10,10,.05);color:var(--ink-4)}
+.ufd .tag.bad{background:rgba(196,48,43,.08);color:#b3302b}
+.ufd .tag.warn{background:rgba(161,98,7,.10);color:#92580a}
+.ufd .tag.ok{background:rgba(26,138,58,.09);color:#1a7a35}
+.ufd .muted{color:var(--ink-faint)}
+.ufd #activeFilters{display:none}
+.ufd .fgrp .dash{color:var(--ink-faint);font-size:12px}
+.ufd .charts.hide,.ufd .kpi-grid.hide{display:none}
+.ufd a.lnk{color:var(--signal);font-weight:500;cursor:pointer}
+.ufd a.lnk:hover{text-decoration:underline}
 /* stage tiles act as tabs */
-.ufd .kpi{cursor:pointer;border:2px solid transparent}
-.ufd .kpi.on{border-color:var(--ka,var(--ink));transform:translateY(-2px);box-shadow:var(--shadow-hover)}
-.ufd .kpi.zero{opacity:.55}
+.ufd .kpi{cursor:pointer;border:1.5px solid transparent;padding:16px 20px}
+.ufd .kpi .v{font-size:26px}
+.ufd .kpi .v small{font:500 11px var(--sans);color:var(--ink-mute);letter-spacing:0;margin-left:6px}
+.ufd .kpi .sub{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.ufd .kpi.on{border-color:var(--ka,var(--ink));box-shadow:var(--shadow-hover)}
+.ufd .kpi.zero{opacity:.5}
+.ufd .kpi.zero .v{color:var(--ink-faint)}
 /* drill-down */
 .ufd .tree td{white-space:nowrap}
-.ufd .tree tr.l0 td{background:rgba(10,10,10,.025);font-weight:600;color:var(--ink);cursor:pointer}
+.ufd .tree tr.l0 td{background:rgba(10,10,10,.02);color:var(--ink-3);cursor:pointer}
+.ufd .tree tr.l0 td:first-child{font-weight:600;color:var(--ink)}
 .ufd .tree tr.l1 td{cursor:pointer;color:var(--ink-2)}
 .ufd .tree tr.l1 td:first-child{padding-left:34px}
 .ufd .tree tr.l2 td{color:var(--ink-3);font-size:12.5px}
@@ -123,6 +146,18 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 .ufd .tree .sub{font-weight:400;color:var(--ink-mute);font-size:12px;margin-left:8px}
 .ufd .bar{display:inline-block;height:6px;border-radius:3px;background:var(--bad);vertical-align:middle;margin-right:6px}
 .ufd .linkbtn{border:0;background:transparent;font:500 11.5px var(--sans);color:var(--signal);cursor:pointer;padding:0}
+@media (max-width:700px){
+  .ufd .topbar{padding:10px 16px}.ufd .topbar .tnav{display:none}
+  .ufd .page{padding:20px 16px 60px}
+  .ufd .pagehead{grid-template-columns:1fr;gap:14px}
+  .ufd .ptitle{font-size:28px}
+  .ufd .tools{justify-content:flex-start}
+  .ufd .fgrp{flex-wrap:wrap}
+  .ufd .searchbar .hint{display:none}
+  .ufd .kpi-grid{grid-template-columns:1fr 1fr!important;gap:10px}
+  .ufd .card{padding:16px}
+  .ufd .card__head{flex-wrap:wrap}
+}
 @media (max-width:1100px){.ufd .kpi-grid{grid-template-columns:repeat(2,1fr)}.ufd .row-21{grid-template-columns:1fr}}
 </style>
 
@@ -150,14 +185,13 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
       <div>
         <div class="eyebrow">Upande Quality · Rejects</div>
         <h1 class="ptitle">Rejects</h1>
-        <div class="plive"><span class="dot"></span>Every rejected bucket by stage, its batch, the QC record and why</div>
+        <div class="plive"><span class="dot"></span>By stage · batch · QC record · reason</div>
       </div>
       <div class="tools">
         <div class="fgrp"><label>Year</label><select id="filterYear"><option value="">All</option></select></div>
         <div class="fgrp"><label>Week</label><select id="filterWeek"><option value="">All</option></select></div>
         <div class="fgrp"><label>Farm</label><div id="filterFarm"></div></div>
-        <div class="fgrp"><label>From</label><input type="date" id="filterDateFrom"></div>
-        <div class="fgrp"><label>To</label><input type="date" id="filterDateTo"></div>
+        <div class="fgrp"><label>Dates</label><input type="date" id="filterDateFrom"><span class="dash">–</span><input type="date" id="filterDateTo"></div>
         <button class="btn reset-filters-btn" id="resetFiltersBtn">&#8635; Reset</button>
       </div>
     </div>
@@ -179,10 +213,10 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
       </div>
     </div>
 
-    <div class="row-21">
+    <div class="row-21 charts" id="charts">
       <div>
         <div class="card">
-          <div class="card__head"><h3>Weekly trend</h3><div class="meta" id="trendMeta">Rejected stems · ISO week</div></div>
+          <div class="card__head"><h3>Trend</h3><div class="meta" id="trendMeta">Rejected stems · ISO week</div></div>
           <div class="chartbox" id="chartTrendWrap"><div class="aph-loading">Loading…</div></div>
         </div>
         <div class="card">
@@ -282,15 +316,20 @@ function renderTrendChart(d){
 var STAGES=[{k:'Intake',c:'#a16207'},{k:'Coldroom',c:'#1a6ef5'},{k:'Packhouse',c:'#228883'},{k:'Airport',c:'#c4302b'},{k:'Field',c:'#3a3a34'}];
 var _data=null,_stage='Intake',_open={},_stageChosen=false;
 function nameOf(r){return r.rejected_by_name||(r.rejected_by||'').split('@')[0];}
+function plural(n,w){return n+' '+w+(n===1?'':'s');}
 function n0(v){return Math.round(Number(v)||0).toLocaleString();}
 function sum(a,f){return a.reduce(function(t,r){return t+(Number(f(r))||0);},0);}
 function uniq(a){var o={};a.forEach(function(v){if(v)o[v]=1;});return Object.keys(o);}
 function groupBy(a,f){var o={},order=[];a.forEach(function(r){var k=f(r);if(!(k in o)){o[k]=[];order.push(k);}o[k].push(r);});return order.map(function(k){return{key:k,rows:o[k]};});}
-function reasonCell(r){return r.reason?esc(r.reason):'<span class="none">No reason recorded</span>';}
+function wh(v){return String(v||'').replace(/ - KR$/,'');}
+function tag(t,cls,title){return'<span class="tag '+(cls||'')+'"'+(title?' title="'+esc(title)+'"':'')+'>'+t+'</span>';}
+function reasonCell(r){return r.reason?esc(r.reason):tag('No reason','bad');}
 function noReasonPct(rows){var t=sum(rows,function(r){return r.stems;});return t?Math.round(sum(rows.filter(function(r){return !r.reason;}),function(r){return r.stems;})*100/t):0;}
 function topReason(r){return r.reason?r.reason.split(';')[0].replace(/ x\d+$/,'').trim():'No reason recorded';}
 function fmtDate(d,t){if(!d)return'';var x=new Date(d+'T00:00:00');return x.toLocaleDateString(undefined,{day:'numeric',month:'short'})+(t?' '+t:'');}
-function qcLink(r){if(r.not_quarantined)return r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a> <span class="none">· direct reject, not quarantined</span>':'<span class="none">Not quarantined first · no QC record</span>';return r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>':'<span class="none">No QC record</span>';}
+function qcA(r){return'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>';}
+function qcLink(r){var direct=r.not_quarantined?' '+tag('Direct','warn','Rejected without being quarantined first'):'';return(r.qc?qcA(r):tag('No QC','bad'))+direct;}
+function byCell(r){return r.quarantined&&r.quarantined_by_name&&r.quarantined_by_name!==nameOf(r)?'<span class="dim" title="Quarantined by">'+esc(r.quarantined_by_name)+'</span> → '+esc(nameOf(r)):esc(nameOf(r));}
 function entryLink(r,label){return'<a class="lnk" href="/app/stock-entry/'+encodeURIComponent(r.entry)+'" target="_blank" title="'+esc(r.entry)+'">'+label+'</a>';}
 function visibleRows(){
   if(!_data)return[];var fv=farmMS?farmMS.getValue():'',farms=fv?fv.split(',').filter(Boolean):[];
@@ -298,8 +337,9 @@ function visibleRows(){
 function renderTiles(rows){
   var w=el('stageTiles');
   w.innerHTML=STAGES.map(function(st){var rs=rows.filter(function(r){return r.stage===st.k;}),stems=sum(rs,function(r){return r.stems;}),bk=uniq(rs.map(function(r){return r.bucket;})).length;
-    var sub=st.k==='Field'?rs.length+' entries':bk+' buckets';if(rs.length)sub+=' · '+noReasonPct(rs)+'% no reason';var nq=rs.filter(function(r){return r.not_quarantined;}).length;if(nq)sub+=' · '+nq+' not quarantined';
-    return'<div class="kpi'+(st.k===_stage?' on':'')+(rs.length?'':' zero')+'" style="--ka:'+st.c+'" data-stage="'+st.k+'"><div class="lbl">'+st.k+' rejects</div><div class="v">'+n0(stems)+'</div><div class="sub">'+(rs.length?sub:'none')+'</div></div>';}).join('');
+    var nq=rs.filter(function(r){return r.not_quarantined;}).length,pct=noReasonPct(rs),tags=[];
+    if(rs.length){tags.push(tag(st.k==='Field'?plural(rs.length,'entry').replace('entrys','entries'):plural(bk,'bucket')));if(pct)tags.push(tag(pct+'% no reason','bad'));if(nq)tags.push(tag(nq+' direct','warn','Rejected without being quarantined first'));}
+    return'<div class="kpi'+(st.k===_stage?' on':'')+(rs.length?'':' zero')+'" style="--ka:'+st.c+'" data-stage="'+st.k+'"><div class="lbl">'+st.k+'</div><div class="v">'+n0(stems)+'<small>stems</small></div><div class="sub">'+(tags.join('')||'<span class="muted">No rejects</span>')+'</div></div>';}).join('');
   Array.prototype.forEach.call(w.querySelectorAll('.kpi'),function(t){t.onclick=function(){_stage=t.getAttribute('data-stage');_stageChosen=true;_open={};render();};});}
 function row(level,key,cells,openable){
   var car=openable?'<span class="car'+(_open[key]?' open':'')+'">&#9654;</span> ':'';
@@ -307,26 +347,29 @@ function row(level,key,cells,openable){
 function renderTree(rows){
   var field=_stage==='Field',batches=_data.batches||{};
   var intake=_stage==='Intake';
-  el('treeHead').innerHTML='<tr><th>'+(field?'Farm / variety / entry':'Farm / batch / bucket')+'</th><th class="num">'+(field?'Entries':'Buckets')+'</th><th class="num">Stems</th><th>Reason</th><th>'+(intake?'Quarantine QC':'QC record')+'</th>'+(intake?'<th>Quarantined by</th>':'')+'<th>Rejected by</th><th>When</th></tr>';
+  el('treeHead').innerHTML='<tr><th>'+(field?'Farm / variety / entry':'Farm / batch / bucket')+'</th><th class="num">'+(field?'Entries':'Buckets')+'</th><th class="num">Stems</th><th>Reason</th>'+(field?'':'<th>QC record</th>')+'<th>'+(intake?'Quarantined → rejected by':'Rejected by')+'</th><th>When</th></tr>';
   var tb=el('treeRows');
-  if(!rows.length){tb.innerHTML='<tr><td colspan="8" class="empty-state">No '+_stage.toLowerCase()+' rejects for the selected filters.</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7" class="empty-state">No '+_stage.toLowerCase()+' rejects for the selected filters.</td></tr>';return;}
   var html=[];
   groupBy(rows,function(r){return r.farm;}).sort(function(a,b){return sum(b.rows,function(r){return r.stems;})-sum(a.rows,function(r){return r.stems;});}).forEach(function(f){
     var fk='f|'+f.key,pct=noReasonPct(f.rows);
+    var nqf=f.rows.filter(function(r){return r.not_quarantined;}).length;
     html.push(row(0,fk,[esc(f.key),field?f.rows.length:uniq(f.rows.map(function(r){return r.bucket;})).length,n0(sum(f.rows,function(r){return r.stems;})),
-      pct?'<span class="bar" style="width:'+Math.max(4,pct*0.6)+'px"></span><span class="dim">'+pct+'% no reason</span>':'<span class="dim">all have a reason</span>',(function(n){return n?'<span class="none">'+n+' not quarantined first</span>':'';})(f.rows.filter(function(r){return r.not_quarantined;}).length)].concat(intake?['<span class="dim">'+esc(uniq(f.rows.map(function(r){return r.quarantined_by_name;})).join(', '))+'</span>']:[]).concat(['<span class="dim">'+esc(uniq(f.rows.map(nameOf)).join(', '))+'</span>','<span class="dim">'+fmtDate(f.rows[0].date)+'</span>']),true));
+      pct?tag(pct+'% no reason','bad'):tag('All have a reason','ok')].concat(field?[]:[nqf?tag(nqf+' direct','warn','Rejected without being quarantined first'):'']).concat(['<span class="dim">'+esc(uniq(f.rows.map(nameOf)).join(', '))+'</span>','<span class="dim">'+fmtDate(f.rows[0].date)+'</span>']),true));
     if(!_open[fk])return;
     groupBy(f.rows,function(r){return field?r.variety:(r.batch||'No batch');}).forEach(function(g){
       var gk=fk+'|'+g.key,b=batches[g.key],first=g.rows[0];
       var label=field?esc(g.key):(g.key==='No batch'?'<span class="dim">No batch</span>':'<span class="mono">'+esc(g.key)+'</span>'+(b?'<span class="sub">'+b.rejected_buckets+' of '+b.received_buckets+' buckets rejected</span>':''));
       var reasons=uniq(g.rows.map(function(r){return r.reason;}));
+      var qcs=uniq(g.rows.map(function(r){return r.qc;})),nqb=g.rows.filter(function(r){return r.not_quarantined;}).length;
       html.push(row(1,gk,[label,field?g.rows.length:uniq(g.rows.map(function(r){return r.bucket;})).length,n0(sum(g.rows,function(r){return r.stems;})),
-        reasons.length===1?esc(reasons[0]):(reasons.length?esc(reasons.length+' different reasons'):'<span class="none">No reason recorded</span>'),
-        field?'':(function(q){return q.length>1?'<span class="dim">'+q.length+' QC records</span>':(q.length?qcLink(g.rows[0]):qcLink(first));})(uniq(g.rows.map(function(r){return r.qc;})))].concat(intake?[esc(uniq(g.rows.map(function(r){return r.quarantined_by_name;})).join(', '))]:[]).concat([esc(uniq(g.rows.map(nameOf)).join(', ')),'<span class="dim">'+fmtDate(first.date,first.time)+'</span>']),true));
+        reasons.length===1?esc(reasons[0]):(reasons.length?tag(reasons.length+' reasons'):tag('No reason','bad'))]
+        .concat(field?[]:[(qcs.length>1?'<span class="dim">'+qcs.length+' QC records</span>':(qcs.length?qcA({qc:qcs[0]}):tag('No QC','bad')))+(nqb?' '+tag(nqb===g.rows.length?'Direct':nqb+' direct','warn','Rejected without being quarantined first'):'')])
+        .concat([esc(uniq(g.rows.map(nameOf)).join(', ')),'<span class="dim">'+fmtDate(first.date,first.time)+'</span>']),true));
       if(!_open[gk])return;
       g.rows.forEach(function(r){
-        var label=field?esc(r.greenhouse||r.farm):'<a class="lnk mono" data-q="'+esc(r.bucket)+'" title="Trace this bucket">'+esc(r.bucket||'—')+'</a><span class="sub">'+esc(r.variety)+(r.greenhouse?' · '+esc(r.greenhouse.replace(/ - KR$/,'')):'')+'</span>';
-        html.push(row(2,'',[label,'',n0(r.stems),reasonCell(r),field?'':qcLink(r)].concat(intake?[qtn(r)]:[]).concat([esc(nameOf(r)),entryLink(r,fmtDate(r.date,r.time))]),false));});});});
+        var label=field?esc(wh(r.greenhouse)||r.farm):'<a class="lnk mono" data-q="'+esc(r.bucket)+'" title="Trace this bucket">'+esc(r.bucket||'—')+'</a><span class="sub">'+esc(r.variety)+(r.greenhouse?' · '+esc(wh(r.greenhouse)):'')+'</span>';
+        html.push(row(2,'',[label,'',n0(r.stems),reasonCell(r)].concat(field?[]:[qcLink(r)]).concat([field?esc(nameOf(r)):byCell(r),entryLink(r,fmtDate(r.date,r.time))]),false));});});});
   tb.innerHTML=html.join('');
   Array.prototype.forEach.call(tb.querySelectorAll('tr[data-k]'),function(tr){tr.onclick=function(e){if(e.target.closest('a'))return;var k=tr.getAttribute('data-k');_open[k]=!_open[k];renderTree(rows);};});
   Array.prototype.forEach.call(tb.querySelectorAll('a[data-q]'),function(a){a.onclick=function(e){e.stopPropagation();el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
@@ -335,18 +378,21 @@ function renderTrace(){
   var w=el('trace'),q=el('filterSearch').value.trim();
   if(!q||!_data){w.style.display='none';w.innerHTML='';return;}
   w.style.display='block';var rows=_data.rows,batches=_data.batches||{};
-  if(!rows.length){w.innerHTML='<div class="empty">No rejects found for <b>'+esc(q.toUpperCase())+'</b>. It was not rejected at any stage.</div>';return;}
+  if(!rows.length){w.innerHTML='<div class="empty"><b>'+esc(q.toUpperCase())+'</b> has no rejects at any stage.</div>';return;}
   var isBatch=rows.every(function(r){return(r.batch||'').toUpperCase()===q.toUpperCase();})&&rows.some(function(r){return(r.bucket||'')!==q.toUpperCase();});
   if(isBatch){var b=batches[rows[0].batch]||{};w.innerHTML='<div class="tcard"><div class="thead"><span class="bid">Batch '+esc(rows[0].batch)+'</span><span class="chip">'+(b.rejected_buckets||uniq(rows.map(function(r){return r.bucket;})).length)+' of '+(b.received_buckets||'?')+' buckets rejected</span></div><div class="tgrid">'
     +kv('Stems rejected',n0(b.rejected_stems||sum(rows,function(r){return r.stems;}))+(b.received_stems?' of '+n0(b.received_stems)+' received':''))+kv('Farm',esc(uniq(rows.map(function(r){return r.farm;})).join(', ')))
-    +kv('Not quarantined first',(function(n){return n?'<span class="none">'+n+' of '+rows.length+' rejects</span>':'None';})(rows.filter(function(r){return r.not_quarantined;}).length))+kv('Rejected by',esc(uniq(rows.map(nameOf)).join(', ')))+kv('QC records',uniq(rows.map(function(r){return r.qc;})).length||'<span class="none">None</span>')+kv('No reason recorded',noReasonPct(rows)+'% of stems')+'</div></div>';return;}
-  w.innerHTML=rows.map(function(r){var b=batches[r.batch];
-    return'<div class="tcard"><div class="thead"><span class="bid">'+esc(r.bucket||q.toUpperCase())+'</span><span class="chip '+esc(r.stage)+'">'+esc(r.stage)+'</span><span class="dim">'+n0(r.stems)+' '+esc(r.variety)+' stems rejected '+fmtDate(r.date,r.time)+'</span></div><div class="tgrid">'
-      +(r.stage==='Intake'?kv('Quarantined',r.quarantined?esc(r.quarantined_by_name)+' <span class="dim">'+fmtDate(r.quarantined_at.slice(0,10),r.quarantined_at.slice(11,16))+'</span>':'<span class="none">Not quarantined first</span>'):'')+kv('Rejected by',esc(nameOf(r)))+kv('Reason',reasonCell(r))+kv(r.stage==='Intake'?(r.not_quarantined?'QC record':'Quarantine QC'):'QC record',qcLink(r))
+    +kv('Quarantined first',(function(n){return n?tag(n+' of '+rows.length+' rejected directly','warn'):tag('All','ok');})(rows.filter(function(r){return r.not_quarantined;}).length))+kv('Rejected by',esc(uniq(rows.map(nameOf)).join(', ')))+kv('QC records',uniq(rows.map(function(r){return r.qc;})).length||tag('None','bad'))+kv('Reasons',(function(p){return p?tag(p+'% of stems have none','bad'):tag('All recorded','ok');})(noReasonPct(rows)))+'</div></div>';return;}
+  w.innerHTML=rows.map(function(r){var b=batches[r.batch],intake=r.stage==='Intake';
+    var steps=intake?step('Quarantined',r.quarantined?esc(r.quarantined_by_name):tag('Skipped','warn'),r.quarantined?fmtDate(r.quarantined_at.slice(0,10),r.quarantined_at.slice(11,16)):'Rejected without quarantine'):'';
+    steps+=step('Rejected',esc(nameOf(r)),fmtDate(r.date,r.time)+' · '+n0(r.stems)+' stems')+step('Moved to',esc(wh(r.to_warehouse)||'—'),'from '+esc(wh(r.from_warehouse)||'—'));
+    return'<div class="tcard"><div class="thead"><span class="bid">'+esc(r.bucket||q.toUpperCase())+'</span><span class="chip '+esc(r.stage)+'">'+esc(r.stage)+'</span><span class="dim">'+esc(r.variety)+(r.greenhouse?' · '+esc(wh(r.greenhouse)):'')+'</span><span class="right">'+entryLink(r,esc(r.entry))+'</span></div>'
+      +'<div class="steps">'+steps+'</div><div class="tgrid">'
+      +kv('Reason',reasonCell(r))+kv('QC record',qcLink(r))
       +kv('Batch',r.batch?'<a class="lnk mono" data-q="'+esc(r.batch)+'">'+esc(r.batch)+'</a>'+(b?' <span class="dim">· '+b.rejected_buckets+' of '+b.received_buckets+' buckets rejected</span>':''):'—')
-      +kv('Farm · greenhouse',esc(r.farm)+(r.greenhouse?' · '+esc(r.greenhouse):''))+kv('Moved',esc(r.from_warehouse||'—')+' → '+esc(r.to_warehouse||'—'))+kv('Stock entry',entryLink(r,esc(r.entry)))+'</div></div>';}).join('');
+      +kv('Farm',esc(r.farm))+'</div></div>';}).join('');
   Array.prototype.forEach.call(w.querySelectorAll('a[data-q]'),function(a){a.onclick=function(){el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
-function qtn(r){return r.quarantined?esc(r.quarantined_by_name)+' <span class="dim">'+esc((r.quarantined_at||'').slice(11,16))+'</span>':'<span class="dim">—</span>';}
+function step(k,v,sub){return'<div class="step"><div class="k">'+k+'</div><div class="v">'+v+'</div>'+(sub?'<div class="s">'+sub+'</div>':'')+'</div>';}
 function kv(k,v){return'<div><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
 function render(){
   if(!_data)return;
@@ -357,13 +403,15 @@ function render(){
   var rows=all.filter(function(r){return r.stage===_stage;});
   var q=el('filterSearch').value.trim();if(q)setOpen(rows,true);
   renderTiles(all);renderTree(rows);renderTrace();
+  el('charts').classList.toggle('hide',!!q);el('stageTiles').classList.toggle('hide',!!q);
   var stems=sum(rows,function(r){return r.stems;});
   el('treeTitle').textContent=_stage+' rejects';
-  el('treeMeta').textContent=n0(stems)+' stems'+(_stage==='Field'?' · '+rows.length+' entries':' · '+uniq(rows.map(function(r){return r.bucket;})).length+' buckets')+' · '+noReasonPct(rows)+'% no reason';
-  var byFarm={},byVariety={},byReason={},byWeek={};
+  el('treeMeta').textContent=n0(stems)+' stems · '+(_stage==='Field'?plural(rows.length,'entry').replace('entrys','entries'):plural(uniq(rows.map(function(r){return r.bucket;})).length,'bucket'))+' · '+noReasonPct(rows)+'% no reason';
+  var byFarm={},byVariety={},byReason={},byWeek={},rg0=getFilterRange(),daily=!!(rg0.from&&rg0.to&&(new Date(rg0.to)-new Date(rg0.from))<=14*864e5);
   rows.forEach(function(r){var st=Number(r.stems)||0;byFarm[r.farm]=(byFarm[r.farm]||0)+st;byVariety[r.variety||'?']=(byVariety[r.variety||'?']||0)+st;var rk=topReason(r);byReason[rk]=(byReason[rk]||0)+st;
-    if(r.date){var iw=getISOWeek(new Date(r.date+'T00:00:00'));var wk=iw.year+'-W'+pad(iw.week);byWeek[wk]=(byWeek[wk]||0)+st;}});
-  el('trendMeta').textContent=_stage+' · rejected stems · ISO week';
+    if(r.date){var key=daily?r.date:(function(iw){return iw.year+'-W'+pad(iw.week);})(getISOWeek(new Date(r.date+'T00:00:00')));byWeek[key]=(byWeek[key]||0)+st;}});
+  if(daily){var rg=getFilterRange();if(rg.from&&rg.to){for(var d=new Date(rg.from+'T00:00:00'),end=rg.to<ds(new Date())?rg.to:ds(new Date());ds(d)<=end;d.setDate(d.getDate()+1))byWeek[ds(d)]=byWeek[ds(d)]||0;}}
+  el('trendMeta').textContent=_stage+' · rejected stems · '+(daily?'by day':'ISO week');
   renderFarmChart(byFarm);renderReasonChart(byReason);renderVarietyChart(byVariety);renderTrendChart(byWeek);
   setBadges(q?'':el('filterYear').value,q?'':el('filterWeek').value,farmMS?farmMS.getValue():'',q.toUpperCase());
   el('searchClear').style.display=q?'block':'none';
