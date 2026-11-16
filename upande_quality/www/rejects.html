@@ -90,6 +90,39 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 .ufd .chip.Intake{background:rgba(161,98,7,.12);color:#a16207}.ufd .chip.Coldroom{background:rgba(26,110,245,.10);color:#1a6ef5}
 .ufd .chip.Packhouse{background:rgba(34,136,131,.12);color:#228883}.ufd .chip.Airport{background:rgba(196,48,43,.10);color:#c4302b}
 .ufd .fgrp input[type=search]{border:0;background:transparent;font:500 12px var(--sans);color:var(--ink);outline:0;width:150px}
+/* search */
+.ufd .searchbar{display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:16px;padding:12px 18px;box-shadow:var(--shadow-card);margin-bottom:14px}
+.ufd .searchbar svg{flex-shrink:0;color:var(--ink-mute)}
+.ufd .searchbar input{flex:1;border:0;outline:0;background:transparent;font:500 15px var(--sans);color:var(--ink);letter-spacing:.3px;min-width:0}
+.ufd .searchbar input::placeholder{color:var(--ink-faint);font-weight:400}
+.ufd .searchbar .hint{font:500 11px var(--sans);color:var(--ink-mute);white-space:nowrap}
+.ufd .searchbar .x{border:0;background:rgba(10,10,10,.06);border-radius:999px;width:24px;height:24px;cursor:pointer;color:var(--ink-4);display:none}
+/* trace card */
+.ufd .trace{display:none;margin-bottom:14px}
+.ufd .trace .tcard{background:var(--surface-2);border-radius:18px;padding:18px 22px;box-shadow:var(--shadow-card);margin-bottom:10px;border-left:3px solid var(--warn)}
+.ufd .trace .thead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.ufd .trace .bid{font:600 20px var(--display);color:var(--ink);letter-spacing:.5px}
+.ufd .trace .tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 20px}
+.ufd .trace .k{font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.2px;color:var(--ink-mute);margin-bottom:3px}
+.ufd .trace .v{font:500 13px var(--sans);color:var(--ink-2);word-break:break-word}
+.ufd .trace .empty{background:var(--surface-2);border-radius:18px;padding:22px;box-shadow:var(--shadow-card);color:var(--ink-mute);text-align:center}
+/* stage tiles act as tabs */
+.ufd .kpi{cursor:pointer;border:2px solid transparent}
+.ufd .kpi.on{border-color:var(--ka,var(--ink));transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+.ufd .kpi.zero{opacity:.55}
+/* drill-down */
+.ufd .tree td{white-space:nowrap}
+.ufd .tree tr.l0 td{background:rgba(10,10,10,.025);font-weight:600;color:var(--ink);cursor:pointer}
+.ufd .tree tr.l1 td{cursor:pointer;color:var(--ink-2)}
+.ufd .tree tr.l1 td:first-child{padding-left:34px}
+.ufd .tree tr.l2 td{color:var(--ink-3);font-size:12.5px}
+.ufd .tree tr.l2 td:first-child{padding-left:58px}
+.ufd .tree .car{display:inline-block;width:14px;color:var(--ink-mute);transition:transform .15s;font-size:10px}
+.ufd .tree .car.open{transform:rotate(90deg)}
+.ufd .tree .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}
+.ufd .tree .sub{font-weight:400;color:var(--ink-mute);font-size:12px;margin-left:8px}
+.ufd .bar{display:inline-block;height:6px;border-radius:3px;background:var(--bad);vertical-align:middle;margin-right:6px}
+.ufd .linkbtn{border:0;background:transparent;font:500 11.5px var(--sans);color:var(--signal);cursor:pointer;padding:0}
 @media (max-width:1100px){.ufd .kpi-grid{grid-template-columns:repeat(2,1fr)}.ufd .row-21{grid-template-columns:1fr}}
 </style>
 
@@ -117,10 +150,9 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
       <div>
         <div class="eyebrow">Upande Quality · Rejects</div>
         <h1 class="ptitle">Rejects</h1>
-        <div class="plive"><span class="dot"></span>Every rejected bucket, its batch, the QC record and why</div>
+        <div class="plive"><span class="dot"></span>Every rejected bucket by stage, its batch, the QC record and why</div>
       </div>
       <div class="tools">
-        <div class="fgrp"><label>Bucket / batch</label><input type="search" id="filterSearch" placeholder="e.g. RXREVH"></div>
         <div class="fgrp"><label>Year</label><select id="filterYear"><option value="">All</option></select></div>
         <div class="fgrp"><label>Week</label><select id="filterWeek"><option value="">All</option></select></div>
         <div class="fgrp"><label>Farm</label><div id="filterFarm"></div></div>
@@ -131,28 +163,36 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
     </div>
     <div id="activeFilters"></div>
 
-    <div class="kpi-grid">
-      <div class="kpi" style="--ka:#c4302b"><div class="lbl">Field Rejects</div><div class="v" id="kpiField">—</div><div class="sub" id="kpiFieldSub"></div></div>
-      <div class="kpi" style="--ka:#a16207"><div class="lbl">Bucket Rejects</div><div class="v" id="kpiIntake">—</div><div class="sub" id="kpiIntakeSub"></div></div>
-      <div class="kpi" style="--ka:#0a0a0a"><div class="lbl">Top Reason</div><div class="v" id="kpiReason" style="font-size:19px;line-height:1.2">—</div><div class="sub" id="kpiReasonSub"></div></div>
-      <div class="kpi" style="--ka:#228883"><div class="lbl">Farms Affected</div><div class="v" id="kpiFarms">—</div><div class="sub">farms</div></div>
-      <div class="kpi" style="--ka:#c4302b"><div class="lbl">No Reason Recorded</div><div class="v" id="kpiVar">—</div><div class="sub" id="kpiVarSub">stems rejected without a reason</div></div>
+    <div class="searchbar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="filterSearch" type="text" autocomplete="off" spellcheck="false" placeholder="Paste or type a bucket id or batch id to trace it (all dates)">
+      <span class="hint" id="searchHint">Enter ↵</span><button class="x" id="searchClear" title="Clear">×</button>
+    </div>
+    <div class="trace" id="trace"></div>
+
+    <div class="kpi-grid" id="stageTiles"></div>
+
+    <div class="card">
+      <div class="card__head"><h3 id="treeTitle">Rejects</h3><div class="meta"><span id="treeMeta"></span> · <button class="linkbtn" id="expandAll">Expand all</button> · <button class="linkbtn" id="collapseAll">Collapse</button></div></div>
+      <div class="tblscroll" style="max-height:620px">
+        <table class="tbl tree"><thead id="treeHead"></thead><tbody id="treeRows"><tr><td class="empty-state">Loading…</td></tr></tbody></table>
+      </div>
     </div>
 
     <div class="row-21">
       <div>
         <div class="card">
-          <div class="card__head"><h3>Weekly trend</h3><div class="meta">Rejected stems · ISO week</div></div>
+          <div class="card__head"><h3>Weekly trend</h3><div class="meta" id="trendMeta">Rejected stems · ISO week</div></div>
           <div class="chartbox" id="chartTrendWrap"><div class="aph-loading">Loading…</div></div>
         </div>
         <div class="card">
-          <div class="card__head"><h3>Rejects by farm</h3><div class="meta">Stems per farm</div></div>
+          <div class="card__head"><h3>By farm</h3><div class="meta">Stems per farm</div></div>
           <div class="chartbox" id="chartFarmWrap"><div class="aph-loading">Loading…</div></div>
         </div>
       </div>
       <div>
         <div class="card">
-          <div class="card__head"><h3>Rejection reasons</h3><div class="meta">by stems</div></div>
+          <div class="card__head"><h3>Reasons</h3><div class="meta">by stems</div></div>
           <div class="chartbox" id="chartReasonWrap"><div class="aph-loading">Loading…</div></div>
         </div>
         <div class="card">
@@ -161,22 +201,7 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
         </div>
       </div>
     </div>
-
-    <div class="card">
-      <div class="card__head"><h3>Rejected buckets</h3><div class="meta" id="qrStamp">Intake, coldroom, packhouse &amp; airport · click a bucket or batch to trace it</div></div>
-      <div class="tblscroll" style="max-height:520px">
-        <table class="tbl"><thead><tr><th>Date</th><th>Stage</th><th>Bucket</th><th>Batch</th><th>Farm</th><th>Greenhouse</th><th>Variety</th><th class="num">Stems</th><th>Reason</th><th>QC record</th><th>Rejected by</th></tr></thead>
-        <tbody id="qrRows"><tr><td colspan="11" class="empty-state">Loading…</td></tr></tbody></table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card__head"><h3>Field Rejects</h3><div class="meta" id="dataStamp"></div></div>
-      <div class="tblscroll" style="max-height:440px">
-        <table class="tbl"><thead><tr><th>Date</th><th>Farm</th><th>Variety</th><th class="num">Stems</th><th>Rejection Reason</th><th>Rejected by</th></tr></thead>
-        <tbody id="fieldRows"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table>
-      </div>
-    </div>
+    <div class="meta" id="dataStamp" style="font:500 11px var(--sans);color:var(--ink-mute);text-align:right"></div>
   </div>
 </div>
 
@@ -254,71 +279,116 @@ function renderTrendChart(d){
   var g=ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(10,10,10,.20)');g.addColorStop(1,'rgba(10,10,10,0)');
   mkChart('chartTrend',{type:'line',data:{labels:keys,datasets:[{data:keys.map(function(k){return d[k];}),borderColor:'#0a0a0a',backgroundColor:g,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:true}]},
     options:{responsive:true,animation:{duration:260},interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y.toLocaleString()+' stems';}}}},scales:{x:{grid:{display:false},ticks:{maxRotation:45,minRotation:30,color:'#8a8780',font:{size:10}}},y:{beginAtZero:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}}}}});}
+var STAGES=[{k:'Intake',c:'#a16207'},{k:'Coldroom',c:'#1a6ef5'},{k:'Packhouse',c:'#228883'},{k:'Airport',c:'#c4302b'},{k:'Field',c:'#3a3a34'}];
+var _data=null,_stage='Intake',_open={},_stageChosen=false;
 function nameOf(r){return r.rejected_by_name||(r.rejected_by||'').split('@')[0];}
-function noReason(r){return '<span class="none">No reason recorded</span>';}
-function renderFieldTable(rows){
-  var tb=el('fieldRows');if(!tb)return;
-  if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="empty-state">No field rejects for the selected filters.</td></tr>';return;}
-  tb.innerHTML=rows.map(function(r){return'<tr><td>'+esc(r.date)+'</td><td>'+esc(r.farm)+'</td><td>'+esc(r.variety)+'</td><td class="num">'+r.stems.toLocaleString()+'</td><td class="wrap">'+(r.reason?esc(r.reason):noReason())+'</td><td class="dim">'+esc(nameOf(r))+'</td></tr>';}).join('');}
-function renderBucketTable(rows,batches){
-  var tb=el('qrRows');if(!tb)return;
-  if(!rows.length){tb.innerHTML='<tr><td colspan="11" class="empty-state">No rejected buckets for the selected filters.</td></tr>';return;}
-  tb.innerHTML=rows.map(function(r){
-    var b=batches[r.batch],bt=r.batch?'<a class="lnk" data-q="'+esc(r.batch)+'">'+esc(r.batch)+'</a>'+(b?' <span class="dim">· '+b.rejected_buckets+' of '+b.received_buckets+' buckets</span>':''):'<span class="dim">—</span>';
-    var bk=r.bucket?'<a class="lnk" data-q="'+esc(r.bucket)+'">'+esc(r.bucket)+'</a>':'<span class="dim">—</span>';
-    var qc=r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>'+(r.qc_action?' <span class="dim">'+esc(r.qc_action)+'</span>':''):'<span class="none">No QC record</span>';
-    return'<tr><td><a class="lnk" href="/app/stock-entry/'+encodeURIComponent(r.entry)+'" target="_blank" title="'+esc(r.entry)+'">'+esc(r.date)+' '+esc(r.time)+'</a></td><td><span class="chip '+esc(r.stage)+'">'+esc(r.stage)+'</span></td><td>'+bk+'</td><td>'+bt+'</td><td>'+esc(r.farm)+'</td><td class="dim">'+esc(r.greenhouse||'—')+'</td><td>'+esc(r.variety)+'</td><td class="num">'+r.stems.toLocaleString()+'</td><td class="wrap">'+(r.reason?esc(r.reason):noReason())+'</td><td>'+qc+'</td><td class="dim">'+esc(nameOf(r))+'</td></tr>';}).join('');
-  Array.prototype.forEach.call(tb.querySelectorAll('a[data-q]'),function(a){a.onclick=function(){el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
-var _data=null;
+function n0(v){return Math.round(Number(v)||0).toLocaleString();}
+function sum(a,f){return a.reduce(function(t,r){return t+(Number(f(r))||0);},0);}
+function uniq(a){var o={};a.forEach(function(v){if(v)o[v]=1;});return Object.keys(o);}
+function groupBy(a,f){var o={},order=[];a.forEach(function(r){var k=f(r);if(!(k in o)){o[k]=[];order.push(k);}o[k].push(r);});return order.map(function(k){return{key:k,rows:o[k]};});}
+function reasonCell(r){return r.reason?esc(r.reason):'<span class="none">No reason recorded</span>';}
+function noReasonPct(rows){var t=sum(rows,function(r){return r.stems;});return t?Math.round(sum(rows.filter(function(r){return !r.reason;}),function(r){return r.stems;})*100/t):0;}
 function topReason(r){return r.reason?r.reason.split(';')[0].replace(/ x\d+$/,'').trim():'No reason recorded';}
+function fmtDate(d,t){if(!d)return'';var x=new Date(d+'T00:00:00');return x.toLocaleDateString(undefined,{day:'numeric',month:'short'})+(t?' '+t:'');}
+function qcLink(r){return r.qc?'<a class="lnk" href="/app/quality-reporting/'+encodeURIComponent(r.qc)+'" target="_blank">'+esc(r.qc)+'</a>':'<span class="none">No QC record</span>';}
+function entryLink(r,label){return'<a class="lnk" href="/app/stock-entry/'+encodeURIComponent(r.entry)+'" target="_blank" title="'+esc(r.entry)+'">'+label+'</a>';}
+function visibleRows(){
+  if(!_data)return[];var fv=farmMS?farmMS.getValue():'',farms=fv?fv.split(',').filter(Boolean):[];
+  return farms.length?_data.rows.filter(function(r){return farms.indexOf(r.farm)>=0;}):_data.rows;}
+function renderTiles(rows){
+  var w=el('stageTiles');
+  w.innerHTML=STAGES.map(function(st){var rs=rows.filter(function(r){return r.stage===st.k;}),stems=sum(rs,function(r){return r.stems;}),bk=uniq(rs.map(function(r){return r.bucket;})).length;
+    var sub=st.k==='Field'?rs.length+' entries':bk+' buckets';if(rs.length)sub+=' · '+noReasonPct(rs)+'% no reason';
+    return'<div class="kpi'+(st.k===_stage?' on':'')+(rs.length?'':' zero')+'" style="--ka:'+st.c+'" data-stage="'+st.k+'"><div class="lbl">'+st.k+' rejects</div><div class="v">'+n0(stems)+'</div><div class="sub">'+(rs.length?sub:'none')+'</div></div>';}).join('');
+  Array.prototype.forEach.call(w.querySelectorAll('.kpi'),function(t){t.onclick=function(){_stage=t.getAttribute('data-stage');_stageChosen=true;_open={};render();};});}
+function row(level,key,cells,openable){
+  var car=openable?'<span class="car'+(_open[key]?' open':'')+'">&#9654;</span> ':'';
+  return'<tr class="l'+level+'"'+(openable?' data-k="'+esc(key)+'"':'')+'><td>'+car+cells[0]+'</td>'+cells.slice(1).map(function(c,i){return'<td'+(i<2?' class="num"':(i===2?' class="wrap"':''))+'>'+c+'</td>';}).join('')+'</tr>';}
+function renderTree(rows){
+  var field=_stage==='Field',batches=_data.batches||{};
+  el('treeHead').innerHTML='<tr><th>'+(field?'Farm / variety / entry':'Farm / batch / bucket')+'</th><th class="num">'+(field?'Entries':'Buckets')+'</th><th class="num">Stems</th><th>Reason</th><th>QC record</th><th>Rejected by</th><th>When</th></tr>';
+  var tb=el('treeRows');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7" class="empty-state">No '+_stage.toLowerCase()+' rejects for the selected filters.</td></tr>';return;}
+  var html=[];
+  groupBy(rows,function(r){return r.farm;}).sort(function(a,b){return sum(b.rows,function(r){return r.stems;})-sum(a.rows,function(r){return r.stems;});}).forEach(function(f){
+    var fk='f|'+f.key,pct=noReasonPct(f.rows);
+    html.push(row(0,fk,[esc(f.key),field?f.rows.length:uniq(f.rows.map(function(r){return r.bucket;})).length,n0(sum(f.rows,function(r){return r.stems;})),
+      pct?'<span class="bar" style="width:'+Math.max(4,pct*0.6)+'px"></span><span class="dim">'+pct+'% no reason</span>':'<span class="dim">all have a reason</span>','','<span class="dim">'+esc(uniq(f.rows.map(nameOf)).join(', '))+'</span>','<span class="dim">'+fmtDate(f.rows[0].date)+'</span>'],true));
+    if(!_open[fk])return;
+    groupBy(f.rows,function(r){return field?r.variety:(r.batch||'No batch');}).forEach(function(g){
+      var gk=fk+'|'+g.key,b=batches[g.key],first=g.rows[0];
+      var label=field?esc(g.key):(g.key==='No batch'?'<span class="dim">No batch</span>':'<span class="mono">'+esc(g.key)+'</span>'+(b?'<span class="sub">'+b.rejected_buckets+' of '+b.received_buckets+' buckets rejected</span>':''));
+      var reasons=uniq(g.rows.map(function(r){return r.reason;}));
+      html.push(row(1,gk,[label,field?g.rows.length:uniq(g.rows.map(function(r){return r.bucket;})).length,n0(sum(g.rows,function(r){return r.stems;})),
+        reasons.length===1?esc(reasons[0]):(reasons.length?esc(reasons.length+' different reasons'):'<span class="none">No reason recorded</span>'),
+        field?'':(function(q){return q.length>1?'<span class="dim">'+q.length+' QC records</span>':(q.length?qcLink(g.rows[0]):'<span class="none">No QC record</span>');})(uniq(g.rows.map(function(r){return r.qc;}))),esc(uniq(g.rows.map(nameOf)).join(', ')),'<span class="dim">'+fmtDate(first.date,first.time)+'</span>'],true));
+      if(!_open[gk])return;
+      g.rows.forEach(function(r){
+        var label=field?esc(r.greenhouse||r.farm):'<a class="lnk mono" data-q="'+esc(r.bucket)+'" title="Trace this bucket">'+esc(r.bucket||'—')+'</a><span class="sub">'+esc(r.variety)+(r.greenhouse?' · '+esc(r.greenhouse.replace(/ - KR$/,'')):'')+'</span>';
+        html.push(row(2,'',[label,'',n0(r.stems),reasonCell(r),field?'':qcLink(r),esc(nameOf(r)),entryLink(r,fmtDate(r.date,r.time))],false));});});});
+  tb.innerHTML=html.join('');
+  Array.prototype.forEach.call(tb.querySelectorAll('tr[data-k]'),function(tr){tr.onclick=function(e){if(e.target.closest('a'))return;var k=tr.getAttribute('data-k');_open[k]=!_open[k];renderTree(rows);};});
+  Array.prototype.forEach.call(tb.querySelectorAll('a[data-q]'),function(a){a.onclick=function(e){e.stopPropagation();el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
+function setOpen(rows,v){_open={};if(!v)return;rows.forEach(function(r){var fk='f|'+r.farm;_open[fk]=1;_open[fk+'|'+(_stage==='Field'?r.variety:(r.batch||'No batch'))]=1;});}
+function renderTrace(){
+  var w=el('trace'),q=el('filterSearch').value.trim();
+  if(!q||!_data){w.style.display='none';w.innerHTML='';return;}
+  w.style.display='block';var rows=_data.rows,batches=_data.batches||{};
+  if(!rows.length){w.innerHTML='<div class="empty">No rejects found for <b>'+esc(q.toUpperCase())+'</b>. It was not rejected at any stage.</div>';return;}
+  var isBatch=rows.every(function(r){return(r.batch||'').toUpperCase()===q.toUpperCase();})&&rows.some(function(r){return(r.bucket||'')!==q.toUpperCase();});
+  if(isBatch){var b=batches[rows[0].batch]||{};w.innerHTML='<div class="tcard"><div class="thead"><span class="bid">Batch '+esc(rows[0].batch)+'</span><span class="chip">'+(b.rejected_buckets||uniq(rows.map(function(r){return r.bucket;})).length)+' of '+(b.received_buckets||'?')+' buckets rejected</span></div><div class="tgrid">'
+    +kv('Stems rejected',n0(b.rejected_stems||sum(rows,function(r){return r.stems;}))+(b.received_stems?' of '+n0(b.received_stems)+' received':''))+kv('Farm',esc(uniq(rows.map(function(r){return r.farm;})).join(', ')))
+    +kv('Rejected by',esc(uniq(rows.map(nameOf)).join(', ')))+kv('QC records',uniq(rows.map(function(r){return r.qc;})).length||'<span class="none">None</span>')+kv('No reason recorded',noReasonPct(rows)+'% of stems')+'</div></div>';return;}
+  w.innerHTML=rows.map(function(r){var b=batches[r.batch];
+    return'<div class="tcard"><div class="thead"><span class="bid">'+esc(r.bucket||q.toUpperCase())+'</span><span class="chip '+esc(r.stage)+'">'+esc(r.stage)+'</span><span class="dim">'+n0(r.stems)+' '+esc(r.variety)+' stems rejected '+fmtDate(r.date,r.time)+'</span></div><div class="tgrid">'
+      +kv('Rejected by',esc(nameOf(r)))+kv('Reason',reasonCell(r))+kv('QC record',qcLink(r)+(r.qc_action?' <span class="dim">'+esc(r.qc_action)+'</span>':''))
+      +kv('Batch',r.batch?'<a class="lnk mono" data-q="'+esc(r.batch)+'">'+esc(r.batch)+'</a>'+(b?' <span class="dim">· '+b.rejected_buckets+' of '+b.received_buckets+' buckets rejected</span>':''):'—')
+      +kv('Farm · greenhouse',esc(r.farm)+(r.greenhouse?' · '+esc(r.greenhouse):''))+kv('Moved',esc(r.from_warehouse||'—')+' → '+esc(r.to_warehouse||'—'))+kv('Stock entry',entryLink(r,esc(r.entry)))+'</div></div>';}).join('');
+  Array.prototype.forEach.call(w.querySelectorAll('a[data-q]'),function(a){a.onclick=function(){el('filterSearch').value=a.getAttribute('data-q');loadData();};});}
+function kv(k,v){return'<div><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
 function render(){
   if(!_data)return;
-  var all=_data.rows,batches=_data.batches||{};
-  var farmsSet={};all.forEach(function(r){if(r.farm&&r.farm!=='?')farmsSet[r.farm]=1;});
+  var all=visibleRows();
+  var farmsSet={};_data.rows.forEach(function(r){if(r.farm&&r.farm!=='?')farmsSet[r.farm]=1;});
   if(farmMS)farmMS.setOptions(Object.keys(farmsSet).sort());
-  var fv=farmMS?farmMS.getValue():'',farms=fv?fv.split(',').filter(Boolean):[];
-  var rows=farms.length?all.filter(function(r){return farms.indexOf(r.farm)>=0;}):all;
-  var byFarm={},byVariety={},byReason={},byWeek={},fieldStems=0,bucketStems=0,noReasonStems=0,frRows=[],bkRows=[],bks={},fieldN=0;
-  rows.forEach(function(r){
-    var stems=Number(r.stems)||0;
-    byFarm[r.farm]=(byFarm[r.farm]||0)+stems;byVariety[r.variety||'?']=(byVariety[r.variety||'?']||0)+stems;
-    var rk=topReason(r);byReason[rk]=(byReason[rk]||0)+stems;if(!r.reason)noReasonStems+=stems;
-    if(r.date){var iw=getISOWeek(new Date(r.date+'T00:00:00'));var wk=iw.year+'-W'+pad(iw.week);byWeek[wk]=(byWeek[wk]||0)+stems;}
-    if(r.stage==='Field'){fieldStems+=stems;fieldN++;frRows.push(r);}else{bucketStems+=stems;bkRows.push(r);if(r.bucket)bks[r.bucket]=1;}});
-  if(el('kpiField'))el('kpiField').textContent=fieldStems.toLocaleString();
-  if(el('kpiFieldSub'))el('kpiFieldSub').textContent=fieldN+' entries';
-  if(el('kpiIntake'))el('kpiIntake').textContent=bucketStems.toLocaleString();
-  if(el('kpiIntakeSub'))el('kpiIntakeSub').textContent=Object.keys(bks).length+' buckets · '+bkRows.length+' entries';
-  var rTop=topN(byReason,1)[0];
-  if(el('kpiReason'))el('kpiReason').textContent=rTop?rTop.key:'—';
-  if(el('kpiReasonSub'))el('kpiReasonSub').textContent=rTop?rTop.val.toLocaleString()+' stems':'';
-  if(el('kpiFarms'))el('kpiFarms').textContent=Object.keys(byFarm).length.toLocaleString();
-  if(el('kpiVar'))el('kpiVar').textContent=noReasonStems.toLocaleString();
-  var tot=fieldStems+bucketStems;if(el('kpiVarSub'))el('kpiVarSub').textContent=(tot?Math.round(noReasonStems*100/tot):0)+'% of rejected stems have no reason';
-  var q=el('filterSearch').value.trim();
-  setBadges(q?'':el('filterYear').value,q?'':el('filterWeek').value,fv,q);
+  if(!_stageChosen){var first=STAGES.filter(function(st){return all.some(function(r){return r.stage===st.k;});})[0];if(first)_stage=first.k;}
+  var rows=all.filter(function(r){return r.stage===_stage;});
+  var q=el('filterSearch').value.trim();if(q)setOpen(rows,true);
+  renderTiles(all);renderTree(rows);renderTrace();
+  var stems=sum(rows,function(r){return r.stems;});
+  el('treeTitle').textContent=_stage+' rejects';
+  el('treeMeta').textContent=n0(stems)+' stems'+(_stage==='Field'?' · '+rows.length+' entries':' · '+uniq(rows.map(function(r){return r.bucket;})).length+' buckets')+' · '+noReasonPct(rows)+'% no reason';
+  var byFarm={},byVariety={},byReason={},byWeek={};
+  rows.forEach(function(r){var st=Number(r.stems)||0;byFarm[r.farm]=(byFarm[r.farm]||0)+st;byVariety[r.variety||'?']=(byVariety[r.variety||'?']||0)+st;var rk=topReason(r);byReason[rk]=(byReason[rk]||0)+st;
+    if(r.date){var iw=getISOWeek(new Date(r.date+'T00:00:00'));var wk=iw.year+'-W'+pad(iw.week);byWeek[wk]=(byWeek[wk]||0)+st;}});
+  el('trendMeta').textContent=_stage+' · rejected stems · ISO week';
   renderFarmChart(byFarm);renderReasonChart(byReason);renderVarietyChart(byVariety);renderTrendChart(byWeek);
-  renderBucketTable(bkRows,batches);renderFieldTable(frRows);
-  var now=new Date(),st=el('dataStamp');
-  if(st)st.textContent='Updated '+pad(now.getHours())+':'+pad(now.getMinutes())+' · '+fieldStems.toLocaleString()+' stems · '+fieldN+' entries'+(_data.truncated?' · first 20,000 lines only':'');}
+  setBadges(q?'':el('filterYear').value,q?'':el('filterWeek').value,farmMS?farmMS.getValue():'',q.toUpperCase());
+  el('searchClear').style.display=q?'block':'none';
+  var now=new Date();el('dataStamp').textContent='Updated '+pad(now.getHours())+':'+pad(now.getMinutes())+(_data.truncated?' · first 20,000 lines only':'');}
 var _loadGen=0;
 function loadData(){
   var myGen=++_loadGen;
-  ['kpiField','kpiIntake','kpiReason','kpiFarms','kpiVar'].forEach(function(id){var e=el(id);if(e)e.textContent='…';});
+  el('treeRows').innerHTML='<tr><td class="empty-state">Loading…</td></tr>';
   ['chartFarmWrap','chartReasonWrap','chartVarietyWrap','chartTrendWrap'].forEach(function(id){var e=el(id);if(e)e.innerHTML='<div class="aph-loading">Loading…</div>';});
-  var tb=el('fieldRows');if(tb)tb.innerHTML='<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
-  var tb2=el('qrRows');if(tb2)tb2.innerHTML='<tr><td colspan="11" class="empty-state">Loading…</td></tr>';
-  var stamp=el('dataStamp');if(stamp)stamp.textContent='Fetching…';
-  var range=getFilterRange(),q=el('filterSearch').value.trim();
+  el('dataStamp').textContent='Fetching…';
+  var range=getFilterRange(),q=cleanId(el('filterSearch').value);el('filterSearch').value=q;
+  if(q){_open={};}
   whenReady(function(){
     frappe.call({method:REJECTS_METHOD,args:q?{q:q}:{from_date:range.from,to_date:range.to},
-      callback:function(r){if(myGen!==_loadGen)return;_data=(r&&r.message)||{rows:[],batches:{}};render();},
+      callback:function(r){if(myGen!==_loadGen)return;_data=(r&&r.message)||{rows:[],batches:{}};
+        if(q&&_data.rows.length){_stage=_data.rows[0].stage;_stageChosen=true;}render();},
       error:function(){if(myGen!==_loadGen)return;_data={rows:[],batches:{}};render();}});
   });}
+// a pasted QR scan may carry a URL or extra text: keep the last bucket-like token
+function cleanId(v){v=String(v||'').trim();if(!v)return'';var parts=v.split(/[^A-Za-z0-9-]+/).filter(Boolean);return(parts.length?parts[parts.length-1]:v).toUpperCase();}
 farmMS=createMultiSelect('filterFarm',{placeholder:'All farms'});
-if(farmMS)farmMS.onChange(render);
-el('filterSearch').addEventListener('keydown',function(e){if(e.key==='Enter')loadData();});
-el('filterSearch').addEventListener('search',function(){loadData();});
+if(farmMS)farmMS.onChange(function(){_open={};render();});
+el('filterSearch').addEventListener('keydown',function(e){if(e.key==='Enter')loadData();if(e.key==='Escape'){el('filterSearch').value='';loadData();}});
+el('filterSearch').addEventListener('paste',function(){setTimeout(loadData,0);});
+el('searchClear').addEventListener('click',function(){el('filterSearch').value='';_stageChosen=false;loadData();});
+el('expandAll').addEventListener('click',function(){setOpen(visibleRows().filter(function(r){return r.stage===_stage;}),true);render();});
+el('collapseAll').addEventListener('click',function(){_open={};render();});
 (function(){var c=getISOWeek(new Date()),ys=[c.year,c.year-1,c.year-2].map(String),ws=[];for(var w=53;w>=1;w--)ws.push(String(w));fillSel('filterYear',ys,String(c.year));fillSel('filterWeek',ws,String(c.week));})();
 function clearDates(){if(el('filterDateFrom'))el('filterDateFrom').value='';if(el('filterDateTo'))el('filterDateTo').value='';}el('filterYear').addEventListener('change',function(){clearDates();loadData();});
 el('filterWeek').addEventListener('change',function(){clearDates();loadData();});if(el('filterDateFrom'))el('filterDateFrom').addEventListener('change',function(){el('filterYear').value='';el('filterWeek').value='';loadData();});if(el('filterDateTo'))el('filterDateTo').addEventListener('change',function(){el('filterYear').value='';el('filterWeek').value='';loadData();});
