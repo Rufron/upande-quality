@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "VI-.#####",
+ "creation": "2026-11-16 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "general_information",
+  "vehicle",
+  "driver_name",
+  "column_break_gi",
+  "inspection_datetime",
+  "inspected_by",
+  "inspection_section",
+  "front_wall",
+  "left_side",
+  "right_side",
+  "column_break_insp",
+  "floor",
+  "ceiling_roof",
+  "doors",
+  "undercarriage",
+  "defect_section",
+  "defect_notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_information",
+   "fieldtype": "Section Break",
+   "label": "General Information"
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "reqd": 1
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name"
+  },
+  {
+   "fieldname": "column_break_gi",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Now",
+   "fieldname": "inspection_datetime",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Inspection Date / Time"
+  },
+  {
+   "fieldname": "inspected_by",
+   "fieldtype": "Link",
+   "label": "Inspected By",
+   "options": "User"
+  },
+  {
+   "fieldname": "inspection_section",
+   "fieldtype": "Section Break",
+   "label": "Inspection"
+  },
+  {
+   "fieldname": "front_wall",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Front Wall",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "left_side",
+   "fieldtype": "Select",
+   "label": "Left Side",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "right_side",
+   "fieldtype": "Select",
+   "label": "Right Side",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "column_break_insp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "floor",
+   "fieldtype": "Select",
+   "label": "Floor",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "ceiling_roof",
+   "fieldtype": "Select",
+   "label": "Ceiling / Roof",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "doors",
+   "fieldtype": "Select",
+   "label": "Doors (Inside / Outside)",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "undercarriage",
+   "fieldtype": "Select",
+   "label": "Outside / Undercarriage",
+   "options": "\nOK\nDefective"
+  },
+  {
+   "fieldname": "defect_section",
+   "fieldtype": "Section Break",
+   "label": "Defect Notes"
+  },
+  {
+   "fieldname": "defect_notes",
+   "fieldtype": "Small Text",
+   "label": "Defect Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-16 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Vehicle Inspection",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
