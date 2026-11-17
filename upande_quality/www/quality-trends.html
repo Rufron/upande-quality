@@ -527,8 +527,10 @@ body{background:var(--bg)!important}
 
         var filterFrom = document.getElementById("filterFrom");
         var filterTo   = document.getElementById("filterTo");
-        if(filterFrom) filterFrom.addEventListener("change", function(){ loadData(); });
-        if(filterTo)   filterTo.addEventListener("change",   function(){ loadData(); });
+        // Mirror of the week handler: a date range replaces any week selection
+        var onDate = function(){ if(this.value && weekMS) weekMS.setValue(""); loadData(); };
+        if(filterFrom) filterFrom.addEventListener("change", onDate);
+        if(filterTo)   filterTo.addEventListener("change",   onDate);
 
         document.getElementById("clearDatesBtn").addEventListener("click", function(){
             if(filterFrom) filterFrom.value = "";
