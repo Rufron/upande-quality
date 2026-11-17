@@ -14222,24 +14222,12 @@ def submitFlowerQualityAudit():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Vehicle Hygiene Checklist (mobile)
+# Shared sanitation item lookups
 # ─────────────────────────────────────────────────────────────────────────────
-# One record per vehicle inspection. Floors / roof / walls are Data fields on
-# the doctype, filled from the QC-maintained "Packhouse Condition" list — an
-# operator can flag several conditions per surface, joined with ", ".
-
-# Item Group trees the sanitation pickers draw from — shared by the Vehicle
-# Hygiene and Bucket Cleaning screens. Retarget here if QC reorganises the
-# item master.
+# Item Group trees the sanitation pickers draw from — used by the Bucket
+# Cleaning screen. Retarget here if QC reorganises the item master.
 CLEANING_DETERGENT_GROUPS = ["Refreshments and Toiletries", "Consumable"]
 CLEANING_DISINFECTANT_GROUPS = ["Disinfectant"]
-
-VEHICLE_HYGIENE_SURFACES = {
-	"floors_status": "floors",
-	"roof_status": "roof",
-	"walls_status": "walls",
-}
-
 
 def _items_in_group_trees(groups):
 	# Items sit in child groups, so walk the Item Group nested set from each
@@ -14262,105 +14250,11 @@ def _items_in_group_trees(groups):
 	)
 
 
-@frappe.whitelist()
-def fetchVehicleHygieneFormData():
-	# Pickers for the Vehicle Hygiene screen: vehicles, conditions, chemicals.
-	try:
-		vehicles = frappe.get_all(
-			"Vehicle",
-			fields=["name", "license_plate", "make", "model"],
-			order_by="license_plate asc",
-			limit_page_length=0,
-		)
-
-		conditions = [
-			c.get("name")
-			for c in frappe.get_all(
-				"Packhouse Condition",
-				fields=["name"],
-				order_by="name asc",
-				limit_page_length=0,
-			)
-		]
-
-		def as_options(rows):
-			return [{"name": r.get("name"), "item_name": r.get("item_name") or r.get("name")} for r in rows]
-
-		frappe.response["message"] = {
-			"success": True,
-			"vehicles": [
-				{
-					"name": v.get("name"),
-					"license_plate": v.get("license_plate") or v.get("name"),
-					# Shown as the picker's sublabel; blank when unknown.
-					"description": " ".join(
-						x for x in [v.get("make"), v.get("model")] if x and x != "Unknown"
-					),
-				}
-				for v in vehicles
-			],
-			"conditions": conditions,
-			"detergents": as_options(_items_in_group_trees(CLEANING_DETERGENT_GROUPS)),
-			"disinfectants": as_options(_items_in_group_trees(CLEANING_DISINFECTANT_GROUPS)),
-		}
-	except Exception as e:
-		frappe.log_error(str(e), "fetchVehicleHygieneFormData")
-		frappe.response["message"] = {"success": False, "error": str(e)}
-
-
-@frappe.whitelist()
-def submitVehicleHygieneChecklist():
-	# Body: { data: { vehicle, floors: [], roof: [], walls: [],
-	#                 detergent_used, disinfectant_used, remarks } }
-	try:
-		data = frappe.form_dict.get("data")
-		if isinstance(data, str):
-			data = frappe.parse_json(data)
-		if not data:
-			frappe.throw("data is required")
-		if not data.get("vehicle"):
-			frappe.throw("vehicle is required")
-
-		def conditions(key):
-			raw = data.get(key) or []
-			if isinstance(raw, str):
-				raw = frappe.parse_json(raw)
-			picked = []
-			for c in raw:
-				c = (c or "").strip()
-				if c and c not in picked:
-					picked.append(c)
-			return ", ".join(picked)
-
-		statuses = {fn: conditions(key) for fn, key in VEHICLE_HYGIENE_SURFACES.items()}
-		if not any(statuses.values()):
-			frappe.throw("record a condition for at least one surface")
-
-		doc = frappe.new_doc("Vehicle Hygiene Checklist")
-		doc.vehicle = data.get("vehicle")
-		for fieldname, value in statuses.items():
-			setattr(doc, fieldname, value)
-		doc.detergent_used = data.get("detergent_used") or ""
-		doc.disinfectant_used = data.get("disinfectant_used") or ""
-		doc.remarks = data.get("remarks") or ""
-
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		frappe.response["message"] = {
-			"status": "success",
-			"name": doc.name,
-			"message": "Vehicle hygiene check " + doc.name + " saved",
-		}
-	except Exception as e:
-		frappe.log_error("submitVehicleHygieneChecklist error", str(e))
-		frappe.response["message"] = {"status": "error", "message": str(e)}
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Bucket Cleaning Log (mobile)
 # ─────────────────────────────────────────────────────────────────────────────
 # One record per cleaning run: how many buckets, and what was used on them.
-# Chemicals come from the same Item Group trees as the Vehicle Hygiene screen.
+# Chemicals come from the shared sanitation Item Group trees above.
 
 
 @frappe.whitelist()
