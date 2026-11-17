@@ -801,13 +801,13 @@ def createDiscardEntry():
 	# CHECK IF BUCKET IS ALLOCATED TO AN ORDER
 	# ---------------------------------------------------------
 	def is_bucket_allocated(bucket_id):
-		"""True if the bucket currently appears in Bucket Allocation Status (allocated
-		to a sales order). Hard backstop: a discard request is a fetch-time snapshot,
+		"""True if stems of the bucket's current harvest are allocated to an order that still holds it (the
+		shared rule in upande_quality/discard.py). Hard backstop: a discard request is a fetch-time snapshot,
 		so a listed bucket may have been allocated afterwards — never discard it."""
-		allocated = frappe.get_all(
-			"Bucket Allocation Status", filters={"bucket_id": bucket_id}, fields=["name"], limit=1
-		)
-		return len(allocated) > 0
+		from upande_quality.discard import shelf_buckets
+
+		b = shelf_buckets([farm] if farm else None).get(str(bucket_id or "").upper())
+		return bool(b and b.allocated)
 
 	# ---------------------------------------------------------
 	# SET FIELD ONLY IF IT EXISTS ON THE DOCTYPE

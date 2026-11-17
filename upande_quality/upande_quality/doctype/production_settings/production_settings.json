@@ -25,6 +25,7 @@
   "column_break_alloc",
   "hide_allocation_planning_team",
   "hide_allocation_planning_sequence",
+  "show_allocation_shortages",
   "allocation_planning_section",
   "allocation_horizon_days",
   "allocation_planning_col",
@@ -304,6 +305,12 @@
    "label": "Hide the Allocation Planning Team"
   },
   {
+   "default": "0",
+   "fieldname": "show_allocation_shortages",
+   "fieldtype": "Check",
+   "label": "Show Shortages in Sales Allocation"
+  },
+  {
    "fieldname": "production_tab",
    "fieldtype": "Tab Break",
    "label": "Harvesting"
@@ -367,7 +374,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-12 22:59:59.468052",
+ "modified": "2026-11-17 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
