@@ -26,7 +26,6 @@ class ProductionSettings(Document):
 					)
 				)
 
-
 	def _check_discard_age_varieties(self):
 		"""Discard Age by Item Group: each row's varieties, one per line, every one an Item of its item group or a
 		group under it."""
