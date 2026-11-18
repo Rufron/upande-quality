@@ -14229,6 +14229,7 @@ def submitFlowerQualityAudit():
 CLEANING_DETERGENT_GROUPS = ["Refreshments and Toiletries", "Consumable"]
 CLEANING_DISINFECTANT_GROUPS = ["Disinfectant"]
 
+
 def _items_in_group_trees(groups):
 	# Items sit in child groups, so walk the Item Group nested set from each
 	# parent — same approach as the variety lookups above.
