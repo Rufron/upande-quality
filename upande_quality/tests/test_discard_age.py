@@ -53,6 +53,32 @@ class TestResolverOrder(unittest.TestCase):
 	def test_default_when_neither_is_set(self):
 		self.assertEqual(self._resolver(0, {})("V"), 5.0)
 
+	def test_a_row_for_some_varieties_covers_only_them(self):
+		from types import SimpleNamespace
+		from unittest import mock
+
+		rows = [
+			SimpleNamespace(item_group="Spray Roses", discard_age=4, varieties="Odilia\nMirabel"),
+			SimpleNamespace(item_group="Roses", discard_age=7, varieties=""),
+		]
+		ps = SimpleNamespace(discard_age=5, get=lambda k: rows)
+		with (
+			mock.patch.object(frappe, "get_cached_doc", return_value=ps),
+			mock.patch.object(frappe, "get_cached_value", return_value="Roses"),
+			mock.patch.object(frappe.db, "get_value", return_value=0),
+			mock.patch.object(
+				frappe.db, "sql", side_effect=lambda q, *a, **k: [[None]] if "MIN(" in q else [["Roses"]]
+			),
+		):
+			from upande_quality.upande_quality.doctype.production_settings.production_settings import (
+				discard_age_resolver,
+			)
+
+			age = discard_age_resolver()
+			self.assertEqual(age("Odilia"), 4.0)
+			self.assertEqual(age("Mirabel"), 4.0)
+			self.assertEqual(age("Fireworks"), 7.0)
+
 	def test_fallback_skips_the_variety(self):
 		self.assertEqual(self._resolver(3, {"Roses": 7}).fallback("V"), 7.0)
 

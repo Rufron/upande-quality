@@ -1877,8 +1877,10 @@ def createShelvingEntry():
 				"Stock Entry Detail",
 				filters={"parent": ["in", [e.name for e in entries]]},
 				fields=["parent", "item_code", "t_warehouse"],
+				order_by="idx asc",
 			):
-				items.setdefault(r.parent, r.item_code)
+				# a mixed bucket is one receiving with a row per variety
+				items.setdefault(r.parent, []).append(r.item_code)
 				if r.t_warehouse:
 					wh_farm.setdefault(r.parent, r.t_warehouse.split(" ", 1)[0])
 			# an entry with no farm of its own: the farm of the store it received into
@@ -1888,12 +1890,14 @@ def createShelvingEntry():
 				e
 				for e in entries
 				if (not expect["farm"] or e.farm == expect["farm"])
-				and items.get(e.name) == expect["item_code"]
+				and expect["item_code"] in items.get(e.name, [])
 			]
 			if not match:
 				latest = entries[0]
 				result["transfer_mismatch"] = dict(
-					expect, latest_farm=latest.farm or "", latest_item=items.get(latest.name) or ""
+					expect,
+					latest_farm=latest.farm or "",
+					latest_item=", ".join(dict.fromkeys(items.get(latest.name, []))),
 				)
 			entries = match
 
