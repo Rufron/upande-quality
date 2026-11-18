@@ -437,6 +437,9 @@ function loadData(){
 }
 
 function init(){
+  // Refresh re-runs init: carry over a narrowed farm/variety pick instead of resetting to All
+  var prev={};
+  ['msVariety','msFarm'].forEach(function(c){ var i=msInst[c]; if(i&&i.sel.length<i.opts.length) prev[c]=i.sel.slice(); });
   var farms={}, varieties={};
   allData.forEach(function(r){
     if(r.farm) farms[r.farm]=1;
@@ -446,12 +449,15 @@ function init(){
   msSetOpts('msVariety', Object.keys(varieties).sort());
   msCreate('msFarm','All Farms');
   msSetOpts('msFarm', Object.keys(farms).sort());
+  Object.keys(prev).forEach(function(c){ var i=msInst[c]; i.sel=prev[c].filter(function(v){return i.opts.indexOf(v)>=0;}); msRender(c); msValTxt(c); });
   doFilter();
 }
 
 function doFilter(){
-  var selFarms     = msGet('msFarm');
-  var selVarieties = msGet('msVariety');
+  // All ticked = no filter, so rows with a blank farm/variety aren't silently dropped
+  var narrowed=function(c){ var i=msInst[c]; return (i&&i.sel.length<i.opts.length)?i.sel.slice():[]; };
+  var selFarms     = narrowed('msFarm');
+  var selVarieties = narrowed('msVariety');
   var statusFilt = (el('fStatus')||{}).value||'';
   var fromVal = (el('fFrom')||{}).value||'';
   var toVal   = (el('fTo')||{}).value||'';

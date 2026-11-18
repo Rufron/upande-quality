@@ -603,10 +603,16 @@ body{background:var(--bg)!important}
         if (filterFrom) filterFrom.value = today;
         if (filterTo) filterTo.value = today;
 
-        let filterIds = ["filterYear", "filterWeek", "filterFrom", "filterTo"];
-        filterIds.forEach(function(id) {
+        // Year/Week and the date range are alternative period pickers; ANDing a week
+        // with the default "today" range returned nothing, so choosing one clears the other.
+        let clearIds = { filterYear: ["filterFrom", "filterTo"], filterWeek: ["filterFrom", "filterTo"],
+                         filterFrom: ["filterYear", "filterWeek"], filterTo: ["filterYear", "filterWeek"] };
+        Object.keys(clearIds).forEach(function(id) {
             let el = document.getElementById(id);
-            if (el) el.addEventListener("change", function() { loadPivotData(); });
+            if (el) el.addEventListener("change", function() {
+                if (el.value) clearIds[id].forEach(function(o) { let x = document.getElementById(o); if (x) x.value = ""; });
+                loadPivotData();
+            });
         });
         farmMS = createMultiSelect("filterFarm", { placeholder: "All Farms" });
         if (farmMS) farmMS.onChange(function() { loadPivotData(); });

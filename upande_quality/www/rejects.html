@@ -175,6 +175,8 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;heigh
 (function(){
 'use strict';
 var farmMS=null,charts={},_defaultSet=false;
+// Options accumulate across loads (first load is unfiltered): rebuilding them from filtered rows hid every other week/farm
+var years={},weeks={},farmsSet={};
 function el(id){return document.getElementById(id);}
 function createMultiSelect(id,opts){
   var wrap=document.getElementById(id);if(!wrap)return null;
@@ -256,14 +258,13 @@ function processAndRender(frSes,frItems,qrSes,qrItems){
   var frMap={},qrMap={};
   frSes.forEach(function(s){frMap[s.name]=s;});
   qrSes.forEach(function(s){qrMap[s.name]=s;});
-  var years={},weeks={};
   frSes.concat(qrSes).forEach(function(s){if(!s.posting_date)return;years[s.posting_date.substr(0,4)]=1;var iw=getISOWeek(new Date(s.posting_date+'T00:00:00'));weeks[iw.year+'-W'+pad(iw.week)]={y:iw.year,w:iw.week};});
   var cIW=getISOWeek(new Date()),defYr=_defaultSet?el('filterYear').value:String(cIW.year),defWk=_defaultSet?el('filterWeek').value:String(cIW.week);
   fillSel('filterYear',Object.keys(years).sort().reverse(),defYr);
-  var wkArr=Object.values(weeks).sort(function(a,b){return b.y-a.y||b.w-a.w;}).map(function(x){return String(x.w);});
+  var _yr=el('filterYear').value,wkArr=Array.from(new Set(Object.values(weeks).filter(function(x){return !_yr||String(x.y)===_yr;}).sort(function(a,b){return b.y-a.y||b.w-a.w;}).map(function(x){return String(x.w);})));
   fillSel('filterWeek',wkArr,defWk);
   if(!_defaultSet){_defaultSet=true;if(el('filterYear').value||el('filterWeek').value){loadData();return;}}
-  var farmsSet={};frSes.forEach(function(s){if(s.farm)farmsSet[s.farm]=1;});
+  frSes.forEach(function(s){if(s.farm)farmsSet[s.farm]=1;});
   if(farmMS)farmMS.setOptions(Object.keys(farmsSet).sort());
   var byFarm={},byVariety={},byReason={},byWeek={},totalStems=0,frRows=[];
   frItems.forEach(function(it){
