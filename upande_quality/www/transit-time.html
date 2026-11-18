@@ -541,169 +541,6 @@ body{background:var(--bg)!important}
   </div>
 
 
-<script>
-(function(){
-  'use strict';
-
-  var chartInst = null;
-  var chartJsReady = false;
-
-  function pad(n){ return String(n).padStart(2,'0'); }
-  function ds(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-
-  function fmtDur(mins){
-    if(mins==null) return '—';
-    var h=Math.floor(mins/60),m=Math.round(mins%60);
-    return h>0?h+'h '+(m?m+'m':''):m+' min';
-  }
-
-  function loadChartJs(cb){
-    if(chartJsReady){ cb(); return; }
-    var s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';
-    s.onload=function(){ chartJsReady=true; cb(); };
-    s.onerror=function(){ document.getElementById('aphChartHost').innerHTML='<div class="aph-hm-state">Could not load Chart.js.</div>'; };
-    document.head.appendChild(s);
-  }
-
-  function openModal(){
-    document.getElementById('aphHMBg').classList.add('open');
-    document.getElementById('aphHMWrap').classList.add('open');
-    document.body.style.overflow='hidden';
-    loadHarvestChart();
-  }
-
-  function closeModal(){
-    document.getElementById('aphHMBg').classList.remove('open');
-    document.getElementById('aphHMWrap').classList.remove('open');
-    document.body.style.overflow='';
-  }
-
-  function getRange(){
-    var preset=document.getElementById('aphChartPreset').value;
-    var dateVal=document.getElementById('aphChartDate').value;
-    var now=new Date(); var from,to;
-    if(preset==='today'){ from=to=ds(now); }
-    else if(preset==='yesterday'){ var y=new Date(now);y.setDate(now.getDate()-1);from=to=ds(y); }
-    else if(preset==='week'){ var w=new Date(now);w.setDate(now.getDate()-6);from=ds(w);to=ds(now); }
-    else if(preset==='month'){ var m=new Date(now);m.setDate(now.getDate()-29);from=ds(m);to=ds(now); }
-    else if(preset==='this_month'){ var fm=new Date(now.getFullYear(),now.getMonth(),1);from=ds(fm);to=ds(now); }
-    else if(preset==='half_year'){ var hy=new Date(now);hy.setMonth(now.getMonth()-6);from=ds(hy);to=ds(now); }
-    else if(preset==='this_year'){ from=now.getFullYear()+'-01-01';to=ds(now); }
-    else if(preset==='date'&&dateVal){ from=to=dateVal; }
-    else{ from=to=ds(now); }
-    return{from:from,to:to,single:from===to};
-  }
-
-  function fetchBatch(range,start,acc,cb){
-    function tryFetch(){
-      if(!window.frappe||!frappe.call||!frappe.csrf_token){ setTimeout(tryFetch,120); return; }
-      frappe.call({
-        method:'frappe.client.get_list',
-        args:{
-          doctype:'Stock Entry',
-          fields:['custom_greenhouse','posting_date','creation','custom_farm'],
-          filters:[
-            ['stock_entry_type','=','Harvesting'],
-            ['posting_date','>=',range.from],
-            ['posting_date','<=',range.to]
-          ],
-          limit:5000,
-          limit_start:start,
-          order_by:'posting_date asc, posting_time asc'
-        },
-        callback:function(r){
-          var batch=r&&r.message?r.message:[];
-          var combined=acc.concat(batch);
-          if(batch.length===5000&&combined.length<50000){
-            var host=document.getElementById('aphChartHost');
-            if(host&&host.querySelector){
-              var el=host.querySelector('.aph-hm-state div:last-child');
-              if(el) el.textContent='Fetched '+combined.length.toLocaleString()+' records…';
-            }
-            fetchBatch(range,start+5000,combined,cb);
-          } else { cb(combined); }
-        },
-        error:function(){ cb(acc); }
-      });
-    }
-    setTimeout(tryFetch,40);
-  }
-
-  function loadHarvestChart(){
-    var host=document.getElementById('aphChartHost');
-    host.innerHTML='<div class="aph-hm-state"><div class="aph-hm-spinner"></div><div>Fetching harvest records…</div></div>';
-    document.getElementById('aphChartStamp').textContent='';
-    var range=getRange();
-    fetchBatch(range,0,[],function(records){ processRecords(records,range); });
-  }
-
-  function processRecords(records,range){
-    var host=document.getElementById('aphChartHost');
-    if(!records.length){ host.innerHTML='<div class="aph-hm-state">No harvesting records for this period.</div>'; return; }
-    var groups={};
-    records.forEach(function(r){
-      var gh=r.custom_greenhouse||'Unknown';
-      var day=String(r.posting_date).substr(0,10);
-      var key=gh+'||'+day;
-      if(!groups[key]) groups[key]={gh:gh,day:day,minT:Infinity,maxT:-Infinity,count:0};
-      var ts=new Date((r.creation||'').replace(' ','T').substr(0,19)).getTime();
-      if(ts<groups[key].minT) groups[key].minT=ts;
-      if(ts>groups[key].maxT) groups[key].maxT=ts;
-      groups[key].count++;
-    });
-    var agg={};
-    Object.keys(groups).forEach(function(k){
-      var g=groups[k];
-      var dur=(g.minT===Infinity||g.maxT===g.minT)?0:(g.maxT-g.minT)/60000;
-      if(!agg[g.gh]) agg[g.gh]={sum:0,days:0,buckets:0};
-      agg[g.gh].sum+=dur; agg[g.gh].days+=1; agg[g.gh].buckets+=g.count;
-    });
-    var entries=Object.keys(agg).map(function(gh){
-      var d=agg[gh];
-      return{gh:gh,avgMin:d.days?d.sum/d.days:0,buckets:d.buckets,days:d.days};
-    }).filter(function(e){ return e.avgMin>0; }).sort(function(a,b){ return b.avgMin-a.avgMin; });
-    if(!entries.length){ host.innerHTML='<div class="aph-hm-state">All greenhouses had only one bucket per day — no duration to compute.</div>'; return; }
-    var labels=entries.map(function(e){ return e.gh.replace(/ - KR$/,'').replace(/ - TL$/,'').replace(/^Kapkolia /i,'').replace(/^Simotwo /i,'Sim ').replace(/^Torongo /i,'Tor ').replace(/^Kangundo /i,'Kng '); });
-    var values=entries.map(function(e){ return Math.round(e.avgMin); });
-    var maxVal=values[0]||1;
-    var bgColors=values.map(function(v){ return 'rgba(0,0,0,'+(0.15+(v/maxVal)*0.75).toFixed(3)+')'; });
-    var borderColors=values.map(function(v){ return 'rgba(0,0,0,'+(0.3+(v/maxVal)*0.65).toFixed(3)+')'; });
-    var multiDay=!range.single;
-    loadChartJs(function(){
-      host.innerHTML='<canvas id="aphHarvestCanvas"></canvas>';
-      if(chartInst){ chartInst.destroy(); chartInst=null; }
-      var ctx=document.getElementById('aphHarvestCanvas').getContext('2d');
-      chartInst=new Chart(ctx,{
-        type:'bar',
-        data:{labels:labels,datasets:[{label:multiDay?'Avg daily harvest duration (min)':'Harvest duration (min)',data:values,backgroundColor:bgColors,borderColor:borderColors,borderWidth:1,borderRadius:4,borderSkipped:false}]},
-        options:{responsive:true,animation:{duration:300},
-          plugins:{legend:{display:false},tooltip:{callbacks:{
-            title:function(items){ return entries[items[0].dataIndex].gh; },
-            label:function(item){ var mins=item.parsed.y,e=entries[item.dataIndex]; var lines=['  Duration: '+fmtDur(mins),'  Total entries: '+e.buckets.toLocaleString()]; if(multiDay) lines.push('  Days with data: '+e.days); return lines; }
-          }}},
-          scales:{
-            x:{grid:{display:false},ticks:{maxRotation:45,minRotation:30,font:{size:11},color:'#9a9a9a'},title:{display:true,text:'Greenhouse',font:{size:11,weight:'600'},color:'#9a9a9a',padding:{top:8}}},
-            y:{beginAtZero:true,grid:{color:'rgba(0,0,0,0.04)'},title:{display:true,text:multiDay?'Avg duration / day (min)':'Duration (minutes)',font:{size:11,weight:'600'},color:'#9a9a9a'},
-              ticks:{color:'#9a9a9a',font:{size:11},callback:function(v){ if(v>=60){ var h=Math.floor(v/60),m=v%60; return h+'h'+(m?' '+m+'m':''); } return v+'m'; }}}
-          }
-        }
-      });
-      var now=new Date();
-      document.getElementById('aphChartStamp').textContent='Updated '+pad(now.getHours())+':'+pad(now.getMinutes())+' \xB7 '+records.length.toLocaleString()+' entries \xB7 '+entries.length+' greenhouse'+(entries.length!==1?'s':'');
-    });
-  }
-
-  document.getElementById('aphOpenHChart').addEventListener('click',openModal);
-  document.getElementById('aphHMBg').addEventListener('click',closeModal);
-  document.getElementById('aphCloseHChart').addEventListener('click',closeModal);
-  document.getElementById('aphChartPreset').addEventListener('change',function(){ var d=document.getElementById('aphChartDate'); d.style.display=this.value==='date'?'inline-block':'none'; if(this.value!=='date') loadHarvestChart(); });
-  document.getElementById('aphChartDate').addEventListener('change',loadHarvestChart);
-  document.getElementById('aphChartRefresh').addEventListener('click',loadHarvestChart);
-  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeModal(); });
-
-})();
-</script>
 
 
 <style>
@@ -1134,21 +971,25 @@ function renderTab(idx,filtered){
          BLUE  = quarantine dwell (quarantine_minutes)
          RED   = receive→shelf (dwell_minutes) */
       var farmT={},farmD={},farmQ={};
+      var ghOk=function(r){return !_ghF||r.greenhouse===_ghF;};
       (dashData.serverTransit||[]).forEach(function(r){
+        if(!ghOk(r))return;
         farmT[r.farm]=farmT[r.farm]||[];
         if(r.transit_minutes>=0)farmT[r.farm].push(r.transit_minutes);
       });
       (dashData.serverDwell||[]).forEach(function(r){
+        if(!ghOk(r))return;
         farmD[r.farm]=farmD[r.farm]||[];
         if(r.dwell_minutes>=0)farmD[r.farm].push(r.dwell_minutes);
       });
       (dashData.serverQuarantine||[]).forEach(function(r){
+        if(!ghOk(r))return;
         farmQ[r.farm]=farmQ[r.farm]||[];
         if(r.quarantine_minutes>=0)farmQ[r.farm].push(r.quarantine_minutes);
       });
       /* Use serverTimeline to define the full farm list (covers all 6 farms) */
       var bFarmSet={};
-      (dashData.serverTimeline||[]).forEach(function(r){if(r.farm)bFarmSet[r.farm]=1;});
+      (dashData.serverTimeline||[]).forEach(function(r){if(r.farm&&ghOk(r))bFarmSet[r.farm]=1;});
       var bFarms=Object.keys(bFarmSet).sort();
       if(_farmF)bFarms=bFarms.filter(function(f){return f===_farmF;});
       var wavg=function(arr){
@@ -1206,7 +1047,8 @@ function renderTab(idx,filtered){
           borderColor:'#ffffff',
           borderWidth:0.8,
           borderRadius:2,
-          borderSkipped:false
+          borderSkipped:false,
+          skipNull:true
         };
       });
       chartInsts[idx]=new Chart(ctx,{
@@ -1228,10 +1070,10 @@ function renderTab(idx,filtered){
             }
           },
           scales:{
-            x:{stacked:true,grid:{display:false},
+            x:{stacked:false,grid:{display:false},
               ticks:{maxRotation:45,minRotation:30,font:{size:11},color:'#9a9a9a'},
               title:{display:true,text:'Farm',font:{size:11,weight:'600'},color:'#9a9a9a',padding:{top:6}}},
-            y:{stacked:true,beginAtZero:true,grid:{color:'rgba(0,0,0,0.04)'},
+            y:{stacked:false,beginAtZero:true,grid:{color:'rgba(0,0,0,0.04)'},
               title:{display:true,text:'Duration (min)',font:{size:11,weight:'600'},color:'#9a9a9a'},
               ticks:{color:'#9a9a9a',font:{size:11},callback:function(v){
                 if(v>=60){var h=Math.floor(v/60),m=v%60;return h+'h'+(m?' '+m+'m':'');}
@@ -1436,8 +1278,8 @@ function renderPivot(data){
   loadPivotLib(function(){
     pivotArea.innerHTML = '';
     var opts = {
-      rows: ['farm'],
-      cols: ['week'],
+      rows: ['Farm'],
+      cols: ['Week'],
       aggregatorName: 'Count',
       rendererName: 'Table'
     };
@@ -1473,16 +1315,18 @@ function populateFilters(opts){
       if(!v) return;
       var o = document.createElement('option');
       o.value = v; o.textContent = v;
-      if(v === currentVal) o.selected = true;
+      if(String(v) === currentVal) o.selected = true;
       sel.appendChild(o);
     });
   }
+  // setOptions drops selections missing from the list, so never feed it an empty one
+  function ms(m, values){ if(m && values && values.length) m.setOptions(values); }
   var f = getFilters();
-  fill('filterYear',    opts.year      || [], f.year);
-  if (farmMS) farmMS.setOptions(opts.farm || []);
-  fill('filterWeek',    opts.week      || [], f.week);
-  if (varietyMS) varietyMS.setOptions(opts.variety || []);
-  if (ghMS) ghMS.setOptions(opts.greenhouse || []);
+  fill('filterYear',    opts.years     || [], f.year);
+  ms(farmMS,    opts.farms);
+  fill('filterWeek',    opts.weeks     || [], f.week);
+  ms(varietyMS, opts.varieties);
+  ms(ghMS,      opts.greenhouses);
 }
 
 function bootApp(){
@@ -1490,9 +1334,20 @@ function bootApp(){
   document.getElementById('filterFrom').value = today;
   document.getElementById('filterTo').value   = today;
 
-  var filterIds = ['filterYear','filterWeek','filterFrom','filterTo'];
-  filterIds.forEach(function(id){
-    document.getElementById(id).addEventListener('change', function(){ loadPivotData(); });
+  // Year/Week and the date range are alternative period pickers; ANDing a week
+  // with the default "today" range returned nothing, so choosing one clears the other.
+  function setVals(ids, v){ ids.forEach(function(i){ document.getElementById(i).value = v; }); }
+  ['filterYear','filterWeek'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', function(){
+      if(this.value) setVals(['filterFrom','filterTo'], '');
+      loadPivotData();
+    });
+  });
+  ['filterFrom','filterTo'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', function(){
+      if(this.value) setVals(['filterYear','filterWeek'], '');
+      loadPivotData();
+    });
   });
 
   farmMS = createMultiSelect('filterFarm', { placeholder: 'All Farms' });
@@ -1505,6 +1360,7 @@ function bootApp(){
   document.getElementById('clearDatesBtn').addEventListener('click', function(){
     document.getElementById('filterFrom').value = '';
     document.getElementById('filterTo').value   = '';
+    loadPivotData();
   });
 
   document.getElementById('resetPivotBtn').addEventListener('click', function(){

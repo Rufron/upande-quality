@@ -14222,23 +14222,12 @@ def submitFlowerQualityAudit():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Vehicle Hygiene Checklist (mobile)
+# Shared sanitation item lookups
 # ─────────────────────────────────────────────────────────────────────────────
-# One record per vehicle inspection. Floors / roof / walls are Data fields on
-# the doctype, filled from the QC-maintained "Packhouse Condition" list — an
-# operator can flag several conditions per surface, joined with ", ".
-
-# Item Group trees the sanitation pickers draw from — shared by the Vehicle
-# Hygiene and Bucket Cleaning screens. Retarget here if QC reorganises the
-# item master.
+# Item Group trees the sanitation pickers draw from — used by the Vehicle
+# Hygiene and Bucket Cleaning screens. Retarget here if QC reorganises the item master.
 CLEANING_DETERGENT_GROUPS = ["Refreshments and Toiletries", "Consumable"]
 CLEANING_DISINFECTANT_GROUPS = ["Disinfectant"]
-
-VEHICLE_HYGIENE_SURFACES = {
-	"floors_status": "floors",
-	"roof_status": "roof",
-	"walls_status": "walls",
-}
 
 
 def _items_in_group_trees(groups):
@@ -14260,6 +14249,20 @@ def _items_in_group_trees(groups):
 		tuple(groups),
 		as_dict=1,
 	)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Vehicle Hygiene (mobile) -> Vehicle Inspection
+# ─────────────────────────────────────────────────────────────────────────────
+# One Vehicle Inspection per check. The app flags conditions per surface from
+# the QC-maintained "Packhouse Condition" list (several per surface, joined
+# with ", ").
+
+VEHICLE_HYGIENE_SURFACES = {
+	"Floors": "floors",
+	"Roof": "roof",
+	"Walls": "walls",
+}
 
 
 @frappe.whitelist()
@@ -14310,8 +14313,9 @@ def fetchVehicleHygieneFormData():
 
 @frappe.whitelist()
 def submitVehicleHygieneChecklist():
-	# Body: { data: { vehicle, floors: [], roof: [], walls: [],
-	#                 detergent_used, disinfectant_used, remarks } }
+	# Body: { data: { vehicle, floors: [], roof: [], walls: [], remarks } }
+	# The app also sends detergent_used / disinfectant_used; Vehicle Inspection
+	# has no fields for them, so they are not stored.
 	try:
 		data = frappe.form_dict.get("data")
 		if isinstance(data, str):
@@ -14332,24 +14336,28 @@ def submitVehicleHygieneChecklist():
 					picked.append(c)
 			return ", ".join(picked)
 
-		statuses = {fn: conditions(key) for fn, key in VEHICLE_HYGIENE_SURFACES.items()}
+		statuses = {label: conditions(key) for label, key in VEHICLE_HYGIENE_SURFACES.items()}
 		if not any(statuses.values()):
 			frappe.throw("record a condition for at least one surface")
 
-		doc = frappe.new_doc("Vehicle Hygiene Checklist")
+		# Packhouse Conditions carry no OK/Defective meaning, so they go into
+		# defect_notes rather than being guessed into the per-surface selects.
+		notes = [label + ": " + value for label, value in statuses.items() if value]
+		if data.get("remarks"):
+			notes.append("Remarks: " + data.get("remarks"))
+
+		doc = frappe.new_doc("Vehicle Inspection")
 		doc.vehicle = data.get("vehicle")
-		for fieldname, value in statuses.items():
-			setattr(doc, fieldname, value)
-		doc.detergent_used = data.get("detergent_used") or ""
-		doc.disinfectant_used = data.get("disinfectant_used") or ""
-		doc.remarks = data.get("remarks") or ""
+		doc.inspection_datetime = frappe.utils.now_datetime()
+		doc.inspected_by = frappe.session.user
+		doc.defect_notes = "\n".join(notes)
 
 		doc.insert(ignore_permissions=True)
 		frappe.db.commit()
 		frappe.response["message"] = {
 			"status": "success",
 			"name": doc.name,
-			"message": "Vehicle hygiene check " + doc.name + " saved",
+			"message": "Vehicle inspection " + doc.name + " saved",
 		}
 	except Exception as e:
 		frappe.log_error("submitVehicleHygieneChecklist error", str(e))
@@ -14360,7 +14368,7 @@ def submitVehicleHygieneChecklist():
 # Bucket Cleaning Log (mobile)
 # ─────────────────────────────────────────────────────────────────────────────
 # One record per cleaning run: how many buckets, and what was used on them.
-# Chemicals come from the same Item Group trees as the Vehicle Hygiene screen.
+# Chemicals come from the shared sanitation Item Group trees above.
 
 
 @frappe.whitelist()

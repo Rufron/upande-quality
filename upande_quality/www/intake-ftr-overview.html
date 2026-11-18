@@ -612,6 +612,8 @@ body{background:var(--bg)!important}
         });
 
         periodMS = createPeriodSelect("filterPeriod", { placeholder: "All" });
+        /* Default to the current week once; after this the user's choice (incl. All) sticks */
+        if (periodMS) { periodMS.setYear(String(new Date().getFullYear())); periodMS.setWeek(String(defaultWeek)); }
         if (periodMS) periodMS.onChange(() => {
             selectedIssue = null;
             /* Week selected → clear date range so it doesn't conflict */
@@ -880,12 +882,10 @@ body{background:var(--bg)!important}
     function populateFilters(opts) {
         if (farmMS) farmMS.setOptions(opts.farms || []);
         if (periodMS) {
-            periodMS.setYears(opts.years || []);
-            periodMS.setWeeks(opts.weeks || []);
-            /* Pre-select current ISO week if user hasn't picked something else */
-            var _from = document.getElementById("filterFrom"), _to = document.getElementById("filterTo");
-            var _hasDateRange = (_from && _from.value) || (_to && _to.value);
-            if (!periodMS.getWeek() && !_hasDateRange && (opts.weeks || []).length) periodMS.setWeek(String(Math.max(...(opts.weeks || []))));
+            /* Keep the active year/week in the lists even with no data, or setYears/setWeeks would silently drop them */
+            var withSel = (arr, csv) => Array.from(new Set((arr || []).map(String).concat(csv ? csv.split(",") : [])));
+            periodMS.setYears(withSel(opts.years, periodMS.getYear()));
+            periodMS.setWeeks(withSel(opts.weeks, periodMS.getWeek()).sort((a, b) => a - b));
         }
         if (varietyMS) varietyMS.setOptions(opts.varieties || []);
         if (ghMS) ghMS.setOptions(opts.greenhouses || []);
