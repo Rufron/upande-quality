@@ -45,7 +45,10 @@ function pick_discard_varieties(frm, cdt, cdn) {
 						columns: 3,
 						select_all: 1,
 						options: items.map((i) => ({
-							label: i.item_name && i.item_name !== i.name ? `${i.name} (${i.item_name})` : i.name,
+							label:
+								i.item_name && i.item_name !== i.name
+									? `${i.name} (${i.item_name})`
+									: i.name,
 							value: i.name,
 							checked: have.includes(i.name) ? 1 : 0,
 						})),
@@ -66,7 +69,9 @@ function pick_discard_varieties(frm, cdt, cdn) {
 
 frappe.ui.form.on("Production Settings", {
 	refresh(frm) {
-		const grid = frm.fields_dict.discard_age_by_item_group && frm.fields_dict.discard_age_by_item_group.grid;
+		const grid =
+			frm.fields_dict.discard_age_by_item_group &&
+			frm.fields_dict.discard_age_by_item_group.grid;
 		if (!grid || grid.wrapper.data("variety-click")) return;
 		grid.wrapper.data("variety-click", 1);
 		// the Varieties cell itself opens the list: no row form, no button
