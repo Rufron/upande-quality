@@ -42,6 +42,8 @@
   "allow_pack_out_of_sequence",
   "scheduling_section",
   "takt_time",
+  "dispatch_invoicing_section",
+  "auto_invoice_on_delivery_note",
   "remote_transfers_tab",
   "sales_farms",
   "column_break_jthd",
@@ -189,6 +191,18 @@
    "fieldname": "takt_time",
    "fieldtype": "Float",
    "label": "Takt Time (Minutes per Box)"
+  },
+  {
+   "fieldname": "dispatch_invoicing_section",
+   "fieldtype": "Section Break",
+   "label": "Dispatch and Invoicing"
+  },
+  {
+   "default": "0",
+   "description": "When ticked, submitting a Roses Delivery Note creates its Sales Invoice (draft) automatically, one per Delivery Note. When unticked, no invoice is created on submit: select the submitted Delivery Notes you want billed together and create the invoice from them (Sales Invoice > Get Items From > Delivery Note).",
+   "fieldname": "auto_invoice_on_delivery_note",
+   "fieldtype": "Check",
+   "label": "Create Sales Invoice When a Delivery Note Is Submitted"
   },
   {
    "fieldname": "remote_transfers_tab",
