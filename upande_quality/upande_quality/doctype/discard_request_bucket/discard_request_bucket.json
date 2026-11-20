@@ -22,7 +22,15 @@
   "variety",
   "stem_qty",
   "stem_length",
-  "harvest_date"
+  "harvest_date",
+  "grade_b_section",
+  "in_grade_b",
+  "ready_for_discard",
+  "grade_b_moved_on",
+  "grade_b_qty",
+  "grade_b_col",
+  "grade_b_warehouse",
+  "grade_b_entry"
  ],
  "fields": [
   {
@@ -36,15 +44,17 @@
   {
    "bold": 1,
    "fieldname": "farm",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Farm"
+   "label": "Farm",
+   "options": "Farm"
   },
   {
    "fieldname": "greenhouse",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Greenhouse"
+   "label": "Greenhouse",
+   "options": "Warehouse"
   },
   {
    "fieldname": "col1",
@@ -52,18 +62,20 @@
   },
   {
    "fieldname": "bucket_id",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Bucket ID",
    "reqd": 1,
-   "search_index": 1
+   "search_index": 1,
+   "options": "Bucket QR Code"
   },
   {
    "description": "Blank = not shelved",
    "fieldname": "shelf",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Shelf"
+   "label": "Shelf",
+   "options": "Shelf"
   },
   {
    "default": "0",
@@ -104,9 +116,10 @@
   },
   {
    "fieldname": "variety",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Variety"
+   "label": "Variety",
+   "options": "Item"
   },
   {
    "fieldname": "stem_qty",
@@ -123,13 +136,68 @@
    "fieldname": "harvest_date",
    "fieldtype": "Datetime",
    "label": "Date Added to Shelf"
+  },
+  {
+   "fieldname": "grade_b_section",
+   "fieldtype": "Section Break",
+   "label": "Grade B",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "grade_b_moved_on",
+   "fieldtype": "Datetime",
+   "label": "Moved to Grade B",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "grade_b_qty",
+   "fieldtype": "Int",
+   "label": "Stems in Grade B",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "grade_b_col",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "grade_b_warehouse",
+   "fieldtype": "Link",
+   "label": "Grade B Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grade_b_entry",
+   "fieldtype": "Link",
+   "label": "Grade B Stock Entry",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "in_grade_b",
+   "fieldtype": "Check",
+   "label": "In Grade B warehouse",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Stems were moved to the farm's Grade B warehouse on approval and have not been discarded yet."
+  },
+  {
+   "fieldname": "ready_for_discard",
+   "fieldtype": "Check",
+   "label": "Ready for discard",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Can be discarded now: not discarded yet, and not in Grade B or past the Grade B Discard Age."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-11-12 10:00:00.000000",
+ "modified": "2026-11-21 00:10:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Discard Request Bucket",

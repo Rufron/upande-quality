@@ -22,10 +22,12 @@ SEED_MOBILE_APPS = (
 
 def after_install():
 	ensure_mobile_apps()
+	ensure_grade_b_type()
 
 
 def after_migrate():
 	ensure_mobile_apps()
+	ensure_grade_b_type()
 
 
 def ensure_mobile_apps():
@@ -38,3 +40,9 @@ def ensure_mobile_apps():
 		frappe.get_doc(
 			{"doctype": "Mobile App", "enabled": 1, "platform": "android", "dormant_days": 7, **app}
 		).insert(ignore_permissions=True)
+
+
+def ensure_grade_b_type():
+	from upande_quality.grade_b import ensure_entry_type
+
+	ensure_entry_type()

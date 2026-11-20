@@ -48,7 +48,7 @@ def auto_discard_request():
 			by_farm.setdefault(farm, []).append(
 				{
 					"bucket_id": b.bucket_id,
-					"farm": farm,
+					"farm": b.farm,  # a Link: a shelf with no farm leaves it blank, not "Unknown"
 					"greenhouse": b.greenhouse,
 					"shelf": b.shelf,
 					"is_shelved": 1,

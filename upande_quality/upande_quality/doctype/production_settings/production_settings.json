@@ -11,6 +11,7 @@
   "sales_section",
   "amber_time",
   "discard_age",
+  "grade_b_discard_age",
   "column_break_segn",
   "max_shelving_age",
   "inactive_bucket_days",
@@ -85,6 +86,13 @@
    "fieldname": "discard_age",
    "fieldtype": "Float",
    "label": "Discard Age"
+  },
+  {
+   "fieldname": "grade_b_discard_age",
+   "fieldtype": "Int",
+   "label": "Grade B Discard Age",
+   "description": "Required. Number of days stems stay in the farm's Grade B warehouse after a Discard Request is approved, before the bucket shows in the quality app to be discarded. Enter 0 for no waiting. Discard Requests cannot be approved until this is filled in.",
+   "reqd": 1
   },
   {
    "fieldname": "max_shelving_age",
@@ -381,7 +389,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-18 22:00:00.000000",
+ "modified": "2026-11-21 00:30:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",

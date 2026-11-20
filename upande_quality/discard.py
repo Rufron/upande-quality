@@ -180,7 +180,7 @@ def todays_requests(farm=None):
 def listed_today():
 	"""Upper-case ids of buckets already on a request made today (draft or submitted, not cancelled or rejected),
 	so running the nightly job or Fetch Buckets again the same day does not list a bucket twice."""
-	return {
+	listed = {
 		str(r[0]).upper()
 		for r in frappe.db.sql(
 			"""SELECT b.bucket_id FROM `tabDiscard Request Bucket` b
@@ -190,3 +190,13 @@ def listed_today():
 			nowdate(),
 		)
 	}
+	# Buckets whose stems are in the Grade B warehouse waiting to be discarded are already on an approved request.
+	listed |= {
+		str(r[0]).upper()
+		for r in frappe.db.sql(
+			"""SELECT bucket_id FROM `tabDiscard Request Bucket`
+			WHERE parenttype = 'Discard Request' AND docstatus = 1 AND IFNULL(discarded, 0) = 0
+			  AND IFNULL(grade_b_entry, '') != '' AND bucket_id > ''"""
+		)
+	}
+	return listed

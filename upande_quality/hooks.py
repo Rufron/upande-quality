@@ -196,6 +196,7 @@ after_migrate = "upande_quality.install.after_migrate"
 
 # DocType-event Server Scripts ported from kaitet-group live (see transfer_events.py).
 doc_events = {
+	"Discard Request": {"on_submit": "upande_quality.grade_b.move_to_grade_b"},
 	"Farm Distance": {"before_save": "upande_quality.transfer_events.compute_farm_distance_via_farms"},
 	"Stock Entry": {"on_submit": "upande_quality.transfer_events.material_transfer_transit_notification"},
 }
@@ -206,6 +207,7 @@ doc_events = {
 scheduler_events = {
 	"cron": {
 		"0 0 * * *": ["upande_quality.tasks.auto_discard_request"],
+		"5 0 * * *": ["upande_quality.grade_b.refresh_flags"],
 		# Latest published OTA / APK of every enabled Mobile App, for the
 		# Mobile App Installs register (who is behind, and what to update to).
 		"0 * * * *": ["upande_quality.mobile.mobile_app.refresh_latest"],
