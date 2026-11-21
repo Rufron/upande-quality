@@ -12,8 +12,8 @@ import re
 import frappe
 from frappe import _
 
-from upande_quality.discard import shelf_buckets, todays_requests
 from upande_quality import grade_b
+from upande_quality.discard import shelf_buckets, todays_requests
 from upande_quality.upande_quality.doctype.production_settings.production_settings import (
 	discard_age_for,
 	discard_age_resolver,

@@ -138,8 +138,15 @@ def _move_bucket(row, company, farm):
 	se.set_posting_time = 1
 	se.from_warehouse = source
 	se.to_warehouse = target
-	for f in ("farm", "business_unit", "custom_business_unit", "custom_greenhouse", "custom_bucket_id",
-			"custom_stem_length", "custom_harvest_date"):
+	for f in (
+		"farm",
+		"business_unit",
+		"custom_business_unit",
+		"custom_greenhouse",
+		"custom_bucket_id",
+		"custom_stem_length",
+		"custom_harvest_date",
+	):
 		if se.meta.has_field(f) and receiving.get(f) is not None:
 			se.set(f, receiving.get(f))
 	line = se.append("items", {})
@@ -224,5 +231,8 @@ def refresh_flags():
 		g, ready = grade_b_flags(r)
 		if (cint(r.in_grade_b), cint(r.ready_for_discard)) != (g, ready):
 			frappe.db.set_value(
-				"Discard Request Bucket", r.name, {"in_grade_b": g, "ready_for_discard": ready}, update_modified=False
+				"Discard Request Bucket",
+				r.name,
+				{"in_grade_b": g, "ready_for_discard": ready},
+				update_modified=False,
 			)
