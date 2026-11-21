@@ -13,6 +13,7 @@ import frappe
 from frappe import _
 
 from upande_quality.discard import shelf_buckets, todays_requests
+from upande_quality import grade_b
 from upande_quality.upande_quality.doctype.production_settings.production_settings import (
 	discard_age_for,
 	discard_age_resolver,
@@ -862,7 +863,11 @@ def createDiscardEntry():
 			)
 
 			# Set warehouses
-			discard_entry.from_warehouse = recv_item.t_warehouse  # Taking from receiving warehouse
+			# Stems moved to Grade B on approval are discarded out of the Grade B warehouse.
+			gb = result.get("grade_b")
+			source_wh = gb.grade_b_warehouse if gb else recv_item.t_warehouse
+			discard_qty = gb.grade_b_qty if gb else recv_item.qty
+			discard_entry.from_warehouse = source_wh  # Taking from receiving (or Grade B) warehouse
 			discard_entry.to_warehouse = "Rejects - KR"
 
 			# Add item to discard entry
@@ -871,11 +876,11 @@ def createDiscardEntry():
 			discard_item.item_name = recv_item.item_name
 			discard_item.description = recv_item.description
 			discard_item.item_group = recv_item.item_group
-			discard_item.qty = recv_item.qty
+			discard_item.qty = discard_qty
 			discard_item.uom = recv_item.uom
 			discard_item.stock_uom = recv_item.stock_uom
 			discard_item.conversion_factor = recv_item.conversion_factor
-			discard_item.s_warehouse = recv_item.t_warehouse  # From receiving warehouse
+			discard_item.s_warehouse = source_wh  # From receiving (or Grade B) warehouse
 			discard_item.expense_account = recv_item.expense_account
 			discard_item.cost_center = recv_item.cost_center
 			discard_item.allow_zero_valuation_rate = 1
@@ -942,11 +947,20 @@ def createDiscardEntry():
 			)
 			for row in rows:
 				frappe.db.set_value(
-					"Discard Request Bucket", row["name"], "discarded", 1, update_modified=False
+					"Discard Request Bucket",
+					row["name"],
+					{"discarded": 1, "in_grade_b": 0, "ready_for_discard": 0},
+					update_modified=False,
 				)
 		except Exception as e:
 			frappe.log_error(f"Error marking discarded on requests: {e!s}", "Discard Flag Error")
 			# Don't raise - flagging is not critical to the discard itself
+
+	def _grade_b_hold(bucket_id, result):
+		"""Record the bucket's Grade B move in result; True while it is not yet due."""
+		result["grade_b"] = grade_b.grade_b_row(bucket_id)
+		gb = result["grade_b"]
+		return bool(gb and not grade_b.is_due(gb.grade_b_moved_on))
 
 	# ---------------------------------------------------------
 	# MAIN EXECUTION BLOCK
@@ -1019,6 +1033,15 @@ def createDiscardEntry():
 							"payload": {"bucket_id": bucket_id},
 						}
 					# Allocation check — bypassed for approved discard-list buckets.
+					# Grade B hold: stems sit in Grade B until the Grade B Discard Age has passed.
+					elif _grade_b_hold(bucket_id, result):
+						gb = result["grade_b"]
+						frappe.response["data"] = {
+							"status": "failed",
+							"reason": "grade_b_not_due",
+							"message": f"Bucket {bucket_id} is in Grade B until {grade_b.due_on(gb.grade_b_moved_on)}.",
+							"payload": {"bucket_id": bucket_id},
+						}
 					elif (not bypass) and is_bucket_in_todays_opl(bucket_id):
 						frappe.response["data"] = {
 							"status": "failed",
@@ -4617,6 +4640,8 @@ def _discard_request_groups(farm, requests):
 			"greenhouse",
 			"stem_length",
 			"parent",
+			"discarded",
+			"grade_b_moved_on",
 		],
 		order_by="idx asc",
 		limit_page_length=0,
@@ -4681,6 +4706,9 @@ def _discard_request_groups(farm, requests):
 			)
 		elif not b:
 			item["blocked_reason"] = "Not on a shelf at this farm (moved or issued)"
+		elif r.grade_b_moved_on and not r.discarded and not grade_b.is_due(r.grade_b_moved_on):
+			# stems sit in the farm's Grade B warehouse until Production Settings > Grade B Discard Age has passed
+			item["blocked_reason"] = "In Grade B until " + str(grade_b.due_on(r.grade_b_moved_on))
 		elif b.allocated:
 			item["blocked_reason"] = "Allocated to an order"
 		elif not b.discardable:
