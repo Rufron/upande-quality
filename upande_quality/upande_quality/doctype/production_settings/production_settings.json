@@ -32,6 +32,8 @@
   "allocation_planning_col",
   "allocation_conversion_minutes",
   "allocation_use_first_alert_stems",
+  "unplanned_orders_section",
+  "unplanned_orders_by_sales_farm",
   "packhouse_tab",
   "issuing_packing_section",
   "allow_partial_packing",
@@ -312,6 +314,17 @@
    "label": "Show Shortages in Sales Allocation"
   },
   {
+   "fieldname": "unplanned_orders_section",
+   "fieldtype": "Section Break",
+   "label": "Unplanned Orders"
+  },
+  {
+   "fieldname": "unplanned_orders_by_sales_farm",
+   "fieldtype": "Table",
+   "label": "Show Unplanned Orders in Sales Allocation",
+   "options": "Sales Allocation Unplanned Orders"
+  },
+  {
    "default": "0",
    "fieldname": "bypass_cut_stage_by_default",
    "fieldtype": "Check",
@@ -381,7 +394,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-18 22:00:00.000000",
+ "modified": "2026-11-21 22:30:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
