@@ -1775,12 +1775,11 @@ def createShelvingEntry():
 			if shelf_doc and shelf_doc.items:
 				for item in shelf_doc.items:
 					if item.bucket_id.lower() == bucket_id.lower():
+						# already on THIS shelf: refused, saying so (a bucket on ANOTHER shelf moves, below)
 						result["passed"] = False
 						result["reason"] = validation_rule[3][0]
-						result["message"] = validation_rule[3][1]
-						frappe.log_error(
-							"Duplicate Entry Validation Failed",
-							f"Bucket {bucket_id} already exists on shelf {shelf_id}. Data: {data}",
+						result["message"] = "The bucket is already shelved on this shelf ({0}).".format(
+							shelf_id
 						)
 
 			# duplicate_entry - CHECK ALL OTHER SHELVES
@@ -1806,37 +1805,8 @@ def createShelvingEntry():
 				)
 
 				if other_shelves:
-					transfer_rows = []
-					if frappe.get_meta("Pick List Item").get_field("bucket"):
-						transfer_rows = frappe.db.sql(
-							"""
-                        SELECT pli.name
-                        FROM `tabPick List Item` pli
-                        JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus < 2
-                        WHERE pli.parenttype = 'Order Pick List'
-                          AND pli.bucket = %s
-                          AND (pli.awaiting_transfer = 1
-                               OR pli.in_transit = 1
-                               OR pli.loaded_in_trolley = 1)
-                        LIMIT 1
-                    """,
-							bucket_id,
-							as_dict=True,
-						)
-
-					if transfer_rows:
-						# Skipped transfer: keep going, clean up the remote shelves.
-						result["stale_transfer_shelves"] = other_shelves
-					else:
-						result["passed"] = False
-						result["reason"] = validation_rule[3][0]
-						result["message"] = (
-							f"The bucket has already been shelved on shelf {other_shelves[0].parent}."
-						)
-						frappe.log_error(
-							"Duplicate Entry Validation Failed",
-							f"Bucket {bucket_id} already shelved on shelf {other_shelves[0].parent}. Data: {data}",
-						)
+					# transfer bucket or not, it has physically come here: it moves off the old shelf, never refused
+					result["stale_transfer_shelves"] = other_shelves
 
 			# two_buckets_per_shelf (2 max) - one bucket may now span several rows
 			# (one Shelf Item per variety), so count DISTINCT buckets, not rows.
