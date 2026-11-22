@@ -114,7 +114,7 @@ frappe.ui.form.on("Auto Allocation Farm", {
 						}),
 				}),
 			__("Run {0} now", [row.sales_farm]),
-			__("Run"),
+			__("Run")
 		);
 	},
 });
