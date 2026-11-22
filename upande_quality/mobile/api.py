@@ -12029,6 +12029,45 @@ def submitPackhouseGlass():
 		frappe.response["message"] = {"status": "error", "message": str(e)}
 
 
+def packhouse_inspection_items():
+	"""Active Packhouse Inspection Items in sort order: [{label, options, ok}] - `options` are the conditions the
+	inspector can pick, `ok` those ticked "Counts as OK". Quality Managers maintain them in the desk."""
+	names = frappe.get_all(
+		"Packhouse Inspection Item",
+		filters={"active": 1},
+		pluck="name",
+		order_by="sort_order asc, name asc",
+	)
+	rows = {}
+	for c in frappe.get_all(
+		"Packhouse Inspection Condition",
+		filters={"parenttype": "Packhouse Inspection Item", "parent": ["in", names or ["-"]]},
+		fields=["parent", "condition", "counts_as_ok"],
+		order_by="idx asc",
+	):
+		rows.setdefault(c.parent, []).append(c)
+	return [
+		{
+			"label": n,
+			"options": [c.condition for c in rows.get(n, [])],
+			"ok": [c.condition for c in rows.get(n, []) if c.counts_as_ok],
+		}
+		for n in names
+	]
+
+
+@frappe.whitelist()
+def getPackhouseInspectionSetup():
+	"""What the app's Packhouse Inspection Log offers: the areas (Post Harvest Team) and the items with their
+	conditions, both maintained in the desk. -> {areas: [...], components: [{label, options, ok}]}"""
+	return {
+		"areas": frappe.get_all("Post Harvest Team", pluck="name", order_by="name asc")
+		if frappe.db.exists("DocType", "Post Harvest Team")
+		else [],
+		"components": packhouse_inspection_items(),
+	}
+
+
 @frappe.whitelist()
 def submitPackhouseInspection():
 	# Packhouse Inspection Log submit (rev5 - derive status from conditions)
@@ -12047,23 +12086,9 @@ def submitPackhouseInspection():
 		doc.inspected_by = data.get("inspected_by") or ""
 		doc.remarks = data.get("remarks") or ""
 
-		CANONICAL = [
-			"Bunching Tables",
-			"Sleeving Tables",
-			"QC Table",
-			"Guillotine",
-			"Floor",
-			"Walls",
-			"Windows / Windowpanes",
-			"Trolleys",
-			"Drainage",
-			"Sockets",
-			"Lights",
-			"Roof",
-			"Roof Traces",
-		]
-		# Conditions that mean the component is fine; anything else is a fault.
-		OK = ("Clean", "In good condition", "Functioning")
+		items = packhouse_inspection_items()
+		ok_by_item = {it["label"]: set(it["ok"]) for it in items}
+		any_ok = set().union(*ok_by_item.values()) if ok_by_item else set()
 
 		checks = data.get("checks") or []
 		if isinstance(checks, str):
@@ -12084,8 +12109,9 @@ def submitPackhouseInspection():
 			if cond and cond not in grouped[comp]:
 				grouped[comp].append(cond)
 
-		# Canonical components first, then any extras the app happened to send.
-		components = list(CANONICAL)
+		# The master's active items first (all of them, so unchecked ones read "Not Checked"), then any
+		# extras an older app version sent.
+		components = [it["label"] for it in items]
 		for comp in order:
 			if comp not in components:
 				components.append(comp)
@@ -12097,7 +12123,7 @@ def submitPackhouseInspection():
 			row.conditions = ", ".join(conds)
 			if not conds:
 				row.status = "Not Checked"
-			elif all(x in OK for x in conds):
+			elif all(x in ok_by_item.get(comp, any_ok) for x in conds):
 				row.status = "√ Okay"
 			else:
 				row.status = "X Faulty"
