@@ -8,6 +8,7 @@
   "naming_series",
   "variety",
   "issue",
+  "issues",
   "date_of_incident",
   "farm",
   "requested_by",
@@ -40,9 +41,17 @@
    "options": "Item"
   },
   {
+   "description": "Filled from the Issues table.",
    "fieldname": "issue",
    "fieldtype": "Small Text",
-   "label": "Issue"
+   "label": "Issue Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "issues",
+   "fieldtype": "Table",
+   "label": "Issues",
+   "options": "CAR Issue"
   },
   {
    "fieldname": "date_of_incident",
@@ -133,7 +142,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-18 21:56:24.855779",
+ "modified": "2026-11-22 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Corrective Action Report",
