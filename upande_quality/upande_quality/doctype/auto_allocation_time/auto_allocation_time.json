@@ -1,0 +1,51 @@
+{
+ "actions": [],
+ "creation": "2026-11-22 19:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "run_time",
+  "release",
+  "enabled"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "run_time",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Run At",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "default": "0",
+   "fieldname": "release",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Release"
+  },
+  {
+   "columns": 2,
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  }
+ ],
+ "grid_page_length": 50,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-22 19:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Auto Allocation Time",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

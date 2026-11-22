@@ -95,3 +95,26 @@ frappe.ui.form.on("Discard Age Item Group", {
 		frappe.model.set_value(cdt, cdn, "varieties", "");
 	},
 });
+
+frappe.ui.form.on("Auto Allocation Farm", {
+	run_now(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (!row.sales_farm) return;
+		frappe.prompt(
+			[{ fieldname: "release", fieldtype: "Check", label: __("Release"), default: 0 }],
+			(v) =>
+				frappe.call({
+					method: "upande_packhouse.api.auto_allocation.run_now",
+					args: { sales_farm: row.sales_farm, release: v.release ? 1 : 0 },
+					callback: (r) =>
+						r.message &&
+						frappe.show_alert({
+							message: __("{0}: {1} started", [row.sales_farm, r.message.run]),
+							indicator: "green",
+						}),
+				}),
+			__("Run {0} now", [row.sales_farm]),
+			__("Run"),
+		);
+	},
+});

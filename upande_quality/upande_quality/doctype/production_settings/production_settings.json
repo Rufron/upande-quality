@@ -35,6 +35,13 @@
   "allocation_use_first_alert_stems",
   "unplanned_orders_section",
   "unplanned_orders_by_sales_farm",
+  "auto_allocation_section",
+  "enable_auto_allocation",
+  "auto_allocation_include_unplanned",
+  "auto_allocation_col",
+  "auto_allocation_times",
+  "auto_allocation_farms_section",
+  "auto_allocation_farms",
   "packhouse_tab",
   "issuing_packing_section",
   "allow_partial_packing",
@@ -347,6 +354,43 @@
    "options": "Sales Allocation Unplanned Orders"
   },
   {
+   "fieldname": "auto_allocation_section",
+   "fieldtype": "Section Break",
+   "label": "Automatic Allocation"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_auto_allocation",
+   "fieldtype": "Check",
+   "label": "Enable Automatic Allocation"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_allocation_include_unplanned",
+   "fieldtype": "Check",
+   "label": "Also Allocate Orders Not Planned"
+  },
+  {
+   "fieldname": "auto_allocation_col",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "auto_allocation_times",
+   "fieldtype": "Table",
+   "label": "Run Times",
+   "options": "Auto Allocation Time"
+  },
+  {
+   "fieldname": "auto_allocation_farms_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "auto_allocation_farms",
+   "fieldtype": "Table",
+   "label": "Sales Farms",
+   "options": "Auto Allocation Farm"
+  },
+  {
    "default": "0",
    "fieldname": "bypass_cut_stage_by_default",
    "fieldtype": "Check",
@@ -416,7 +460,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-21 22:30:00.000000",
+ "modified": "2026-11-22 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
