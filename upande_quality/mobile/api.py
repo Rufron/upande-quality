@@ -2334,6 +2334,14 @@ def createShelvingEntry():
 									"Record planned load on arrival failed", frappe.get_traceback()
 								)
 							update_transit_status(bucket_id, shelf_id, result, farm)
+							# Shelved at a third farm on its way to the sales farm (the truck dropped it
+							# there): it waits there now, off the truck, for a trip on.
+							if result.get("transfer_pending"):
+								from upande_packhouse.api.remote_transfer.third_farm import (
+									wait_at_third_farm,
+								)
+
+								result["waiting_at"] = wait_at_third_farm(bucket_id, farm, shelf_id)
 
 							# ---------------------------------------------------------
 							# SHELVING LOGIC
