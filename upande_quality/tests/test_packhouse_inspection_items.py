@@ -49,7 +49,11 @@ class TestPackhouseInspectionItems(unittest.TestCase):
 		for condition, status in (("Spotless", "√ Okay"), ("Grimy", "X Faulty")):
 			built = []
 			# Capture the log instead of saving it: its Area links to a doctype that only exists on the live site.
-			with unittest.mock.patch("frappe.model.document.Document.insert", _capture(built)):
+			# The endpoint commits; keep the test's items inside its transaction so tearDown can roll them back.
+			with (
+				unittest.mock.patch("frappe.model.document.Document.insert", _capture(built)),
+				unittest.mock.patch.object(frappe.db, "commit"),
+			):
 				message = _submit([{"component": "ZZ Test Benches", "condition": condition}])
 			self.assertEqual(message["status"], "success")
 			log = [d for d in built if d.doctype == "Packhouse Inspection Log"][0]
