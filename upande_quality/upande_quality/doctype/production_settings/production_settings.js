@@ -118,3 +118,57 @@ frappe.ui.form.on("Auto Allocation Farm", {
 		);
 	},
 });
+
+// Stock Farms: a click on the cell opens the Roses farms as tick boxes; the ticked ones are saved on the row
+function pick_stock_farms(frm, cdn) {
+	const row = locals["Auto Allocation Farm"][cdn];
+	if (!row) return;
+	const have = String(row.stock_farms || "")
+		.split(/\n|,/)
+		.map((f) => f.trim())
+		.filter(Boolean);
+	// the Roses farms: the ones with shelves (Shelf Locations)
+	const farms = [
+		...new Set(
+			(frm.doc.shelf_locations || []).filter((r) => r.enabled && r.farm).map((r) => r.farm)
+		),
+	].sort();
+	const d = new frappe.ui.Dialog({
+		title: __("Stock Farms for {0}", [row.sales_farm || ""]),
+		fields: [
+			{
+				fieldname: "farms",
+				fieldtype: "MultiCheck",
+				columns: 3,
+				options: farms.map((f) => ({ label: f, value: f, checked: have.includes(f) })),
+			},
+		],
+		primary_action_label: __("Set"),
+		primary_action(v) {
+			frappe.model.set_value(
+				row.doctype,
+				row.name,
+				"stock_farms",
+				(v.farms || []).join(", ")
+			);
+			d.hide();
+		},
+	});
+	d.show();
+}
+
+frappe.ui.form.on("Production Settings", {
+	refresh(frm) {
+		$(frm.wrapper)
+			.off(".stock_farms")
+			.on(
+				"focusin.stock_farms",
+				'[data-fieldname="auto_allocation_farms"] textarea[data-fieldname="stock_farms"]',
+				(e) => {
+					const cdn = $(e.target).closest(".grid-row").attr("data-name");
+					e.target.blur();
+					pick_stock_farms(frm, cdn);
+				}
+			);
+	},
+});
