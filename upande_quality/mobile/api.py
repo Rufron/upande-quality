@@ -1665,6 +1665,30 @@ def _write_shelved_log(shelf_item_row, shelf_id, farm):
 	).insert(ignore_permissions=True)
 
 
+def _transfer_outlived(bucket_id, row):
+	"""True when an order's waiting transfer of this bucket can no longer be what is scanned: the
+	label was harvested again after the order took the bucket (it went back to the greenhouse), or
+	the order is submitted and its delivery day has passed."""
+	taken = frappe.utils.getdate(row.creation) if row.get("creation") else None
+	if taken and frappe.db.exists(
+		"Stock Entry",
+		{
+			"custom_bucket_id": bucket_id,
+			"stock_entry_type": "Harvesting",
+			"docstatus": 1,
+			"posting_date": [">", taken],
+		},
+	):
+		return True
+	opl = frappe.db.get_value("Order Pick List", row.parent, ["docstatus", "delivery_date"], as_dict=True)
+	return bool(
+		opl
+		and opl.docstatus == 1
+		and opl.delivery_date
+		and frappe.utils.getdate(opl.delivery_date) < frappe.utils.getdate(frappe.utils.today())
+	)
+
+
 @frappe.whitelist()
 def createShelvingEntry():
 	# ---------------------------------------------------------
@@ -1838,10 +1862,15 @@ def createShelvingEntry():
 			"Pick List Item",
 			filters={"bucket": bucket_id, "parenttype": "Order Pick List", "issued": 0},
 			or_filters={"awaiting_transfer": 1, "loaded_in_trolley": 1, "in_transit": 1},
-			fields=["parent", "item_code", "stem_length", "source_warehouse", "warehouse"],
+			fields=["parent", "item_code", "stem_length", "source_warehouse", "warehouse", "creation"],
 			order_by="creation desc",
 			limit=1,
 		)
+		# A transfer the bucket's label outlived is no transfer: the label was harvested again after
+		# the order took it, or the order went out already. Shelving it as that transfer would read
+		# the previous fill's receiving (its variety, its harvest date).
+		if transfer and _transfer_outlived(bucket_id, transfer[0]):
+			transfer = []
 		expect = None
 		if transfer:
 			t = transfer[0]
@@ -2035,13 +2064,6 @@ def createShelvingEntry():
 
 					result["bas_updated"] = True
 					result["bas_available_qty"] = bas_doc.available_quantity
-
-					frappe.log_error(
-						title="BAS Transit Cleared",
-						message=f"Bucket: {bucket_id}, Variety: {variety}, Farm: {farm}\n"
-						f"Total: {bas_doc.total_quantity}, Allocated: {bas_doc.allocated_quantity}, "
-						f"Available: {bas_doc.available_quantity}",
-					)
 		except Exception as e:
 			frappe.log_error("BAS Transit Update Failed", str(e))
 
