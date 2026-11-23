@@ -30,7 +30,7 @@ def grade_b_age_days():
 	if not row or row[0][0] in (None, ""):
 		frappe.throw(
 			"Grade B Discard Age is blank, so stems cannot be moved to the Grade B warehouse yet.<br><br>"
-			"To fix it: open <b>Production Settings</b>, go to the <b>Quality</b> tab, and enter "
+			"To fix it: open <b>Production Settings</b>, go to the <b>Grade B</b> tab, and enter "
 			"<b>Grade B Discard Age</b> - the number of days stems stay in Grade B before they can be "
 			"discarded (enter 0 for no waiting). Save, then approve this Discard Request again.",
 			title="Set Grade B Discard Age first",

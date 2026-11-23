@@ -11,7 +11,6 @@
   "sales_section",
   "amber_time",
   "discard_age",
-  "grade_b_discard_age",
   "column_break_segn",
   "max_shelving_age",
   "inactive_bucket_days",
@@ -42,6 +41,13 @@
   "auto_allocation_times",
   "auto_allocation_farms_section",
   "auto_allocation_farms",
+  "grade_b_tab",
+  "grade_b_discard_section",
+  "grade_b_discard_age",
+  "quality_b_section",
+  "quality_b_packing_teams",
+  "quality_b_issue_any_bucket",
+  "quality_b_match_stem_length",
   "packhouse_tab",
   "issuing_packing_section",
   "allow_partial_packing",
@@ -454,6 +460,40 @@
    "fieldtype": "Table",
    "label": "Remote Transfer Sales Farms",
    "options": "Remote Transfer Sales Farm"
+  },
+  {
+   "fieldname": "grade_b_tab",
+   "fieldtype": "Tab Break",
+   "label": "Grade B"
+  },
+  {
+   "fieldname": "grade_b_discard_section",
+   "fieldtype": "Section Break",
+   "label": "Grade B Warehouse"
+  },
+  {
+   "fieldname": "quality_b_section",
+   "fieldtype": "Section Break",
+   "label": "Quality B Orders (Webstore)"
+  },
+  {
+   "fieldname": "quality_b_packing_teams",
+   "fieldtype": "Table",
+   "label": "Quality B Packing Teams",
+   "options": "Quality B Packing Team"
+  },
+  {
+   "default": "0",
+   "fieldname": "quality_b_issue_any_bucket",
+   "fieldtype": "Check",
+   "label": "Issue Any Grade B Bucket of the Same Variety"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.quality_b_issue_any_bucket",
+   "fieldname": "quality_b_match_stem_length",
+   "fieldtype": "Check",
+   "label": "Same Stem Length Too"
   }
  ],
  "grid_page_length": 50,
