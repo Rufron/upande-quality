@@ -2064,13 +2064,6 @@ def createShelvingEntry():
 
 					result["bas_updated"] = True
 					result["bas_available_qty"] = bas_doc.available_quantity
-
-					frappe.log_error(
-						title="BAS Transit Cleared",
-						message=f"Bucket: {bucket_id}, Variety: {variety}, Farm: {farm}\n"
-						f"Total: {bas_doc.total_quantity}, Allocated: {bas_doc.allocated_quantity}, "
-						f"Available: {bas_doc.available_quantity}",
-					)
 		except Exception as e:
 			frappe.log_error("BAS Transit Update Failed", str(e))
 
