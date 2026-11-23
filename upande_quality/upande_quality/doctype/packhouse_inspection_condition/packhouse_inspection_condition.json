@@ -1,0 +1,39 @@
+{
+ "actions": [],
+ "creation": "2026-11-22 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "condition",
+  "counts_as_ok"
+ ],
+ "fields": [
+  {
+   "fieldname": "condition",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Condition",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Ticked: this condition means the item is fine (e.g. Clean). Any other condition marks the item X Faulty.",
+   "fieldname": "counts_as_ok",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Counts as OK"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-22 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Quality",
+ "name": "Packhouse Inspection Condition",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
