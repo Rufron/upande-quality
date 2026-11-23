@@ -43,15 +43,25 @@ class TestPackhouseInspectionItems(unittest.TestCase):
 		self.assertEqual(components[0]["ok"], ["Spotless"])
 
 	def test_status_follows_counts_as_ok(self):
+		# Both items made here: a fresh test site has an empty master (the seed patch runs only on migrate).
 		_item("ZZ Test Benches", ["Spotless", "Grimy"], ok=["Spotless"])
+		_item("ZZ Test Shelves", ["Tidy"], ok=["Tidy"])
 		for condition, status in (("Spotless", "√ Okay"), ("Grimy", "X Faulty")):
 			built = []
 			# Capture the log instead of saving it: its Area links to a doctype that only exists on the live site.
-			with unittest.mock.patch(
-				"frappe.model.document.Document.insert", lambda doc, *a, **k: built.append(doc) or doc
-			):
-				_submit([{"component": "ZZ Test Benches", "condition": condition}])
+			with unittest.mock.patch("frappe.model.document.Document.insert", _capture(built)):
+				message = _submit([{"component": "ZZ Test Benches", "condition": condition}])
+			self.assertEqual(message["status"], "success")
 			log = [d for d in built if d.doctype == "Packhouse Inspection Log"][0]
 			rows = {r.component: r.status for r in log.components}
 			self.assertEqual(rows["ZZ Test Benches"], status)
-			self.assertEqual(rows["Floor"], "Not Checked")
+			self.assertEqual(rows["ZZ Test Shelves"], "Not Checked")
+
+
+def _capture(built):
+	def insert(doc, *args, **kwargs):
+		doc.name = doc.name or "TEST-LOG"
+		built.append(doc)
+		return doc
+
+	return insert
