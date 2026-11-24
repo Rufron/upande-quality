@@ -2900,6 +2900,16 @@ def _farm_pick_rows(farm, filters, starts_with=False, **kwargs):
 	return rows
 
 
+def _shelf_sort_key(shelf):
+	"""Shelves in natural order: letter prefix, then the number as a number, then the
+	suffix (G2M < G3M < G10M, KPK-A2T < KPK-A12T); no shelf last."""
+	s = (shelf or "").strip().upper()
+	m = re.match(r"^(\D*)(\d+)(.*)$", s)
+	if not m:
+		return (0 if s else 1, s, -1, "")
+	return (0, m.group(1), int(m.group(2)), m.group(3))
+
+
 def _row_farm(r):
 	"""The farm a pick row's bucket is at: the row's own farm (the shelf it was
 	allocated from), else the first word of its warehouse. Reused bucket ids leave an
@@ -3523,6 +3533,8 @@ def fetchAllocatedBuckets():
 				hubs = _opl_hubs([r["opl_name"] for r in result])
 				for r in result:
 					r["sales_farm"] = hubs.get(r["opl_name"]) or ""
+				# Each order's buckets in shelf order.
+				result.sort(key=lambda r: (r["opl_name"], _shelf_sort_key(r.get("shelf_location"))))
 				frappe.response["message"] = (
 					"Found " + str(len(result)) + " remote buckets awaiting transfer for " + farm_name
 				)
@@ -4984,6 +4996,10 @@ def getFarmPlannedTrips():
 				"group_by_order": frappe.utils.cint(
 					frappe.get_cached_doc("Production Settings").get("group_bucket_requests_by_order")
 				),
+				# On: the orders are listed under the packing team they are for.
+				"group_by_team": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("group_bucket_requests_by_team")
+				),
 				"opl_states": opl_states,
 			}
 		else:
@@ -5325,6 +5341,10 @@ def getFarmPlannedTrips():
 				# On: a trip's buckets are listed per order (varieties grouped under it).
 				"group_by_order": frappe.utils.cint(
 					frappe.get_cached_doc("Production Settings").get("group_bucket_requests_by_order")
+				),
+				# On: the orders are listed under the packing team they are for.
+				"group_by_team": frappe.utils.cint(
+					frappe.get_cached_doc("Production Settings").get("group_bucket_requests_by_team")
 				),
 				"opl_states": opl_states,
 			}
@@ -15954,14 +15974,29 @@ def replaceRequestedBucket():
 		}
 		return
 	old_bucket = frappe.db.get_value("Pick List Item", data.get("pick_list_item"), "bucket")
-	res = sales_allocation.replace_requested_bucket(
-		data.get("pick_list_item"),
-		new_bucket_id=data.get("new_bucket_id"),
-		reason=data.get("reason"),
-		notes=data.get("notes"),
-		keep_old_on_shelf=wrong_variety,
-		farm=data.get("farm") or None,
-	)
+	# Every reason: the shelf the system put it on, scanned, and a photo of it (not_found_report)
+	from upande_packhouse.api import not_found_report
+
+	try:
+		report = not_found_report.evidence(
+			data.get("pick_list_item"), data.get("scanned_shelf"), data.get("shelf_photo")
+		)
+	except frappe.ValidationError as e:
+		frappe.local.message_log = []
+		frappe.response["message"] = {"status": "error", "success": False, "message": str(e)}
+		return
+	frappe.flags.not_found_evidence = report
+	try:
+		res = sales_allocation.replace_requested_bucket(
+			data.get("pick_list_item"),
+			new_bucket_id=data.get("new_bucket_id"),
+			reason=data.get("reason"),
+			notes=data.get("notes"),
+			keep_old_on_shelf=wrong_variety,
+			farm=data.get("farm") or None,
+		)
+	finally:
+		frappe.flags.not_found_evidence = None
 	if res.get("success") and wrong_variety and old_bucket:
 		from upande_packhouse.api import offline_issue
 
@@ -16049,8 +16084,19 @@ def markRequestedBucketIssued():
 			else _("{0} has not been issued anywhere — replace it or mark it not found.").format(row.bucket),
 		}
 		return
+	# the shelf the system put it on, scanned, and a photo of it (not_found_report)
+	from upande_packhouse.api import not_found_report
+
+	try:
+		report = not_found_report.evidence(row.name, data.get("scanned_shelf"), data.get("shelf_photo"))
+	except frappe.ValidationError as e:
+		frappe.local.message_log = []
+		frappe.response["message"] = {"status": "error", "message": str(e)}
+		return
 	results = offline_issue._issue(row.bucket, row.parent)
 	ok = bool(results) and all(r["ok"] for r in results)
+	if ok:
+		not_found_report.save_on_rows(row.parent, row.bucket, report)
 	frappe.response["message"] = {
 		"status": "success" if ok else "error",
 		"message": _("{0} marked issued to {1}.").format(row.bucket, line or row.parent)
