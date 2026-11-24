@@ -52,6 +52,8 @@
   "issuing_packing_section",
   "allow_partial_packing",
   "pack_waiting_replacement_pct",
+  "progressive_issuing",
+  "progressive_issuing_from_boxes",
   "column_break_ip",
   "allow_issue_out_of_sequence",
   "allow_pack_out_of_sequence",
@@ -63,6 +65,7 @@
   "sales_farms",
   "column_break_jthd",
   "show_unscheduled_in_bucket_requests",
+  "group_bucket_requests_by_team",
   "allow_hub_shelving_without_transfer",
   "allow_shelving_in_transit",
   "group_bucket_requests_by_order",
@@ -193,6 +196,21 @@
    "label": "Pack While Waiting for a Replacement From (%)"
   },
   {
+   "fieldname": "progressive_issuing",
+   "fieldtype": "Check",
+   "label": "Progressive Issuing",
+   "default": "0",
+   "description": "A pick list still waiting for buckets from other farms can be issued and packed for its complete boxes; the others are greyed out until their buckets are shelved."
+  },
+  {
+   "fieldname": "progressive_issuing_from_boxes",
+   "fieldtype": "Int",
+   "label": "Start Issuing From (Boxes)",
+   "default": "10",
+   "depends_on": "eval:doc.progressive_issuing",
+   "description": "How many boxes must be complete on the sales farm's shelf before issuing starts. An order with fewer boxes waits for all of them."
+  },
+  {
    "fieldname": "column_break_ip",
    "fieldtype": "Column Break"
   },
@@ -245,6 +263,13 @@
    "fieldname": "show_unscheduled_in_bucket_requests",
    "fieldtype": "Check",
    "label": "Show Not Scheduled Orders in the App Bucket Requests"
+  },
+  {
+   "fieldname": "group_bucket_requests_by_team",
+   "fieldtype": "Check",
+   "label": "Group Bucket Requests by Team",
+   "default": "0",
+   "description": "The app's Bucket Requests list its orders under the packing team they are for."
   },
   {
    "default": "0",
@@ -500,7 +525,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-22 19:00:00.000000",
+ "modified": "2026-11-25 00:30:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Quality",
  "name": "Production Settings",
