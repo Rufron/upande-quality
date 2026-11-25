@@ -41,7 +41,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Area Cleaned",
-   "options": "Team A\nTeam B\nTeam C\nTeam Eldama\nPrint Room\nConsumable Store\nVase Room",
+   "options": "Team A\nTeam B\nTeam C\nTeam Bravo\nTeam Eldama\nPrint Room\nConsumable Store\nVase Room",
    "reqd": 1
   },
   {
