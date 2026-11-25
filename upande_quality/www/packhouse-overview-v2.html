@@ -1,0 +1,500 @@
+{% extends "templates/web.html" %}
+{% block title %}Packhouse Overview · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<style>
+/* Packhouse Overview: chart holders keep the sizing of the original page. */
+.po-chartbox{position:relative;height:270px}
+.po-chartbox canvas{max-height:270px}
+#trendScroll{overflow-x:auto}
+#trendInner{position:relative;height:270px}
+.po-row-act{display:inline-flex;gap:var(--sp-2);align-items:center}
+</style>
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Overview</div>
+    <h1 class="ph-head__title">Packhouse Overview</h1>
+    <p class="ph-head__sub" id="sub">QC by team · issue · week</p>
+  </div>
+  <div class="ph-head__tools"><button class="ph-btn ph-btn--sm" id="export-main" type="button">Export CSV</button></div>
+</header>
+
+<div class="ph-filters">
+  <div id="f-year"></div>
+  <div id="f-week"></div>
+  <div id="f-team"></div>
+  <div id="f-farm"></div>
+  <div id="f-variety"></div>
+  <div id="f-customer"></div>
+  <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search issue or name…" aria-label="Search issue or name"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets"><button data-value="today">Today</button><button data-value="yesterday">Yesterday</button><button data-value="7d">7 days</button><button data-value="30d">30 days</button><button data-value="mtd">This month</button></div>
+  <div class="ph-daterange"><input type="date" id="from" aria-label="From"><span class="ph-daterange__sep">–</span><input type="date" id="to" aria-label="To"></div>
+  <button class="ph-btn ph-btn--ghost ph-btn--sm" id="all-dates" type="button">All dates</button>
+</div>
+<div id="chips"></div>
+<div id="err" class="ph-notice ph-notice--bad" hidden></div>
+
+<nav class="ph-tabs" id="modes" aria-label="Inspection mode">
+  <button class="ph-tab is-on" data-mode="" type="button">All Modes</button>
+  <button class="ph-tab" data-mode="Reject Recorder" type="button">Reject Recorder</button>
+  <button class="ph-tab" data-mode="Grading QC" type="button">Grading QC</button>
+  <button class="ph-tab" data-mode="Final QC" type="button">Final QC</button>
+</nav>
+
+<section class="ph-kpis" id="kpis"></section>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">FTR % by team</div><div class="ph-card__meta">targets 90 / 95</div></div>
+    <div class="po-chartbox" id="box-ftr"><canvas id="chartFTR"></canvas></div>
+    <div id="empty-ftr" hidden></div>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Volume by team</div><div class="ph-card__meta" id="volMeta">accepted · quarantined · rejected</div></div>
+    <div class="po-chartbox" id="box-vol"><canvas id="chartVolume"></canvas></div>
+    <div id="empty-vol" hidden></div>
+  </section>
+</div>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Issues by team</div><div class="ph-card__meta">by action</div></div>
+    <div class="po-chartbox" id="box-ibt"><canvas id="chartIssuesByTeam"></canvas></div>
+    <div id="empty-ibt" hidden></div>
+  </section>
+  <section class="ph-card ph-card--flush">
+    <div class="ph-card__head">
+      <div><div class="ph-card__title">Top issues</div><div class="ph-card__meta" id="issue-meta">parameter · action · count</div></div>
+      <div class="ph-card__tools">
+        <div class="ph-pills" id="act"><button data-value="">All</button><button data-value="Quarantine">Quarantine</button><button data-value="Reject">Reject</button></div>
+        <button class="ph-btn ph-btn--sm" id="export-issues" type="button">Export</button>
+      </div>
+    </div>
+    <div id="tbl-issues"></div>
+  </section>
+</div>
+
+<section class="ph-card">
+  <div class="ph-card__head"><div class="ph-card__title">Weekly FTR trend</div><div class="ph-card__meta">per team</div></div>
+  <div id="trendScroll"><div id="trendInner"><canvas id="chartWeeklyTrend"></canvas></div></div>
+  <div id="empty-trend" hidden></div>
+</section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <div><div class="ph-card__title" id="dim-title">By team</div><div class="ph-card__meta" id="dim-meta">summary</div></div>
+    <div class="ph-card__tools">
+      <div class="ph-pills" id="dim"><button data-value="team">Team</button><button data-value="farm">Farm</button><button data-value="variety">Variety</button><button data-value="customer">Customer</button></div>
+    </div>
+  </div>
+  <div id="tbl-dim"></div>
+</section>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% raw %}
+<script>
+(function () {
+  "use strict";
+  /* ── Chart helpers and chart renderers: moved verbatim from the original page ── */
+  var LINE_COLORS = ["#e63946","#3d54b0","#2ba6e0","#e9a23b","#8466c7","#5bb45d","#1f2937"];
+  var TEAM_COLOR_MAP = {}; var teamColorIdx = 0;
+  function tc(team){ if(!TEAM_COLOR_MAP[team]) TEAM_COLOR_MAP[team]=LINE_COLORS[(teamColorIdx++)%LINE_COLORS.length]; return TEAM_COLOR_MAP[team]; }
+  var ACTION_COLORS = {'Quarantine':'#a16207','quarantine':'#a16207','Reject':'#c4302b','reject':'#c4302b'};
+  function ac(a){ return ACTION_COLORS[a]||'#8a8780'; }
+  var chartInstances = {}; var activeMode='';
+  if(window.Chart){Chart.defaults.font.family="'Poppins',system-ui,-apple-system,'Segoe UI',sans-serif";
+  Chart.defaults.font.size=10; Chart.defaults.color="#8a8780";}
+  function aggByTeam(rows){var m={};rows.forEach(function(r){if(!m[r.team])m[r.team]={rpts:0,stems:0,q_stems:0,rej_stems:0,affected:0,boxes:0,staged:0,q_boxes:0};var d=m[r.team];d.rpts+=r.total_reports||0;d.stems+=r.stems_checked||0;d.q_stems+=r.stems_quarantined||0;d.rej_stems+=r.stems_rejected||0;d.affected+=r.stems_affected||0;d.boxes+=r.boxes_checked||0;d.staged+=r.boxes_staged||0;d.q_boxes+=r.boxes_quarantined||0;});return m;}
+  function calcFTR(d){if(d.staged>0)return Math.round((d.staged-d.q_boxes)/d.staged*10000)/100;if(d.stems>0)return Math.round((d.stems-d.q_stems-d.rej_stems)/d.stems*10000)/100;return null;}
+  function calcSampled(d){return d.staged>0?Math.round(d.boxes/d.staged*10000)/100:null;}
+  function renderFTRChart(rows){if(chartInstances['chartFTR'])chartInstances['chartFTR'].destroy();var m=aggByTeam(rows);var teams=Object.keys(m).sort();if(!teams.length)return;var ftrs=teams.map(function(t){var v=calcFTR(m[t]);return v!==null?v:0;});var bgColors=teams.map(function(t,i){var v=ftrs[i];return v>=95?'#1a8a3acc':v>=90?'#a16207cc':'#c4302bcc';});var ctx=document.getElementById('chartFTR').getContext('2d');chartInstances['chartFTR']=new Chart(ctx,{type:'bar',data:{labels:teams,datasets:[{label:'FTR %',data:ftrs,backgroundColor:bgColors,borderRadius:6,maxBarThickness:44}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y.toFixed(1)+'%';}}}},scales:{y:{min:0,max:100,grid:{color:'rgba(10,10,10,.05)'},ticks:{callback:function(v){return v+'%';},font:{size:10}}},x:{grid:{display:false},ticks:{font:{size:10}}}}}});}
+  function renderIssuesByTeamChart(rows){if(chartInstances['chartIssuesByTeam'])chartInstances['chartIssuesByTeam'].destroy();if(!rows.length)return;var teams=[],actions=[];rows.forEach(function(r){if(teams.indexOf(r.team)<0)teams.push(r.team);if(actions.indexOf(r.action)<0)actions.push(r.action);});teams.sort();actions.sort();var datasets=actions.map(function(a){var color=ac(a);return{label:a,data:teams.map(function(t){var found=rows.filter(function(r){return r.team===t&&r.action===a;});return found.length?Number(found[0].total):0;}),backgroundColor:color+'cc',borderColor:color,borderWidth:1,borderRadius:4};});var ctx=document.getElementById('chartIssuesByTeam').getContext('2d');chartInstances['chartIssuesByTeam']=new Chart(ctx,{type:'bar',data:{labels:teams,datasets:datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},padding:12}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{font:{size:10},precision:0}}}}});}
+  function renderVolumeChart(rows){if(chartInstances['chartVolume'])chartInstances['chartVolume'].destroy();var vm=document.getElementById('volMeta');if(vm)vm.textContent=(activeMode==='Reject Recorder')?'stems rejected':'accepted · quarantined · rejected';var m=aggByTeam(rows);var teams=Object.keys(m).sort();if(!teams.length)return;var ctx=document.getElementById('chartVolume').getContext('2d');chartInstances['chartVolume']=new Chart(ctx,{type:'bar',data:{labels:teams,datasets:(activeMode==='Reject Recorder')?[{label:'Stems Rejected',data:teams.map(function(t){return m[t].affected||0;}),backgroundColor:'#c4302bcc',borderRadius:4}]:[{label:'Accepted',data:teams.map(function(t){var d=m[t];return Math.max(0,d.stems-d.q_stems-d.rej_stems);}),backgroundColor:'#1a8a3acc',borderRadius:4},{label:'Quarantined',data:teams.map(function(t){return m[t].q_stems;}),backgroundColor:'#a16207cc',borderRadius:4},{label:'Rejected',data:teams.map(function(t){return m[t].rej_stems;}),backgroundColor:'#c4302bcc',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},padding:14}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{font:{size:10}}}}}});}
+  function renderTrendChart(rows){if(chartInstances['chartWeeklyTrend'])chartInstances['chartWeeklyTrend'].destroy();var allWeeks=[],bTW={};rows.forEach(function(r){var wk='Wk '+r.week;if(allWeeks.indexOf(wk)<0)allWeeks.push(wk);if(!bTW[r.team])bTW[r.team]={};var s=r.stems_checked||0,q=r.stems_quarantined||0,rej=r.stems_rejected||0;bTW[r.team][wk]=s>0?Math.round((s-q-rej)/s*10000)/100:null;});allWeeks.sort(function(a,b){return parseInt(a.slice(3))-parseInt(b.slice(3));});var teams=Object.keys(bTW).sort();var datasets=teams.map(function(t){return{label:t,data:allWeeks.map(function(w){return bTW[t][w]!==undefined?bTW[t][w]:null;}),borderColor:tc(t),backgroundColor:tc(t)+'18',tension:.35,pointRadius:3,borderWidth:2,spanGaps:true};});var sc=document.getElementById('trendScroll'),inn=document.getElementById('trendInner');if(sc&&inn)inn.style.width=Math.max(sc.clientWidth||700,allWeeks.length*110,700)+'px';var ctx=document.getElementById('chartWeeklyTrend').getContext('2d');chartInstances['chartWeeklyTrend']=new Chart(ctx,{type:'line',data:{labels:allWeeks,datasets:datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},padding:14}}},scales:{y:{min:0,max:100,grid:{color:'rgba(10,10,10,.05)'},ticks:{callback:function(v){return v+'%';},font:{size:10}}},x:{grid:{color:'rgba(10,10,10,.05)'},ticks:{font:{size:10}}}}}});}
+  /* ── end of verbatim chart code ── */
+
+  var METHOD = "fetchPackhouseOverviewData";
+  var LIST = "/app/quality-reporting/view/list";
+  var today = PH.date.today();
+  var thisYear = String(new Date().getFullYear());
+  var st = PH.state({ year: "", week: "", team: "", farm: "", variety: "", customer: "", q: "", act: "", dim: "team", mode: "", from: today, to: today, all: "" });
+  var urlHas = function (k) { return new URLSearchParams(location.search).has(k); };
+  // A period (year/week) or "all dates" replaces the default of today unless the link carries dates.
+  if ((st.get("year") || st.get("week") || st.get("all")) && !urlHas("from") && !urlHas("to")) st.set({ from: "", to: "" }, { silent: true });
+
+  var DATA = null;
+  var seq = 0;
+  var first = true;
+  var DIMS = {
+    team: { title: "By team", noun: "Team", field: "team" },
+    farm: { title: "By farm", noun: "Farm", field: "farm" },
+    variety: { title: "By variety", noun: "Variety", field: "variety" },
+    customer: { title: "By customer", noun: "Customer", field: "customer" }
+  };
+
+  /* ── Filters ───────────────────────────────────────────────────── */
+  var msYear = PH.multiselect("#f-year", st, "year", { label: "Year", options: [], plural: "years", all: "All years", search: false });
+  var msWeek = PH.multiselect("#f-week", st, "week", { label: "Week", options: [], plural: "weeks", all: "All weeks" });
+  var msTeam = PH.multiselect("#f-team", st, "team", { label: "Team", options: [], plural: "teams", all: "All teams" });
+  var msFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: [], multiSite: true, plural: "farms", all: "All farms" });
+  var msVariety = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All varieties" });
+  var msCustomer = PH.multiselect("#f-customer", st, "customer", { label: "Customer", options: [], plural: "customers", all: "All customers" });
+  PH.bindSearch("#f-q", st, "q");
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.pills("#act", st, "act");
+  PH.pills("#dim", st, "dim");
+  PH.activeFilters("#chips", st, [
+    { key: "year", label: "Year", multi: true },
+    { key: "week", label: "Week", multi: true, text: function (v) { return "Wk " + v; } },
+    { key: "team", label: "Team", multi: true },
+    { key: "farm", label: "Farm", multi: true },
+    { key: "variety", label: "Variety", multi: true },
+    { key: "customer", label: "Customer", multi: true },
+    { key: "q", label: "Search" },
+    { key: "from", label: "From", text: PH.fmt.date },
+    { key: "to", label: "To", text: PH.fmt.date }
+  ]);
+  document.getElementById("all-dates").addEventListener("click", function () { st.set({ from: "", to: "", year: "", week: "", all: "1" }); });
+
+  function paintModes() {
+    var m = st.get("mode");
+    PH.$$("#modes .ph-tab").forEach(function (b) { b.classList.toggle("is-on", (b.dataset.mode || "") === m); });
+  }
+  document.getElementById("modes").addEventListener("click", function (e) {
+    var b = e.target.closest(".ph-tab");
+    if (b) st.set({ mode: b.dataset.mode || "" });
+  });
+
+  function farmGroups(list) {
+    var seen = {}, groups = [];
+    var lower = {}; list.forEach(function (f) { lower[String(f).toLowerCase()] = f; });
+    PH.regionGroups().forEach(function (g) {
+      var items = [];
+      g.items.forEach(function (n) { var hit = lower[String(n).toLowerCase()]; if (hit && !seen[hit]) { seen[hit] = 1; items.push(hit); } });
+      if (items.length) groups.push({ group: g.group, items: items });
+    });
+    var rest = list.filter(function (f) { return !seen[f]; });
+    if (rest.length) groups.push({ group: groups.length ? "Other" : "Farms", items: rest });
+    return groups;
+  }
+  function setOptions(fo) {
+    fo = fo || {};
+    msYear.setOptions((fo.years || []).map(function (y) { return { value: String(y), label: String(y) }; }));
+    msWeek.setOptions((fo.weeks || []).map(function (w) { return { value: String(w), label: "Wk " + w }; }));
+    msTeam.setOptions(fo.teams || []);
+    msFarm.setOptions(farmGroups(fo.farms || []));
+    msVariety.setOptions(fo.varieties || []);
+    msCustomer.setOptions(fo.customers || []);
+    // Options only the updated server script sends: hide the control when it is not offered.
+    document.getElementById("f-farm").hidden = !(fo.farms || []).length && !PH.values(st.get("farm")).length;
+    document.getElementById("f-variety").hidden = !(fo.varieties || []).length && !PH.values(st.get("variety")).length;
+    document.getElementById("f-customer").hidden = !(fo.customers || []).length && !PH.values(st.get("customer")).length;
+  }
+
+  /* ── Request ───────────────────────────────────────────────────── */
+  function args() {
+    var s = st.get();
+    return {
+      year: s.year, week: s.week, teams: s.team, farms: s.farm, varieties: s.variety, customers: s.customer,
+      stages: s.mode, from_date: s.from || "", to_date: s.to || ""
+    };
+  }
+  var timer = null;
+  var optSig = ""; // filter option lists are rebuilt only when they changed
+  function schedule() { clearTimeout(timer); timer = setTimeout(function () { load(); }, 30); }
+
+  function load() {
+    var my = ++seq;
+    if (first) PH.kpiSkeleton("#kpis", ["Reports", "Stems Checked", "Boxes Staged", "Boxes Checked", "Sampled %", "Quarantined", "FTR %"]);
+    PH.skeleton("#tbl-issues", "rows", 5);
+    PH.skeleton("#tbl-dim", "rows", 5);
+    return PH.call(METHOD, args(), { type: "GET", silent: true }).then(function (m) {
+      if (my !== seq) return;
+      m = m || {};
+      first = false;
+      DATA = m;
+      document.getElementById("err").hidden = true;
+      var sig = JSON.stringify(m.filter_options || {});
+      if (sig !== optSig) { optSig = sig; setOptions(m.filter_options); }
+      paint();
+      PH.markUpdated();
+    }).catch(function (err) {
+      if (my !== seq) return;
+      var msg = (err && err.message) || "Could not load data";
+      var box = document.getElementById("err");
+      box.textContent = "Error: " + msg;
+      box.hidden = false;
+      PH.error("#tbl-issues", msg, load);
+      PH.error("#tbl-dim", msg, load);
+      PH.kpis("#kpis", []);
+    });
+  }
+
+  /* ── Painting ──────────────────────────────────────────────────── */
+  function nm(v) { return v == null || v === "" ? "No value" : String(v); }
+  function teamName(v) { return v == null || v === "" ? "No team" : String(v); }
+  function ftrBadge(v) {
+    if (v == null) return "—";
+    return '<span class="ph-badge ph-badge--' + (v >= 95 ? "good" : v >= 90 ? "warn" : "bad") + '">' + v.toFixed(1) + "%</span>";
+  }
+  function emptyIn(id, show, title, text) {
+    var el = document.getElementById(id);
+    el.hidden = !show;
+    if (show) PH.empty(el, title, text);
+  }
+  function totalsOf(rows) {
+    var d = { tot: 0, stems: 0, boxes: 0, staged: 0, q_stems: 0, q_boxes: 0, rej: 0 };
+    rows.forEach(function (r) {
+      d.tot += r.total_reports || 0; d.stems += r.stems_checked || 0; d.boxes += r.boxes_checked || 0;
+      d.staged += r.boxes_staged || 0; d.q_stems += r.stems_quarantined || 0; d.q_boxes += r.boxes_quarantined || 0;
+      d.rej += r.stems_rejected || 0;
+    });
+    return d;
+  }
+  function pctOrDash(v) { return v == null ? "—" : v.toFixed(1); }
+  function ftrBar(v) { return v == null ? null : Math.max(0, Math.min(100, v)); }
+  function ftrBarClass(v) { return v >= 95 ? "good" : v >= 90 ? "warn" : "bad"; }
+
+  function paintKpis(m) {
+    var rows = m.team_rows || [], t = totalsOf(rows), mode = st.get("mode");
+    var sampledPct = t.staged > 0 ? Math.round(t.boxes / t.staged * 10000) / 100 : null;
+    var ftrPct = t.staged > 0 ? Math.round((t.staged - t.q_boxes) / t.staged * 10000) / 100 : (t.stems > 0 ? Math.round((t.stems - t.q_stems) / t.stems * 10000) / 100 : null);
+    var g = m.grading_kpis || {}, f = m.final_kpis || {}, rk = m.reject_kpis || {};
+    var pct = function (v) { return v == null ? "—" : v; };
+    var reports = { label: "Reports", value: t.tot, onClick: function () { openList(); } };
+    var ftr = { label: "FTR %", value: ftrPct == null ? "—" : PH.fmt.num(ftrPct, 1), suffix: ftrPct == null ? "" : "%", bar: ftrBar(ftrPct), barClass: ftrBar(ftrPct) == null ? "" : ftrBarClass(ftrPct) };
+    var items;
+    if (mode === "Reject Recorder") {
+      items = [reports, { label: "Total Stems Rejected", value: rk.stems_rejected || 0 }];
+    } else if (mode === "Grading QC") {
+      items = [reports, { label: "Stems Checked", value: t.stems }, ftr,
+        { label: "Orders Assigned", value: g.orders_assigned || 0 }, { label: "Orders Sampled", value: g.orders_sampled || 0 },
+        { label: "Bunches Graded", value: g.bunches_graded != null ? g.bunches_graded : (g.bunches_allocated || 0) }, { label: "Bunches Sampled", value: g.bunches_sampled || 0 },
+        { label: "Conforming %", value: pct(g.conforming_pct), suffix: g.conforming_pct == null ? "" : "%" }];
+    } else if (mode === "Final QC") {
+      items = [{ label: "Orders Assigned", value: f.orders_assigned || 0 }, { label: "Orders Sampled", value: f.orders_sampled || 0 },
+        { label: "% Orders Sampled", value: pct(f.orders_sampled_pct), suffix: f.orders_sampled_pct == null ? "" : "%" },
+        { label: "Boxes Staged", value: f.boxes_staged || 0 }, { label: "Boxes Sampled", value: f.boxes_sampled || 0 },
+        { label: "Quarantine Boxes", value: f.boxes_quarantined || 0 },
+        { label: "FTR %", value: pct(f.ftr_pct), suffix: f.ftr_pct == null ? "" : "%", bar: ftrBar(f.ftr_pct), barClass: f.ftr_pct == null ? "" : ftrBarClass(f.ftr_pct) }];
+    } else {
+      items = [reports, { label: "Stems Checked", value: t.stems }, { label: "Boxes Staged", value: t.staged }, { label: "Boxes Checked", value: t.boxes },
+        { label: "Sampled %", value: sampledPct == null ? "—" : PH.fmt.num(sampledPct, 1), suffix: sampledPct == null ? "" : "%" },
+        { label: "Quarantined", value: t.q_stems, unit: "stems" }, ftr];
+    }
+    PH.kpis("#kpis", items);
+  }
+
+  function paintCharts(m) {
+    var team = m.team_rows || [];
+    activeMode = st.get("mode");
+    var showTeam = team.length > 0;
+    ["ftr", "vol"].forEach(function (k) { document.getElementById("box-" + k).hidden = !showTeam; emptyIn("empty-" + k, !showTeam, "No data for this period", "Widen the dates or clear a filter."); });
+    var ibt = m.issues_by_team || [];
+    document.getElementById("box-ibt").hidden = !ibt.length;
+    emptyIn("empty-ibt", !ibt.length, "No quarantines or rejects", "Nothing was logged for these filters.");
+    var wk = m.weekly_rows || [];
+    document.getElementById("trendScroll").hidden = !wk.length;
+    emptyIn("empty-trend", !wk.length, "No weekly data", "Widen the dates or clear a filter.");
+    if (typeof Chart === "undefined") return;
+    renderFTRChart(team);
+    renderIssuesByTeamChart(ibt);
+    renderVolumeChart(team);
+    renderTrendChart(wk);
+  }
+
+  /* Issues table */
+  var issueTbl = PH.table("#tbl-issues", {
+    columns: [
+      { key: "parameter", label: "Parameter", cls: "is-strong", format: function (v) { return nm(v); } },
+      { key: "action", label: "Action", html: function (v) { return v ? '<span class="ph-badge ph-badge--' + (/reject/i.test(v) ? "bad" : /quarantine/i.test(v) ? "warn" : "outline") + '">' + PH.esc(v) + "</span>" : "—"; } },
+      { key: "total", label: "Count", num: true, total: true }
+    ],
+    rows: [], sort: { key: "total", dir: "desc" }, pageSize: 8, compact: true, empty: "No issues logged", emptyText: "Nothing matches these filters.",
+    onRowClick: function (r) { issueModal(r); }
+  });
+  function issueRows() {
+    var q = (st.get("q") || "").toLowerCase(), act = st.get("act");
+    return ((DATA && DATA.issue_rows) || []).filter(function (r) {
+      return (!act || r.action === act) && (!q || String(r.parameter || "").toLowerCase().indexOf(q) !== -1);
+    });
+  }
+  function paintIssues() {
+    var rows = issueRows();
+    PH.text("#issue-meta", rows.length + " of " + (((DATA && DATA.issue_rows) || []).length) + " · click a row for detail");
+    issueTbl.update(rows);
+  }
+
+  /* Breakdown table */
+  function dimRows() {
+    var m = DATA || {}, dim = st.get("dim"), src;
+    if (dim === "team") src = (m.team_rows || []).map(function (r) { return Object.assign({}, r, { name: r.team }); });
+    else src = m[dim + "_rows"] || [];
+    var q = (st.get("q") || "").toLowerCase();
+    return src.map(function (r) {
+      var d = { name: dim === "team" ? teamName(r.name) : nm(r.name), raw: r.name, rpts: r.total_reports || 0, stems: r.stems_checked || 0, staged: r.boxes_staged || 0,
+        boxes: r.boxes_checked || 0, q_stems: r.stems_quarantined || 0, rej_stems: r.stems_rejected || 0, affected: r.stems_affected || 0, q_boxes: r.boxes_quarantined || 0 };
+      d.sampled = calcSampled(d); d.ftr = calcFTR(d);
+      return d;
+    }).filter(function (d) { return !q || d.name.toLowerCase().indexOf(q) !== -1; });
+  }
+  var dimTbl = null;
+  function buildDimTable() {
+    var dim = st.get("dim");
+    var sumKey = function (k) { return function (rows) { return PH.fmt.num(PH.sum(rows, k)); }; };
+    dimTbl = PH.table("#tbl-dim", {
+      columns: [
+        { key: "name", label: DIMS[dim].noun, cls: "is-strong", total: function () { return "Total"; } },
+        { key: "rpts", label: "Reports", num: true, format: function (v) { return PH.fmt.num(v); }, total: sumKey("rpts") },
+        { key: "stems", label: "Stems", num: true, format: function (v) { return PH.fmt.num(v); }, total: sumKey("stems") },
+        { key: "staged", label: "Staged", num: true, format: function (v) { return PH.fmt.num(v); }, total: sumKey("staged") },
+        { key: "boxes", label: "Boxes checked", num: true, format: function (v) { return PH.fmt.num(v); }, total: sumKey("boxes") },
+        { key: "q_stems", label: "Quarantined", num: true, format: function (v) { return PH.fmt.num(v); }, total: sumKey("q_stems") },
+        { key: "rej_stems", label: "Rejected", num: true, format: function (v) { return PH.fmt.num(v); }, total: sumKey("rej_stems") },
+        { key: "sampled", label: "Sampled %", num: true, html: function (v) { return v == null ? "—" : v.toFixed(1) + "%"; },
+          total: function (rows) { var t = { staged: PH.sum(rows, "staged"), boxes: PH.sum(rows, "boxes") }; var v = calcSampled(t); return v == null ? "—" : v.toFixed(1) + "%"; } },
+        { key: "ftr", label: "FTR %", num: true, html: function (v) { return ftrBadge(v); },
+          total: function (rows) { var t = { staged: PH.sum(rows, "staged"), q_boxes: PH.sum(rows, "q_boxes"), stems: PH.sum(rows, "stems"), q_stems: PH.sum(rows, "q_stems"), rej_stems: PH.sum(rows, "rej_stems") }; var v = calcFTR(t); return v == null ? "—" : v.toFixed(1) + "%"; } }
+      ],
+      rows: [], sort: { key: "stems", dir: "desc" }, tall: true, compact: true, empty: "No data for this period", emptyText: "Widen the dates or clear a filter.",
+      onRowClick: function (r) { dimModal(r); }
+    });
+  }
+  var dimBuilt = null;
+  function paintDim() {
+    var dim = st.get("dim");
+    if (dimBuilt !== dim) { buildDimTable(); dimBuilt = dim; }
+    var rows = dimRows();
+    PH.text("#dim-title", DIMS[dim].title);
+    PH.text("#dim-meta", rows.length + " " + DIMS[dim].noun.toLowerCase() + (rows.length === 1 ? "" : "s") + " · click a row for detail");
+    dimTbl.update(rows);
+  }
+
+  function paint() {
+    if (!DATA) return;
+    paintModes();
+    paintKpis(DATA);
+    paintCharts(DATA);
+    paintIssues();
+    paintDim();
+  }
+
+  /* ── Drill-downs ───────────────────────────────────────────────── */
+  function dateFilters() {
+    var s = st.get(), f = [], fr = s.from, to = s.to, ys = PH.values(s.year);
+    if (!fr && !to && ys.length === 1) { fr = ys[0] + "-01-01"; to = ys[0] + "-12-31"; }
+    var key = encodeURIComponent("Quality Reporting.creation");
+    if (fr && to) f.push(key + "=" + encodeURIComponent(JSON.stringify([[">=", fr + " 00:00:00"], ["<=", to + " 23:59:59"]])));
+    else if (fr) f.push(key + "=" + encodeURIComponent(JSON.stringify([">=", fr + " 00:00:00"])));
+    else if (to) f.push(key + "=" + encodeURIComponent(JSON.stringify(["<=", to + " 23:59:59"])));
+    return f;
+  }
+  function listUrl(extra) {
+    var s = st.get(), f = ["control_point=Packhouse"];
+    if (s.mode === "Final QC") f.push("inspection_type=" + encodeURIComponent("Final QC"));
+    else if (s.mode) f.push("inspection_mode=" + encodeURIComponent(s.mode));
+    var add = function (field, vals) {
+      if (vals.length === 1) f.push(field + "=" + encodeURIComponent(vals[0]));
+      else if (vals.length > 1) f.push(field + "=" + encodeURIComponent(JSON.stringify(["in", vals])));
+    };
+    var over = extra || {};
+    add("team", over.team ? [over.team] : PH.values(s.team));
+    add("farm", over.farm ? [over.farm] : PH.values(s.farm));
+    add("variety", over.variety ? [over.variety] : PH.values(s.variety));
+    add("customer", over.customer ? [over.customer] : PH.values(s.customer));
+    if (over.parameter) f.push(encodeURIComponent("Quality Parameter.parameter_name") + "=" + encodeURIComponent(over.parameter));
+    return LIST + "?" + f.concat(dateFilters()).join("&");
+  }
+  function openList(extra) { window.open(listUrl(extra), "_blank"); }
+
+  function issueModal(r) {
+    var all = ((DATA && DATA.issue_rows) || []).filter(function (x) { return x.parameter === r.parameter; });
+    var total = PH.sum(all, "total");
+    var body = '<div class="ph-stats">' + all.map(function (x) { return "<div class=\"ph-stat\"><small>" + PH.esc(x.action || "No action") + "</small><b>" + PH.fmt.num(x.total) + "</b></div>"; }).join("") +
+      '<div class="ph-stat"><small>All actions</small><b>' + PH.fmt.num(total) + "</b></div></div>" +
+      '<p class="ph-muted ph-mt">Counts follow the filters above. Open the reports to see each record behind these numbers.</p>';
+    PH.modal({ title: nm(r.parameter), sub: "Issue parameter", body: body, actions: [
+      { label: "Open matching reports", primary: true, onClick: function () { openList({ parameter: r.parameter }); return false; } },
+      { label: "Close" }
+    ] });
+  }
+
+  function dimModal(r) {
+    var dim = st.get("dim"), body = "";
+    body += '<div class="ph-stats">' +
+      stat("Reports", PH.fmt.num(r.rpts)) + stat("Stems checked", PH.fmt.num(r.stems)) + stat("Boxes staged", PH.fmt.num(r.staged)) + stat("Boxes checked", PH.fmt.num(r.boxes)) +
+      stat("Sampled %", r.sampled == null ? "—" : r.sampled.toFixed(1) + "%") + stat("FTR %", r.ftr == null ? "—" : r.ftr.toFixed(1) + "%") +
+      stat("Quarantined stems", PH.fmt.num(r.q_stems)) + stat("Rejected stems", PH.fmt.num(r.rej_stems)) + stat("Quarantined boxes", PH.fmt.num(r.q_boxes)) + "</div>";
+    if (dim === "team") {
+      var acts = ((DATA && DATA.issues_by_team) || []).filter(function (x) { return (x.team == null ? "" : x.team) === (r.raw == null ? "" : r.raw); });
+      if (acts.length) body += '<h4 class="ph-mt">Issues by action</h4><dl class="ph-kv">' + acts.map(function (x) { return "<dt>" + PH.esc(x.action || "—") + "</dt><dd>" + PH.fmt.num(x.total) + "</dd>"; }).join("") + "</dl>";
+      var wk = ((DATA && DATA.weekly_rows) || []).filter(function (x) { return (x.team == null ? "" : x.team) === (r.raw == null ? "" : r.raw); });
+      if (wk.length) {
+        body += '<h4 class="ph-mt">Weekly FTR</h4><div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Week</th><th class="is-num">Stems</th><th class="is-num">Quarantined</th><th class="is-num">Rejected</th><th class="is-num">FTR %</th></tr></thead><tbody>' +
+          wk.slice().sort(function (a, b) { return a.week - b.week; }).map(function (x) {
+            var s = x.stems_checked || 0, f = s > 0 ? Math.round((s - (x.stems_quarantined || 0) - (x.stems_rejected || 0)) / s * 10000) / 100 : null;
+            return "<tr><td>Wk " + PH.esc(x.week) + '</td><td class="is-num">' + PH.fmt.num(s) + '</td><td class="is-num">' + PH.fmt.num(x.stems_quarantined || 0) + '</td><td class="is-num">' + PH.fmt.num(x.stems_rejected || 0) + '</td><td class="is-num">' + ftrBadge(f) + "</td></tr>";
+          }).join("") + "</tbody></table></div>";
+      }
+    }
+    var over = {}; if (r.raw != null && r.raw !== "") over[DIMS[dim].field] = r.raw;
+    PH.modal({ title: r.name, sub: DIMS[dim].noun + " detail", size: "lg", body: body, actions: [
+      { label: "Open reports", primary: true, onClick: function () { openList(over); return false; } },
+      { label: "Close" }
+    ] });
+  }
+  function stat(label, v) { return '<div class="ph-stat"><small>' + PH.esc(label) + "</small><b>" + PH.esc(v) + "</b></div>"; }
+
+  /* ── Export ────────────────────────────────────────────────────── */
+  function stamp(n) { return n + "-" + (st.get("from") || "all") + ".csv"; }
+  document.getElementById("export-main").addEventListener("click", function () {
+    var rows = dimRows(), dim = st.get("dim");
+    if (!rows.length) return PH.toast("Nothing to export", "warn");
+    PH.csv(stamp("packhouse-overview-" + dim), rows, [
+      { key: "name", label: DIMS[dim].noun }, { key: "rpts", label: "Reports" }, { key: "stems", label: "Stems" }, { key: "staged", label: "Boxes staged" },
+      { key: "boxes", label: "Boxes checked" }, { key: "q_stems", label: "Quarantined stems" }, { key: "rej_stems", label: "Rejected stems" },
+      { key: "sampled", label: "Sampled %" }, { key: "ftr", label: "FTR %" }
+    ]);
+  });
+  document.getElementById("export-issues").addEventListener("click", function () {
+    var rows = issueRows();
+    if (!rows.length) return PH.toast("Nothing to export", "warn");
+    PH.csv(stamp("packhouse-overview-issues"), rows, [{ key: "parameter", label: "Parameter" }, { key: "action", label: "Action" }, { key: "total", label: "Count" }]);
+  });
+
+  /* ── Wiring ────────────────────────────────────────────────────── */
+  // Year/week and the date range exclude each other, as on the original page.
+  st.on(function (s, ch) {
+    var periodChanged = ch.indexOf("year") !== -1 || ch.indexOf("week") !== -1;
+    var datesChanged = ch.indexOf("from") !== -1 || ch.indexOf("to") !== -1;
+    if (periodChanged && (s.year || s.week)) {
+      var patch = { from: "", to: "", all: "" };
+      if (s.week && !s.year) patch.year = thisYear;
+      st.set(patch);
+    } else if (datesChanged && (s.from || s.to)) {
+      st.set({ year: "", week: "", all: "" });
+    }
+  });
+  var SERVER = ["year", "week", "team", "farm", "variety", "customer", "mode", "from", "to"];
+  var CLIENT = ["q", "act", "dim"];
+  st.on(function (s, ch) {
+    if (ch.some(function (k) { return SERVER.indexOf(k) !== -1; })) schedule();
+    else if (ch.some(function (k) { return CLIENT.indexOf(k) !== -1; })) {
+      // Search / action / breakdown only narrow rows already loaded: repaint the two tables,
+      // not the KPIs and the four charts.
+      if (!DATA) return;
+      if (ch.indexOf("q") !== -1 || ch.indexOf("act") !== -1) paintIssues();
+      paintDim();
+    }
+  });
+  PH.onRefresh(function () { load(); });
+  paintModes();
+  load();
+})();
+</script>
+{% endraw %}
+{% endblock %}
