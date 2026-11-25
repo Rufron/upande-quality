@@ -1,0 +1,616 @@
+{% extends "templates/web.html" %}
+{% block title %}Quality Raw Data · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<style>
+/* Quality Raw Data: page-only layout (tokens + spacing scale only). */
+.rd-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3) var(--sp-5);padding:0 32px var(--sp-4)}
+.rd-ctl{display:inline-flex;align-items:center;gap:var(--sp-2)}
+.rd-ctl .ph-select{max-width:170px}
+.ph-card__tools .ph-card__meta{margin-right:var(--sp-3)}
+.rd-note{padding:0 32px var(--sp-4);margin:0}
+.rd-tbl th{white-space:normal;vertical-align:bottom;line-height:1.25;min-width:84px}
+.rd-tbl th.rd-th-first{min-width:220px}
+.rd-tbl td{white-space:nowrap}
+.rd-tbl td.rd-first{min-width:220px;max-width:340px;overflow:hidden;text-overflow:ellipsis}
+.rd-g td{color:var(--ink-3)}
+.rd-g--0 td{font-weight:600;color:var(--ink);background:var(--surface-2)}
+.rd-g--0 td.ph-sticky-col{background:var(--surface-2)}
+.rd-g--1 td,.rd-g--2 td{background:var(--surface)}
+.rd-g--1 td.ph-sticky-col,.rd-g--2 td.ph-sticky-col{background:var(--surface)}
+.rd-tbl tbody tr.rd-g:hover td{background:var(--tint-2)}
+.rd-tbl tbody tr.rd-g:hover td.ph-sticky-col{background:var(--tint-2)}
+.rd-tbl td.rd-first.rd-i1{padding-left:calc(var(--sp-5) + var(--sp-6))}
+.rd-tbl td.rd-first.rd-i2{padding-left:calc(var(--sp-5) + var(--sp-6) * 2)}
+.rd-tbl td.rd-first.rd-i3{padding-left:calc(var(--sp-5) + var(--sp-6) * 3)}
+.ph-card--flush .rd-tbl td.rd-first.rd-i1{padding-left:calc(32px + var(--sp-6))}
+.ph-card--flush .rd-tbl td.rd-first.rd-i2{padding-left:calc(32px + var(--sp-6) * 2)}
+.ph-card--flush .rd-tbl td.rd-first.rd-i3{padding-left:calc(32px + var(--sp-6) * 3)}
+.rd-x{border:0;background:transparent;cursor:pointer;color:var(--ink-mute);padding:var(--sp-1);margin-right:var(--sp-1);border-radius:var(--r-sm);display:inline-flex;vertical-align:middle;transition:transform .15s}
+.rd-x:hover{background:var(--tint);color:var(--ink)}
+.rd-x[aria-expanded="true"]{transform:rotate(90deg)}
+.rd-x--none{visibility:hidden;cursor:default}
+.rd-lab{vertical-align:middle}
+.rd-n{border:0;background:transparent;padding:var(--sp-1) var(--sp-2);margin:0 calc(-1 * var(--sp-2));font:inherit;color:inherit;font-variant-numeric:tabular-nums;cursor:pointer;border-radius:var(--r-sm);text-decoration:underline;text-decoration-color:var(--hairline-3)}
+.rd-n:hover{background:var(--tint);text-decoration-color:var(--ink)}
+.rd-zero{color:var(--ink-faint)}
+.rd-h1{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--bad) 5%,transparent)}
+.rd-h2{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--bad) 11%,transparent)}
+.rd-h3{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--bad) 18%,transparent)}
+.rd-h4{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--bad) 28%,transparent)}
+.rd-tbl tfoot td.ph-sticky-col{z-index:2;background:var(--surface)}
+.rd-more{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-4) 32px var(--sp-5);color:var(--ink-mute)}
+.rd-sec{margin:var(--sp-6) 0 var(--sp-3);color:var(--ink-mute);font-weight:600;text-transform:uppercase;letter-spacing:.12em}
+.rd-sec:first-child{margin-top:0}
+.rd-tbl-modal .ph-table td{white-space:nowrap}
+.ph-overlay--drawer .ph-modal--xl{width:min(1180px,100%)}
+@media (max-width:820px){.rd-bar,.rd-note,.rd-more{padding-left:var(--sp-5);padding-right:var(--sp-5)}}
+</style>
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Insights</div>
+    <h1 class="ph-head__title">Quality Raw Data</h1>
+    <p class="ph-head__sub" id="sub">Intake quality records, grouped and totalled. Choose how to group, which columns to show, and click a count to see the records behind it.</p>
+  </div>
+  <div class="ph-head__tools">
+    <button class="ph-btn" id="btn-export" type="button"></button>
+  </div>
+</header>
+
+<div class="ph-filters">
+  <div id="f-farm"></div>
+  <div id="f-variety"></div>
+  <div id="f-gh"></div>
+  <div id="f-year"></div>
+  <div id="f-week"></div>
+  <div id="f-action"></div>
+  <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search farm, GH, variety…" aria-label="Search records"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets"><button data-value="today">Today</button><button data-value="7d">7 days</button><button data-value="30d">30 days</button><button data-value="mtd">This month</button></div>
+  <div class="ph-daterange"><input type="date" id="from" aria-label="From date"><span class="ph-daterange__sep">–</span><input type="date" id="to" aria-label="To date"></div>
+  <button class="ph-btn ph-btn--ghost ph-btn--sm" id="btn-alldates" type="button">All dates</button>
+</div>
+<div id="chips"></div>
+
+<section class="ph-kpis" id="kpis"></section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <div class="ph-card__title">Quality records</div>
+    <div class="ph-card__tools">
+      <span class="ph-card__meta" id="meta"></span>
+      <button class="ph-btn ph-btn--ghost ph-btn--sm" id="btn-expand" type="button">Expand all</button>
+      <button class="ph-btn ph-btn--ghost ph-btn--sm" id="btn-collapse" type="button">Collapse all</button>
+      <label class="ph-check"><input type="checkbox" id="compact"> Compact</label>
+    </div>
+  </div>
+  <div class="rd-bar">
+    <label class="rd-ctl"><span class="ph-muted">Group by</span><select class="ph-select" id="g1" aria-label="First grouping level"></select></label>
+    <label class="rd-ctl"><span class="ph-muted">then</span><select class="ph-select" id="g2" aria-label="Second grouping level"></select></label>
+    <label class="rd-ctl"><span class="ph-muted">then</span><select class="ph-select" id="g3" aria-label="Third grouping level"></select></label>
+    <div id="agg-wrap"><div class="ph-pills" id="agg" role="group" aria-label="Value">
+      <button data-value="sum" data-tip="Total count">Sum</button>
+      <button data-value="avg" data-tip="Average per record">Average</button>
+      <button data-value="cnt" data-tip="Records where the count is above zero">Records hit</button>
+      <button data-value="rate" data-tip="Defect count per 100 stems checked">Per 100 checked</button>
+    </div></div>
+    <div id="f-cols"></div>
+  </div>
+  <div id="tbl"></div>
+</section>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script>
+(function () {
+  "use strict";
+
+  const API = "fetchQualityRawData";
+  const CORE = ["Stems Received", "Stems Checked", "Quarantined Stems"];
+  const DIMS = [
+    { key: "Year", label: "Year" }, { key: "Week", label: "Week" }, { key: "Date", label: "Date" },
+    { key: "Farm", label: "Farm" }, { key: "GH", label: "Greenhouse" },
+    { key: "Variety", label: "Variety" }, { key: "Action", label: "Action" },
+  ];
+  const DIM_LABEL = DIMS.reduce((a, d) => ((a[d.key] = d.label), a), {});
+  const DESC_DIMS = ["Year", "Week", "Date"];
+  const AGGS = { sum: "Sum", avg: "Average per record", cnt: "Records hit", rate: "Per 100 stems checked" };
+  const MAX_ROWS = 400;
+  const TOP_DEFAULT = 8;
+
+  const today = PH.date.today();
+  const st = PH.state({
+    from: PH.date.add(today, -29), to: today,
+    year: "", week: "", farm: "", variety: "", gh: "", action: "", q: "",
+    g1: "Week", g2: "Farm", g3: "",
+    agg: "sum", cols: "", compact: true,
+  });
+  // A week or year is an alternative to the date range, so a deep link with one drops the default dates.
+  (function () {
+    const p = new URLSearchParams(location.search);
+    if ((st.get("year") || st.get("week")) && !p.has("from") && !p.has("to")) st.set({ from: "", to: "" }, { silent: true });
+  })();
+
+  let DATA = [];          // rows from the server (after server-side filters)
+  let PARAMS = [];        // defect parameter names
+  let PTOTAL = {};        // parameter -> total over DATA
+  let ROWS = [];          // DATA after client filters
+  let seq = 0, loadedKey = null, loaded = false, AP = null;
+  let nodeIdx = new Map();   // path -> node, rebuilt with the tree
+  let tree = [], levels = [], expanded = new Set(), limit = MAX_ROWS;
+  let sort = null, flatTable = null, lastCols = [];
+  const aggCache = new Map();
+
+  /* ── filter controls ─────────────────────────────────────── */
+  const mFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: regionOptions([]), multiSite: true, plural: "farms", all: "All farms" });
+  const mVariety = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All varieties" });
+  const mGh = PH.multiselect("#f-gh", st, "gh", { label: "GH", options: [], plural: "greenhouses", all: "All GH" });
+  const mYear = PH.multiselect("#f-year", st, "year", { label: "Year", options: [], plural: "years", all: "All", search: false });
+  const mWeek = PH.multiselect("#f-week", st, "week", { label: "Week", options: [], plural: "weeks", all: "All" });
+  const mAction = PH.multiselect("#f-action", st, "action", { label: "Action", options: [], plural: "actions", all: "All", search: false });
+  const mCols = PH.multiselect("#f-cols", st, "cols", { label: "Columns", options: [], plural: "columns", all: "Default" });
+  PH.bindSearch("#f-q", st, "q");
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.activeFilters("#chips", st, [
+    { key: "farm", label: "Farm", multi: true }, { key: "variety", label: "Variety", multi: true },
+    { key: "gh", label: "GH", multi: true }, { key: "year", label: "Year", multi: true },
+    { key: "week", label: "Week", multi: true }, { key: "action", label: "Action", multi: true },
+    { key: "q", label: "Search" },
+    { key: "from", label: "From", text: PH.fmt.date }, { key: "to", label: "To", text: PH.fmt.date },
+  ]);
+  PH.pills("#agg", st, "agg");
+  ["g1", "g2", "g3"].forEach((k, i) => {
+    const el = document.getElementById(k);
+    el.innerHTML = '<option value="">' + (i ? "None" : "None (flat list)") + "</option>" +
+      DIMS.map((d) => '<option value="' + d.key + '">' + PH.esc(d.label) + "</option>").join("");
+    PH.bindSelect(el, st, k);
+  });
+  const compactEl = document.getElementById("compact");
+  compactEl.checked = !!st.get("compact");
+  compactEl.addEventListener("change", () => st.set({ compact: compactEl.checked }));
+  st.on((s) => { compactEl.checked = !!s.compact; });
+  document.getElementById("btn-alldates").addEventListener("click", () => st.set({ from: "", to: "" }));
+  document.getElementById("btn-export").innerHTML = PH.icon("download") + " Export CSV";
+
+  function regionOptions(farms) {
+    const groups = PH.regionGroups().map((g) => ({ group: g.group, items: g.items.slice() }));
+    const known = new Set(groups.reduce((a, g) => a.concat(g.items), []));
+    const extra = (farms || []).filter((f) => !known.has(f));
+    // keep only farms the server knows once options have arrived
+    let out = groups;
+    if (farms && farms.length) {
+      const have = new Set(farms);
+      out = groups.map((g) => ({ group: g.group, items: g.items.filter((f) => have.has(f)) })).filter((g) => g.items.length);
+    }
+    if (extra.length) out.push({ group: "Other", items: extra });
+    return out;
+  }
+
+  /* ── server args ─────────────────────────────────────────── */
+  function serverArgs() {
+    const s = st.get();
+    const years = PH.values(s.year), weeks = PH.values(s.week);
+    return {
+      year: years.length === 1 ? years[0] : "",
+      week: weeks.length === 1 ? String(parseInt(weeks[0].replace(/\D/g, ""), 10) || "") : "",
+      farm: s.farm, variety: s.variety, greenhouse: s.gh,
+      from_date: s.from, to_date: s.to,
+      compact: 1, // sparse, dictionary-encoded rows (older callers omit it and get row objects)
+    };
+  }
+
+  /* ── load ────────────────────────────────────────────────── */
+  function load(force) {
+    const args = serverArgs();
+    const key = JSON.stringify(args);
+    if (!force && loaded && key === loadedKey) return paint();
+    const my = ++seq;
+    loaded = false;
+    PH.kpiSkeleton("#kpis", ["Records", "Stems received", "Stems checked", "Quarantined", "Defects per 100 checked"]);
+    PH.skeleton("#tbl", "rows", 8);
+    PH.text("#meta", "Loading…");
+    PH.call(API, args, { silent: true, type: "GET" }).then((m) => {
+      if (my !== seq) return;
+      m = m || {};
+      PARAMS = m.param_names || [];
+      loadedKey = key;
+      loaded = true;
+      PTOTAL = {};
+      PARAMS.forEach((p) => (PTOTAL[p] = 0));
+      DATA = decode(m);
+      AP = null;
+      const o = m.filter_options || {};
+      mFarm.setOptions(regionOptions(o.farms || []));
+      mVariety.setOptions(o.varieties || []);
+      mGh.setOptions(o.greenhouses || []);
+      mYear.setOptions((o.years || []).map(String));
+      mWeek.setOptions((o.weeks || []).map((w) => "W" + String(w).padStart(2, "0")));
+      mAction.setOptions(m.compact && m.dict ? PH.uniq(m.dict.action.filter(Boolean)).sort() : PH.uniq(DATA.map((r) => r.Action)).sort());
+      mCols.setOptions([
+        { group: "Stems", items: CORE.map((c) => ({ value: c, label: c })) },
+        { group: "Defect counts", items: activeParams().map((p) => ({ value: p, label: p })) },
+      ]);
+      paint();
+      PH.markUpdated();
+    }).catch((e) => {
+      if (my !== seq) return;
+      PH.text("#meta", "");
+      PH.kpis("#kpis", [{ label: "Records", value: "—" }]);
+      PH.error("#tbl", e && e.message, true);
+      const b = document.querySelector("#tbl [data-retry]");
+      if (b) b.addEventListener("click", () => load(true));
+    });
+  }
+
+  /* Turn the server payload into row objects. Compact rows only carry the defect columns that have a
+     count; the prototype supplies 0 for every other defect column, so reads and CSV export see a full row. */
+  function decode(m) {
+    const src = m.data || [];
+    if (!m.compact || !m.dict) {
+      src.forEach((r) => {
+        let n = 0;
+        PARAMS.forEach((p) => { const v = r[p] || 0; PTOTAL[p] += v; n += v; });
+        r._d = n;
+        r._s = [r.Farm, r.GH, r.Variety, r.Action, r.Date].join("\u0001").toLowerCase();
+      });
+      return src;
+    }
+    const d = m.dict, zero = {};
+    PARAMS.forEach((p) => (zero[p] = 0));
+    const dates = d.date.map((x) => String(x || ""));
+    const yrs = dates.map((x) => parseInt(x.slice(0, 4), 10) || 0);
+    return src.map((r) => {
+      const o = Object.create(zero);
+      o.Farm = d.farm[r[0]]; o.GH = d.gh[r[1]]; o.Date = dates[r[2]]; o.Year = yrs[r[2]]; o.Week = d.week[r[3]];
+      o.Variety = d.variety[r[4]]; o.Action = d.action[r[5]];
+      o["Stems Received"] = r[6]; o["Stems Checked"] = r[7]; o["Quarantined Stems"] = r[8];
+      const f = r[9];
+      let n = 0;
+      for (let i = 0; i < f.length; i += 2) { const p = PARAMS[f[i]], v = f[i + 1]; o[p] = v; PTOTAL[p] += v; n += v; }
+      o._d = n;
+      o._s = [o.Farm, o.GH, o.Variety, o.Action, o.Date].join("\u0001").toLowerCase();
+      return o;
+    });
+  }
+  function activeParams() {
+    if (!AP) AP = PARAMS.filter((p) => PTOTAL[p] > 0).sort((a, b) => PTOTAL[b] - PTOTAL[a] || a.localeCompare(b));
+    return AP;
+  }
+  function chosenMeasures() {
+    const pick = PH.values(st.get("cols"));
+    const ap = activeParams();
+    if (pick.length) return [...CORE.filter((c) => pick.includes(c)), ...ap.filter((p) => pick.includes(p))];
+    return [...CORE, ...ap.slice(0, TOP_DEFAULT)];
+  }
+
+  /* ── client filters ──────────────────────────────────────── */
+  function applyClient() {
+    const s = st.get();
+    const years = PH.values(s.year), weeks = PH.values(s.week), actions = PH.values(s.action);
+    const q = (s.q || "").toLowerCase();
+    ROWS = DATA.filter((r) =>
+      (!years.length || years.includes(String(r.Year))) &&
+      (!weeks.length || weeks.includes(r.Week)) &&
+      (!actions.length || actions.includes(r.Action)) &&
+      (!q || r._s.includes(q))
+    );
+  }
+
+  /* ── aggregation ─────────────────────────────────────────── */
+  function defectsOf(r) { return r._d || 0; }
+  function val(recs, m, mode) {
+    if (CORE.includes(m) && mode !== "avg") return PH.sum(recs, m);
+    const n = recs.length;
+    if (mode === "avg") return n ? PH.sum(recs, m) / n : 0;
+    if (mode === "cnt") return recs.reduce((a, r) => a + ((r[m] || 0) > 0 ? 1 : 0), 0);
+    if (mode === "rate") { const c = PH.sum(recs, "Stems Checked"); return c ? (PH.sum(recs, m) * 100) / c : 0; }
+    return PH.sum(recs, m);
+  }
+  function fmtVal(v, m, mode) {
+    if (mode === "avg" || (mode === "rate" && !CORE.includes(m))) return PH.fmt.num(v, 2);
+    return PH.fmt.num(v);
+  }
+  function nodeVal(node, m, mode) {
+    const k = node.path + "\u0001" + m + "\u0001" + mode;
+    if (!aggCache.has(k)) aggCache.set(k, val(node.recs, m, mode));
+    return aggCache.get(k);
+  }
+
+  /* ── tree ────────────────────────────────────────────────── */
+  function currentLevels() {
+    const out = [];
+    ["g1", "g2", "g3"].forEach((k) => { const v = st.get(k); if (v && !out.includes(v)) out.push(v); });
+    return out;
+  }
+  function build(recs, depth, prefix) {
+    const dim = levels[depth];
+    const m = new Map();
+    recs.forEach((r) => { const k = r[dim] == null || r[dim] === "" ? "(none)" : String(r[dim]); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
+    return Array.from(m, ([label, rs]) => {
+      const path = prefix + "\u0002" + label;
+      const node = { label, path, depth, recs: rs, kids: depth + 1 < levels.length ? build(rs, depth + 1, path) : null };
+      nodeIdx.set(path, node);
+      return node;
+    });
+  }
+  function cmpLabel(a, b, dim) {
+    const r = String(a.label).localeCompare(String(b.label), undefined, { numeric: true, sensitivity: "base" });
+    return DESC_DIMS.includes(dim) ? -r : r;
+  }
+  function sortNodes(nodes, measures, mode) {
+    const s = sort || { key: "_label", dir: "asc" };
+    nodes.sort((a, b) => {
+      let r;
+      if (s.key === "_label") r = cmpLabel(a, b, levels[a.depth]) * (sort ? (s.dir === "asc" ? 1 : -1) * (DESC_DIMS.includes(levels[a.depth]) ? -1 : 1) : 1);
+      else if (s.key === "_n") r = (a.recs.length - b.recs.length) * (s.dir === "asc" ? 1 : -1);
+      else r = (nodeVal(a, s.key, mode) - nodeVal(b, s.key, mode)) * (s.dir === "asc" ? 1 : -1);
+      return r || String(a.label).localeCompare(String(b.label));
+    });
+    nodes.forEach((n) => n.kids && sortNodes(n.kids, measures, mode));
+  }
+  function allNodes(nodes, f) { nodes.forEach((n) => { f(n); if (n.kids) allNodes(n.kids, f); }); }
+
+  /* ── paint ───────────────────────────────────────────────── */
+  function paint() {
+    if (!loaded) return;
+    applyClient();
+    aggCache.clear();
+    levels = currentLevels();
+    paintKpis();
+    const filterTxt = ROWS.length === DATA.length ? "" : " (of " + PH.fmt.num(DATA.length) + " loaded)";
+    PH.text("#meta", PH.fmt.num(ROWS.length) + " records" + filterTxt);
+    PH.text("#sub", rangeText());
+    const grouped = levels.length > 0;
+    document.getElementById("btn-expand").hidden = !grouped || levels.length < 2;
+    document.getElementById("btn-collapse").hidden = !grouped || levels.length < 2;
+    document.getElementById("agg-wrap").hidden = !grouped;
+    if (!ROWS.length) {
+      flatTable = null;
+      PH.empty("#tbl", "No records for these filters", DATA.length ? "Clear a filter, or widen the date range, to see more." : "There are no intake quality records in this period. Try a wider date range or All dates.");
+      return;
+    }
+    if (grouped) paintTree(); else paintFlat();
+  }
+  function rangeText() {
+    const s = st.get();
+    const w = s.from || s.to ? PH.fmt.date(s.from) + " to " + PH.fmt.date(s.to) : "all dates";
+    return "Intake quality records for " + w + ", grouped and totalled. Click a count to see the records behind it.";
+  }
+  function paintKpis() {
+    const recv = PH.sum(ROWS, "Stems Received"), chk = PH.sum(ROWS, "Stems Checked"), qua = PH.sum(ROWS, "Quarantined Stems");
+    const def = ROWS.reduce((a, r) => a + defectsOf(r), 0);
+    PH.kpis("#kpis", [
+      { label: "Records", value: ROWS.length, unit: "intake quality checks" },
+      { label: "Stems received", value: recv },
+      { label: "Stems checked", value: chk, unit: recv ? PH.fmt.num((chk * 100) / recv, 1) + "% of received" : "" },
+      { label: "Quarantined", value: qua, unit: chk ? PH.fmt.num((qua * 100) / chk, 1) + "% of checked" : "" },
+      { label: "Defects per 100 checked", value: chk ? PH.fmt.num((def * 100) / chk, 2) : "—", unit: PH.fmt.num(def) + " defects counted" },
+    ]);
+  }
+
+  /* flat (no grouping) */
+  function recordColumns(measures, withDims) {
+    const dimCols = ["Date", "Week", "Farm", "GH", "Variety", "Action"].map((k, i) => ({
+      key: k, label: DIM_LABEL[k], sortable: true, cls: i === 0 && withDims ? "ph-sticky-col is-strong is-nowrap" : "is-nowrap",
+    }));
+    const mc = measures.map((m) => ({
+      key: m, label: m, num: true, sortable: true,
+      format: (v) => (v ? PH.fmt.num(v) : "0"),
+      total: (rows) => PH.fmt.num(PH.sum(rows, m)),
+    }));
+    return dimCols.concat(mc);
+  }
+  function paintFlat() {
+    const measures = chosenMeasures();
+    const cols = recordColumns(measures, true);
+    cols[0].total = () => "Total";
+    flatTable = PH.table("#tbl", {
+      columns: cols, rows: ROWS, sort: { key: "Date", dir: "desc" }, pageSize: 100, tall: true,
+      compact: !!st.get("compact"), onRowClick: (r) => openRecord(r),
+    });
+    const t = document.querySelector("#tbl table");
+    if (t) t.classList.add("rd-tbl");
+  }
+
+  /* grouped */
+  function paintTree() {
+    flatTable = null;
+    const mode = st.get("agg");
+    const measures = chosenMeasures();
+    nodeIdx = new Map();
+    tree = build(ROWS, 0, "");
+    if (!expanded._init || expanded._lv !== levels.join("|")) {
+      expanded = new Set();
+      expanded._init = true;
+      expanded._lv = levels.join("|");
+      if (levels.length > 1 && tree.length <= 8) tree.forEach((n) => expanded.add(n.path));
+    }
+    sortNodes(tree, measures, mode);
+    renderTree();
+  }
+  function visibleRows() {
+    const out = [];
+    (function walk(nodes) { nodes.forEach((n) => { out.push(n); if (n.kids && expanded.has(n.path)) walk(n.kids); }); })(tree);
+    return out;
+  }
+  function renderTree() {
+    const mode = st.get("agg");
+    const measures = chosenMeasures();
+    lastCols = measures;
+    const vis = visibleRows();
+    const shown = vis.slice(0, limit);
+    // heat: scale each defect column against the biggest value at the same depth
+    const maxAt = {};
+    shown.forEach((n) => measures.forEach((m) => {
+      if (CORE.includes(m)) return;
+      const k = n.depth + "|" + m, v = nodeVal(n, m, mode);
+      if (!(maxAt[k] >= v)) maxAt[k] = v;
+    }));
+    const s = sort || { key: "_label", dir: "asc" };
+    const th = (k, label, num, extra) => {
+      const on = s.key === k;
+      return '<th class="' + (num ? "is-num " : "") + "is-sortable" + (on ? " is-sorted" : "") + (extra ? " " + extra : "") + '" data-k="' + PH.esc(k) + '">' + PH.esc(label) +
+        '<span class="ph-sort">' + (on ? (s.dir === "asc" ? "▲" : "▼") : "↕") + "</span></th>";
+    };
+    const head = "<tr>" + th("_label", levels.map((l) => DIM_LABEL[l]).join(" › "), false, "ph-sticky-col rd-th-first") + th("_n", "Records", true) + measures.map((m) => th(m, m, true)).join("") + "</tr>";
+    const body = shown.map((n) => {
+      const open = expanded.has(n.path);
+      const chev = n.kids
+        ? '<button type="button" class="rd-x" data-tog="' + PH.esc(n.path) + '" aria-expanded="' + open + '" aria-label="' + (open ? "Collapse " : "Expand ") + PH.esc(n.label) + '">' + PH.icon("chevronRight", 14) + "</button>"
+        : '<span class="rd-x rd-x--none">' + PH.icon("chevronRight", 14) + "</span>";
+      const cells = measures.map((m) => {
+        const v = nodeVal(n, m, mode);
+        let h = "";
+        if (!CORE.includes(m) && v > 0) {
+          const r = v / (maxAt[n.depth + "|" + m] || 1);
+          h = r > 0.75 ? " rd-h4" : r > 0.5 ? " rd-h3" : r > 0.25 ? " rd-h2" : " rd-h1";
+        }
+        return '<td class="is-num' + h + (v ? "" : " rd-zero") + '">' + PH.esc(v ? fmtVal(v, m, mode) : "0") + "</td>";
+      }).join("");
+      return '<tr class="rd-g rd-g--' + Math.min(n.depth, 2) + ' is-link" data-p="' + PH.esc(n.path) + '">' +
+        '<td class="rd-first ph-sticky-col rd-i' + Math.min(n.depth, 3) + '">' + chev + '<span class="rd-lab">' + PH.esc(n.label) + "</span></td>" +
+        '<td class="is-num"><button type="button" class="rd-n" data-open="' + PH.esc(n.path) + '" data-tip="Show these records">' + PH.fmt.num(n.recs.length) + "</button></td>" + cells + "</tr>";
+    }).join("");
+    const foot = '<tfoot><tr><td class="ph-sticky-col rd-first">Total</td><td class="is-num">' + PH.fmt.num(ROWS.length) + "</td>" +
+      measures.map((m) => '<td class="is-num">' + PH.esc(fmtVal(val(ROWS, m, mode), m, mode)) + "</td>").join("") + "</tr></tfoot>";
+    const more = vis.length > shown.length
+      ? '<div class="rd-more"><span>Showing ' + PH.fmt.num(shown.length) + " of " + PH.fmt.num(vis.length) + ' rows</span><button class="ph-btn ph-btn--sm" type="button" data-more>Show more</button></div>'
+      : "";
+    const note = mode === "sum" ? "" : '<p class="rd-note ph-muted">Values are ' + PH.esc(AGGS[mode].toLowerCase()) + ". Stem counts stay as totals except in Average.</p>";
+    PH.set("#tbl", note + '<div class="ph-table-wrap ph-table-wrap--tall"><table class="ph-table rd-tbl' + (st.get("compact") ? " ph-table--compact" : "") + '"><thead>' + head + "</thead><tbody>" + body + "</tbody>" + foot + "</table></div>" + more);
+  }
+
+  /* ── interactions ────────────────────────────────────────── */
+  const tbl = document.getElementById("tbl");
+  tbl.addEventListener("click", (e) => {
+    if (flatTable) return;
+    const more = e.target.closest("[data-more]");
+    if (more) { limit += MAX_ROWS; return PH.keepScroll(renderTree); }
+    const th = e.target.closest("th.is-sortable");
+    if (th) {
+      const k = th.dataset.k;
+      sort = sort && sort.key === k ? { key: k, dir: sort.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "_label" ? "asc" : "desc" };
+      return paintTree();
+    }
+    const op = e.target.closest("[data-open]");
+    if (op) return openNode(findNode(op.dataset.open));
+    const tr = e.target.closest("tr.rd-g");
+    if (!tr) return;
+    const n = findNode(tr.dataset.p);
+    if (!n) return;
+    if (n.kids) toggle(n.path); else openNode(n);
+  });
+  function toggle(path) {
+    if (expanded.has(path)) expanded.delete(path); else expanded.add(path);
+    PH.keepScroll(renderTree);
+  }
+  function findNode(path) {
+    return nodeIdx.get(path) || null;
+  }
+  document.getElementById("btn-expand").addEventListener("click", () => {
+    allNodes(tree, (n) => { if (n.kids) expanded.add(n.path); });
+    limit = MAX_ROWS; renderTree();
+  });
+  document.getElementById("btn-collapse").addEventListener("click", () => { expanded = new Set(); expanded._init = true; expanded._lv = levels.join("|"); renderTree(); });
+
+  function pathLabels(n) { return n.path.split("\u0002").slice(1); }
+
+  function openNode(n) {
+    if (!n) return;
+    const labels = pathLabels(n);
+    const recs = n.recs;
+    const recv = PH.sum(recs, "Stems Received"), chk = PH.sum(recs, "Stems Checked"), qua = PH.sum(recs, "Quarantined Stems");
+    const defs = activeParams().map((p) => ({ p, v: PH.sum(recs, p) })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
+    const totalDef = defs.reduce((a, x) => a + x.v, 0);
+    const body = document.createElement("div");
+    body.innerHTML = PH.html`
+      <div class="ph-stats">
+        <div class="ph-stat"><small>Records</small><b>${PH.fmt.num(recs.length)}</b></div>
+        <div class="ph-stat"><small>Stems received</small><b>${PH.fmt.num(recv)}</b></div>
+        <div class="ph-stat"><small>Stems checked</small><b>${PH.fmt.num(chk)}</b></div>
+        <div class="ph-stat"><small>Quarantined</small><b>${PH.fmt.num(qua)}</b></div>
+        <div class="ph-stat"><small>Defects per 100 checked</small><b>${chk ? PH.fmt.num((totalDef * 100) / chk, 1) : "—"}</b></div>
+      </div>
+      <h3 class="rd-sec">Defect counts</h3>
+      <div id="rd-defs"></div>
+      <h3 class="rd-sec">Records</h3>
+      <div class="rd-tbl-modal" id="rd-recs"></div>`.__raw;
+    const m = PH.modal({
+      title: labels.join(" › "), sub: levels.map((l, i) => DIM_LABEL[l] + ": " + labels[i]).join(" · "), body, drawer: true, size: "xl",
+      actions: [
+        { label: "Export these records", onClick: () => { exportRecords(recs, slug(labels.join("-")) + ".csv"); return false; } },
+        { label: "Close", primary: true },
+      ],
+    });
+    const root = m.body || body;
+    const defsEl = root.querySelector("#rd-defs");
+    if (!defs.length) PH.empty(defsEl, "No defects counted", "Every record in this group has zero defect counts.");
+    else defsEl.innerHTML = '<div class="ph-list">' + defs.map((x, i) => PH.html`<div class="ph-list__row"><span class="ph-list__rank">${i + 1}</span><span class="ph-list__name">${x.p}</span><span class="ph-list__qty">${PH.fmt.num(x.v)} <small class="ph-muted">${PH.fmt.num((x.v * 100) / totalDef, 0)}%</small></span></div>`.__raw).join("") + "</div>";
+    PH.table(root.querySelector("#rd-recs"), {
+      columns: recordColumns([...CORE, ...defs.slice(0, 12).map((x) => x.p)], false), rows: recs, sort: { key: "Date", dir: "desc" },
+      pageSize: 50, compact: true, onRowClick: (r) => openRecord(r),
+    });
+  }
+
+  function openRecord(r) {
+    const defs = activeParams().filter((p) => r[p] > 0);
+    const body = PH.html`
+      <dl class="ph-kv">
+        <dt>Date</dt><dd>${PH.fmt.date(r.Date)}</dd><dt>Week</dt><dd>${r.Week}</dd><dt>Year</dt><dd>${r.Year}</dd>
+        <dt>Farm</dt><dd>${r.Farm || "—"}</dd><dt>Greenhouse</dt><dd>${r.GH || "—"}</dd><dt>Variety</dt><dd>${r.Variety || "—"}</dd>
+        <dt>Action</dt><dd>${r.Action || "—"}</dd>
+        <dt>Stems received</dt><dd>${PH.fmt.num(r["Stems Received"])}</dd><dt>Stems checked</dt><dd>${PH.fmt.num(r["Stems Checked"])}</dd><dt>Quarantined</dt><dd>${PH.fmt.num(r["Quarantined Stems"])}</dd>
+      </dl>
+      <h3 class="rd-sec">Defect counts</h3>
+      ${defs.length ? PH.raw('<dl class="ph-kv">' + defs.map((p) => PH.html`<dt>${p}</dt><dd>${PH.fmt.num(r[p])}</dd>`.__raw).join("") + "</dl>") : PH.raw('<p class="ph-muted">No defects counted on this record.</p>')}`;
+    PH.modal({ title: (r.Variety || "Record") + " · " + PH.fmt.date(r.Date), sub: [r.Farm, r.GH].filter(Boolean).join(" · "), body: body.__raw, actions: [{ label: "Close", primary: true }] });
+  }
+
+  /* ── export ──────────────────────────────────────────────── */
+  function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "records"; }
+  function exportRecords(rows, name) {
+    const cols = recordColumns(chosenMeasures(), false).map((c) => ({ key: c.key, label: c.label }));
+    PH.csv(name || "quality-raw-data-" + PH.date.today() + ".csv", rows, cols);
+  }
+  function exportAllParams() {
+    const cols = ["Date", "Week", "Year", "Farm", "GH", "Variety", "Action", ...CORE, ...activeParams()].map((k) => ({ key: k, label: DIM_LABEL[k] || k }));
+    PH.csv("quality-raw-data-all-columns-" + PH.date.today() + ".csv", ROWS, cols);
+  }
+  function exportGrouped() {
+    const mode = st.get("agg"), measures = chosenMeasures();
+    const rows = [];
+    allNodes(tree, (n) => {
+      const r = { _n: n.recs.length };
+      pathLabels(n).forEach((l, i) => (r["L" + i] = l));
+      measures.forEach((m) => (r[m] = +val(n.recs, m, mode).toFixed(2)));
+      rows.push(r);
+    });
+    const cols = levels.map((l, i) => ({ key: "L" + i, label: DIM_LABEL[l] })).concat([{ key: "_n", label: "Records" }], measures.map((m) => ({ key: m, label: m + (CORE.includes(m) || mode === "sum" ? "" : " (" + AGGS[mode].toLowerCase() + ")") })));
+    PH.csv("quality-raw-data-grouped-" + PH.date.today() + ".csv", rows, cols);
+  }
+  document.getElementById("btn-export").addEventListener("click", (e) => {
+    if (!ROWS.length) return PH.toast("Nothing to export for these filters", "warn");
+    const items = [
+      { label: "Records, chosen columns", icon: "download", onClick: () => exportRecords(ROWS) },
+      { label: "Records, every defect column", icon: "download", onClick: exportAllParams },
+    ];
+    if (levels.length) items.push({ label: "Grouped table as shown", icon: "download", onClick: exportGrouped });
+    PH.menu(e.currentTarget, items);
+  });
+
+  /* ── wiring ──────────────────────────────────────────────── */
+  st.on((s, ch) => {
+    if ((ch.includes("year") || ch.includes("week")) && (s.year || s.week) && (s.from || s.to)) return st.set({ from: "", to: "" });
+    if ((ch.includes("from") || ch.includes("to")) && (s.from || s.to) && (s.year || s.week)) return st.set({ year: "", week: "" });
+    if (ch.some((k) => ["g1", "g2", "g3"].includes(k))) limit = MAX_ROWS;
+    if (ch.some((k) => ["g1", "g2", "g3"].includes(k))) sort = null;
+    load(false);
+  });
+  PH.onRefresh(() => load(true));
+  load(true);
+})();
+</script>
+{% endraw %}
+{% endblock %}

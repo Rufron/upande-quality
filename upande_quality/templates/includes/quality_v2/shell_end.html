@@ -1,0 +1,6 @@
+{#- Quality v2 shell — close. Loads the shared runtime (window.PH) BEFORE the page script. -#}
+    </div>
+  </main>
+</div>
+<script>window.PH_REGIONS = {{ (ph_regions or {}) | tojson }};</script>
+<script src="/assets/upande_quality/js/quality-v2.js?v={{ ph_v }}"></script>

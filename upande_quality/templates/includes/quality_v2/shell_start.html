@@ -1,0 +1,51 @@
+{#- Quality v2 shell — open. Pair with shell_end.html. See README.md.
+    Needs the context from upande_quality.quality_v2.page_context(). -#}
+{%- from "upande_quality/templates/includes/quality_v2/icons.html" import icon -%}
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/upande_quality/css/quality-v2.css?v={{ ph_v }}">
+<style>
+  /* Moving between the sidebar's pages cross-fades the page while the sidebar stays put. */
+  @view-transition{navigation:auto}
+  .ph-side{view-transition-name:ph-side}
+  ::view-transition-old(ph-side),::view-transition-new(ph-side){animation:none}
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.15s}
+  @media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none}}
+</style>
+<script>document.documentElement.classList.add('ph2-root');</script>
+<div class="ph2" id="ph2">
+  <script>try{if(localStorage.getItem('ph2SideCollapsed')==='1')document.getElementById('ph2').classList.add('is-collapsed')}catch(e){}</script>
+  <aside class="ph-side" aria-label="Quality navigation">
+    <div class="ph-side__head">
+      <a class="ph-side__brand" href="/quality-dashboard-v2" title="Intake FTR Overview">
+        <img class="ph-side__logo" src="/assets/upande_quality/images/upande-logo-v2.png" alt="Upande">
+        <div class="ph-side__name">{{ ph_company }}<small>Quality</small></div>
+      </a>
+      <a class="ph-side__desk" href="/app" title="Back to Desk" aria-label="Back to Desk">{{ icon('house') }}</a>
+    </div>
+    <nav class="ph-side__nav">
+      {%- for group, items in ph_nav %}
+      <div class="ph-side__group">{{ group }}</div>
+      {%- for key, label, href, ic in items %}
+      <a class="ph-side__item{% if key == ph_active %} is-on{% endif %}" href="{{ href }}" title="{{ label }}"{% if key == ph_active %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+      {%- endfor %}
+      {%- endfor %}
+    </nav>
+    <div class="ph-side__foot">
+      <div class="ph-avatar">{{ (ph_user_name or ph_user or '?')[:1] | upper }}</div>
+      <div class="ph-side__who"><b>{{ ph_user_name }}</b><small>{{ ph_user }}</small></div>
+    </div>
+  </aside>
+  <div class="ph-scrim"></div>
+  <main class="ph-main" id="ph-main">
+    <div class="ph-topbar">
+      <button class="ph-iconbtn ph-iconbtn--flat ph-iconbtn--sm ph-menu-btn" id="ph-menu-btn" aria-label="Open navigation">{{ icon('menu') }}</button>
+      <button class="ph-iconbtn ph-iconbtn--flat ph-iconbtn--sm ph-collapse-btn" id="ph-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">{{ icon('sidebar') }}</button>
+      <div class="ph-topbar__crumb">Quality<span>/</span>{% if ph_section != ph_title %}{{ ph_section }}<span>/</span>{% endif %}<b>{{ ph_title }}</b></div>
+      <div class="ph-topbar__right">
+        <span class="ph-updated" id="ph-updated" hidden></span>
+        <button class="ph-iconbtn ph-iconbtn--sm" id="ph-refresh" title="Refresh" aria-label="Refresh" hidden>{{ icon('refresh') }}</button>
+      </div>
+    </div>
+    <div class="ph-page{% if ph_wide %} ph-page--wide{% endif %}">

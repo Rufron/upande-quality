@@ -1,0 +1,1236 @@
+{% extends "templates/web.html" %}
+{% block title %}Transit Time · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<style>
+/* Transit Time — page-only layout (tokens + spacing scale only). */
+.tt-wrap{max-height:min(72vh,820px)}
+.tt-table th.ph-sticky-col,.tt-table td.ph-sticky-col{min-width:260px;max-width:420px}
+.tt-table td{white-space:nowrap}
+.tt-name{display:inline-flex;align-items:center;gap:var(--sp-2);min-width:0}
+.tt-ind-1{padding-left:var(--sp-5)}
+.tt-ind-2{padding-left:calc(var(--sp-5) * 2)}
+.tt-ind-3{padding-left:calc(var(--sp-5) * 3)}
+.tt-ind-4{padding-left:calc(var(--sp-5) * 4)}
+.tt-ind-5{padding-left:calc(var(--sp-5) * 5)}
+.tt-ind-6{padding-left:calc(var(--sp-5) * 6)}
+.tt-ind-7{padding-left:calc(var(--sp-5) * 7)}
+.tt-ind-8{padding-left:calc(var(--sp-5) * 8)}
+.tt-tw{border:0;background:transparent;padding:0;width:22px;height:22px;flex:none;display:inline-grid;place-items:center;border-radius:var(--r-pill);cursor:pointer;color:var(--ink-4)}
+.tt-tw:hover,.tt-tw:focus-visible{background:var(--tint);color:var(--ink)}
+.tt-tw svg{width:14px;height:14px;transition:transform .15s}
+.tt-tw[aria-expanded="true"] svg{transform:rotate(90deg)}
+.tt-tw--none{visibility:hidden}
+.tt-g{cursor:pointer}
+.tt-g td{background:var(--surface);color:var(--ink);font-weight:500}
+.tt-g.tt-l0 td{font-weight:600;border-top:1px solid var(--hairline-2)}
+.tt-g:hover td{background:var(--tint)}
+.tt-g td.ph-sticky-col{background:var(--surface)}
+.tt-g:hover td.ph-sticky-col{background:var(--surface)}
+.tt-r td{color:var(--ink-3)}
+.tt-r td.ph-sticky-col{background:var(--surface-2)}
+.tt-tag{font-family:var(--mono);font-size:12px;color:var(--ink)}
+.tt-sub{color:var(--ink-mute);margin-left:var(--sp-2)}
+.tt-det{margin-left:var(--sp-2);border:0;background:transparent;padding:0;font:500 12px var(--sans);color:var(--ink-mute);text-decoration:underline;cursor:pointer}
+.tt-det:hover,.tt-det:focus-visible{color:var(--ink)}
+.tt-good{color:var(--good)}
+.tt-bad{color:var(--bad)}
+.tt-by{color:var(--ink-mute);font-weight:500}
+.tt-hint{color:var(--ink-mute);margin:0 0 var(--sp-5);max-width:90ch}
+.tt-hint b{color:var(--ink-3);font-weight:600}
+.tt-cbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-5)}
+.tt-cstats{margin-bottom:var(--sp-5)}
+.tt-chartbox{position:relative;width:100%;margin-bottom:var(--sp-5)}
+.tt-farms{margin-top:var(--sp-4)}
+.tt-trunc{margin:0 32px var(--sp-4)}
+.tt-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+.tt-mhd{display:flex;flex-direction:column;gap:var(--sp-5)}
+.tt-mtbl{min-height:120px}
+.tt-mtbl .ph-table td{white-space:nowrap}
+@media (max-width:760px){
+  .tt-table th.ph-sticky-col,.tt-table td.ph-sticky-col{min-width:180px;max-width:220px}
+  .tt-trunc{margin:0 var(--sp-5) var(--sp-4)}
+}
+</style>
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Operations</div>
+    <h1 class="ph-head__title">Transit Time</h1>
+    <p class="ph-head__sub" id="sub">Intake-to-checkpoint transit across farms, greenhouses, dates and varieties.</p>
+  </div>
+  <div class="ph-head__tools">
+    <button class="ph-btn" id="export" type="button" disabled>Export CSV</button>
+  </div>
+</header>
+
+<div class="ph-filters" id="f-bar" role="group" aria-label="Filters">
+  <div class="ph-pills" id="f-presets" role="group" aria-label="Period"><button data-value="today">Today</button><button data-value="yesterday">Yesterday</button><button data-value="7d">7 days</button><button data-value="30d">30 days</button><button data-value="mtd">This month</button></div>
+  <div class="ph-daterange"><input type="date" id="f-from" aria-label="From"><span class="ph-daterange__sep">–</span><input type="date" id="f-to" aria-label="To"></div>
+  <button type="button" class="ph-link" id="f-alldates">All dates</button>
+  <select class="ph-select" id="f-year" aria-label="Year"><option value="">All years</option></select>
+  <select class="ph-select" id="f-week" aria-label="Week"><option value="">All weeks</option></select>
+  <div id="f-farm"></div>
+  <div id="f-gh"></div>
+  <div id="f-variety"></div>
+  <div id="f-coldroom"></div>
+  <div id="f-grower"></div>
+  <div id="f-status"></div>
+  <label class="ph-search" for="f-q"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search tag, variety or grower" autocomplete="off" aria-label="Search tag, variety or grower"></label>
+</div>
+<div id="chips"></div>
+<p class="tt-hint"><b>Period, Year, Week, Farm, Greenhouse and Variety</b> are sent to the server. <b>Cold room, Grower, Status and Search</b> narrow the loaded receipts. The charts below follow <b>Farm and Greenhouse</b> and have their own period.</p>
+
+<section class="ph-kpis" id="kpis" aria-live="polite"></section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <h2 class="ph-card__title">Transit time <span class="tt-by" id="t-by"></span></h2>
+    <span class="ph-card__meta" id="t-meta"></span>
+    <div class="ph-card__tools tt-tools">
+      <div id="t-group"></div>
+      <div id="t-cols"></div>
+      <label class="ph-switch" for="t-dense"><input type="checkbox" id="t-dense"><i></i><span>Compact</span></label>
+      <button type="button" class="ph-btn ph-btn--sm ph-btn--ghost" id="t-expand">Expand all</button>
+      <button type="button" class="ph-btn ph-btn--sm ph-btn--ghost" id="t-collapse">Collapse all</button>
+      <button type="button" class="ph-btn ph-btn--sm ph-btn--ghost" id="t-export" disabled>Export</button>
+    </div>
+  </div>
+  <div class="ph-notice ph-notice--warn tt-trunc" id="t-trunc" hidden role="status"></div>
+  <div id="t-body"></div>
+</section>
+
+<section class="ph-card">
+  <div class="ph-card__head">
+    <h2 class="ph-card__title">Transit timing dashboard</h2>
+    <span class="ph-card__meta" id="c-meta">First bucket per greenhouse, harvest to review</span>
+    <div class="ph-card__tools">
+      <div class="ph-pills" id="c-period" role="group" aria-label="Chart period"><button data-value="today">Today</button><button data-value="yesterday">Yesterday</button><button data-value="week">Last 7 days</button><button data-value="month">This month</button><button data-value="half">Last 6 months</button><button data-value="year">This year</button><button data-value="custom">Pick dates</button></div>
+      <div class="ph-daterange" id="c-range" hidden><input type="date" id="c-from" aria-label="Chart from"><span class="ph-daterange__sep">–</span><input type="date" id="c-to" aria-label="Chart to"></div>
+    </div>
+  </div>
+  <div class="tt-cbar">
+    <div class="ph-pills" id="c-tabs" role="group" aria-label="Chart">
+      <button data-value="0">Harvest → Receive</button><button data-value="1">Receive → Shelving</button><button data-value="2">Quarantine → Review</button><button data-value="3">Complete Timeline</button>
+    </div>
+    <span class="ph-muted" id="c-note"></span>
+  </div>
+  <div class="ph-stats tt-cstats" id="c-stats"></div>
+  <div class="tt-chartbox" id="c-panel"></div>
+  <div class="tt-farms" id="c-farms"></div>
+</section>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script>
+/* Upande UFD :: Mona chart theming — global Chart.js defaults + identifiable bar colours (verbatim from transit-time.html) */
+window.ttChartTheme = function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";
+      Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){
+        window.__ufdMonaReg=1;
+        Chart.register({
+          id:"ufdMonaColors",
+          beforeUpdate:function(chart){
+            var t=chart.config.type;
+            var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+            if(bars.length===1){
+              var d=bars[0];
+              d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});
+            }else if(bars.length>1){
+              bars.forEach(function(d,i){ if(typeof d.backgroundColor!=="function"){ d.backgroundColor=PAL[i%PAL.length]; }});
+            }
+          }
+        });
+      }
+    }catch(e){}
+  }
+  go();
+};
+</script>
+<script>
+(function () {
+  "use strict";
+  var $ = PH.$, esc = PH.esc;
+  var PAGE_LIMIT = 1200; // the server returns at most this many receipts
+
+  /* ───────────────────────── helpers ───────────────────────── */
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function ds(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function num(v) { return v === null || v === undefined || v === "" || isNaN(+v) ? null : +v; }
+  /* minutes -> "45m", "1h 05m", "2d 3h" */
+  function dur(m) {
+    if (m === null || m === undefined || isNaN(m)) return "—";
+    m = Math.round(m);
+    if (m < 60) return m + "m";
+    var h = Math.floor(m / 60), mm = m % 60;
+    if (h < 48) return h + "h" + (mm ? " " + pad(mm) + "m" : "");
+    return Math.floor(h / 24) + "d " + (h % 24) + "h";
+  }
+  /* old chart helpers, unchanged */
+  function fmtM(m) {
+    if (m == null || isNaN(m) || m < 0) return "—";
+    var h = Math.floor(m / 60), mm = Math.round(m % 60);
+    return h > 0 ? h + "h " + (mm ? mm + "m" : "") : mm + "m";
+  }
+  function shortGH(s) { return (s || "").replace(/ - KR$/, "").replace(/ - TL$/, "").replace(/^Kapkolia /i, "Kap ").replace(/^Simotwo /i, "Sim ").replace(/^Torongo /i, "Tor ").replace(/^Kangundo /i, "Kng ").replace(/^Chepsito /i, "Chep "); }
+  function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; }
+  function pctl(sorted, p) {
+    if (!sorted.length) return null;
+    var i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+  }
+  function distinct(rows, key) {
+    var s = {};
+    rows.forEach(function (r) { if (r[key]) s[r[key]] = 1; });
+    return Object.keys(s).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+  }
+
+  /* ───────────────────────── state ───────────────────────── */
+  var DEFAULT_COLS = "n,stems,avg,med,max,r2s,qpct";
+  var today = PH.date.today();
+  var st = PH.state({
+    from: today, to: today, year: "", week: "",
+    farm: "", gh: "", variety: "", coldroom: "", grower: "", status: "", q: "",
+    group: "farm,gh", cols: DEFAULT_COLS, dense: true,
+    cp: "week", cfrom: "", cto: "", ctab: "0"
+  });
+  // a year/week link has no dates: dates and year/week are alternative period pickers
+  (function () {
+    var p = new URLSearchParams(location.search);
+    if ((st.get("year") || st.get("week")) && !p.has("from") && !p.has("to")) st.set({ from: "", to: "" }, { silent: true });
+  })();
+
+  var DIMS = [
+    { key: "farm", label: "Farm", get: function (r) { return r.farm || "(no farm)"; } },
+    { key: "gh", label: "Greenhouse", get: function (r) { return r.gh || "(no greenhouse)"; } },
+    { key: "variety", label: "Variety", get: function (r) { return r.variety || "(no variety)"; } },
+    { key: "coldroom", label: "Cold room", get: function (r) { return r.coldroom || "(no cold room)"; } },
+    { key: "grower", label: "Grower", get: function (r) { return r.grower || "(no grower)"; } },
+    { key: "week", label: "Week", get: function (r) { return (r.year ? r.year + " · " : "") + (r.week || "(no week)"); } },
+    { key: "date", label: "Date", get: function (r) { return r.date || "(no date)"; } }
+  ];
+  var DIM = {};
+  DIMS.forEach(function (d) { DIM[d.key] = d; });
+
+  var MET = [
+    { key: "n", label: "Receipts" },
+    { key: "stems", label: "Stems" },
+    { key: "avg", label: "Avg transit" },
+    { key: "med", label: "Median transit" },
+    { key: "p90", label: "P90 transit" },
+    { key: "min", label: "Fastest" },
+    { key: "max", label: "Slowest" },
+    { key: "r2q", label: "Receive → quarantine" },
+    { key: "r2s", label: "Receive → shelf" },
+    { key: "q2s", label: "Quarantine → shelf" },
+    { key: "qpct", label: "Quarantined" }
+  ];
+
+  var STATUS = [
+    { value: "quarantined", label: "Quarantined", test: function (r) { return r.hasQ; } },
+    { value: "clear", label: "Not quarantined", test: function (r) { return !r.hasQ; } },
+    { value: "shelved", label: "Shelved", test: function (r) { return r.shelved; } },
+    { value: "unshelved", label: "Not shelved yet", test: function (r) { return !r.shelved; } },
+    { value: "noharvest", label: "No harvest time", test: function (r) { return r.transit === null; } }
+  ];
+  var STATUS_LABEL = {};
+  STATUS.forEach(function (s) { STATUS_LABEL[s.value] = s.label; });
+
+  /* ───────────────────────── filters ───────────────────────── */
+  PH.dateRange({ pills: "#f-presets", from: "#f-from", to: "#f-to", state: st });
+  PH.bindSelect("#f-year", st, "year");
+  PH.bindSelect("#f-week", st, "week");
+  PH.bindSearch("#f-q", st, "q");
+  var farmMS = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: [], multiSite: true, plural: "farms", all: "All farms" });
+  var ghMS = PH.multiselect("#f-gh", st, "gh", { label: "Greenhouse", options: [], plural: "greenhouses", all: "All" });
+  var varMS = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All" });
+  var coldMS = PH.multiselect("#f-coldroom", st, "coldroom", { label: "Cold room", options: [], plural: "cold rooms", all: "All" });
+  var growMS = PH.multiselect("#f-grower", st, "grower", { label: "Grower", options: [], plural: "growers", all: "All" });
+  PH.multiselect("#f-status", st, "status", { label: "Status", options: STATUS.map(function (s) { return { value: s.value, label: s.label }; }), plural: "statuses", all: "Any", search: false });
+  PH.multiselect("#t-group", st, "group", { label: "Group by", options: DIMS.map(function (d) { return { value: d.key, label: d.label }; }), plural: "levels", all: "No grouping", search: false });
+  PH.multiselect("#t-cols", st, "cols", { label: "Columns", options: MET.map(function (m) { return { value: m.key, label: m.label }; }), plural: "columns", all: "Default", search: false });
+  document.getElementById("f-alldates").addEventListener("click", function () { st.set({ from: "", to: "" }); });
+  (function () {
+    var dense = document.getElementById("t-dense");
+    dense.checked = !!st.get("dense");
+    dense.addEventListener("change", function () { st.set({ dense: dense.checked }); });
+    st.on(function (s) { dense.checked = !!s.dense; });
+  })();
+  PH.activeFilters("#chips", st, [
+    { key: "from", label: "From", text: PH.fmt.date }, { key: "to", label: "To", text: PH.fmt.date },
+    { key: "year", label: "Year" }, { key: "week", label: "Week", text: function (v) { return "W" + pad(v); } },
+    { key: "farm", label: "Farm", multi: true }, { key: "gh", label: "Greenhouse", multi: true },
+    { key: "variety", label: "Variety", multi: true }, { key: "coldroom", label: "Cold room", multi: true },
+    { key: "grower", label: "Grower", multi: true },
+    { key: "status", label: "Status", multi: true, text: function (v) { return STATUS_LABEL[v] || v; } },
+    { key: "q", label: "Search" }
+  ]);
+
+  /* ───────────────────────── table data ───────────────────────── */
+  var rowsAll = [], opts = {}, loaded = false, tseq = 0, truncated = false, ALL_FARMS = [];
+  var view = [];
+  var sort = { key: "name", dir: "asc" };
+  var open = new Set(), seen = new Set();
+  var nodeById = {}, nodeSeq = 0, lastGroupKey = null;
+
+  function norm(d, i) {
+    function pos(v) { v = num(v); return v !== null && v < 0 ? null : v; }
+    return {
+      i: i, date: d.Date || "", year: d.Year || "", week: d.Week || "", farm: d.Farm || "", gh: d.GH || "",
+      coldroom: d.Coldroom || "", variety: d.Variety || "", grower: d.Grower || "", tag: d["Tag ID"] || "",
+      stems: +d.Stems || 0, tHarvest: d["Harvest Time"] || "", tRecv: d["Receive Time"] || "",
+      tQuar: d["Quarantine Time"] || "", tShelf: d["Shelving Time"] || "",
+      transit: pos(d["Transit Time (min)"]), r2q: pos(d["Receive to Quarantine (min)"]),
+      r2s: pos(d["Receive to Shelf (min)"]), q2s: pos(d["Quarantine to Shelf (min)"]),
+      hasQ: !!d["Quarantine Time"], shelved: !!d["Shelving Time"]
+    };
+  }
+
+  function agg(rows) {
+    var t = [], q = [], s = [], qs = [], stems = 0, qn = 0;
+    rows.forEach(function (r) {
+      stems += r.stems;
+      if (r.transit !== null) t.push(r.transit);
+      if (r.r2q !== null) q.push(r.r2q);
+      if (r.r2s !== null) s.push(r.r2s);
+      if (r.q2s !== null) qs.push(r.q2s);
+      if (r.hasQ) qn++;
+    });
+    t.sort(function (a, b) { return a - b; });
+    return {
+      n: rows.length, stems: stems, avg: mean(t), med: pctl(t, 0.5), p90: pctl(t, 0.9),
+      min: t.length ? t[0] : null, max: t.length ? t[t.length - 1] : null,
+      r2q: mean(q), r2s: mean(s), q2s: mean(qs), qpct: rows.length ? qn * 100 / rows.length : null, qn: qn
+    };
+  }
+  function recAgg(r) { return r._a || (r._a = agg([r])); }
+
+  function tableArgs() {
+    var s = st.get(), a = {};
+    if (s.year) a.year = s.year;
+    if (s.farm) a.farm = s.farm;
+    if (s.week) a.week = s.week;
+    if (s.variety) a.variety = s.variety;
+    if (s.gh) a.greenhouse = s.gh;
+    if (s.from) a.from_date = s.from;
+    if (s.to) a.to_date = s.to;
+    return a;
+  }
+
+  /* Filter options depend on the period only: fetched once per period (lazy, in parallel), never when a farm/variety/greenhouse filter changes. */
+  var optsKey = null, optSeq = 0;
+  function periodArgs() {
+    var s = st.get(), a = {};
+    if (s.year) a.year = s.year;
+    if (s.week) a.week = s.week;
+    if (s.from) a.from_date = s.from;
+    if (s.to) a.to_date = s.to;
+    return a;
+  }
+  function periodKey() { var s = st.get(); return [s.from, s.to, s.year, s.week].join("|"); }
+  function loadOptions(pk) {
+    var my = ++optSeq, a = periodArgs();
+    a.only_options = 1;
+    PH.call("fetchTransitTimePivotData", a, { silent: true, type: "GET" }).then(function (msg) {
+      if (my !== optSeq || !msg || !msg.filter_options) return;
+      opts = msg.filter_options;
+      optsKey = pk;
+      fillOptions();
+    }).catch(function () {});
+  }
+  function fillRowOptions() {
+    farmMS.setOptions(farmGroups());
+    coldMS.setOptions(distinct(rowsAll, "coldroom"));
+    growMS.setOptions(distinct(rowsAll, "grower"));
+    ghMS.setOptions(ghOptions());
+  }
+  /* the server sends receipts as arrays (data_cols + data_rows); rebuild the same row objects the page always used */
+  function expandRows(msg) {
+    if (msg.data) return msg.data;
+    var cols = msg.data_cols || [], out = [], n = cols.length;
+    (msg.data_rows || []).forEach(function (a) {
+      var o = {};
+      for (var i = 0; i < n; i++) o[cols[i]] = a[i];
+      out.push(o);
+    });
+    return out;
+  }
+
+  var tablePromise = Promise.resolve();
+  function loadTable(quiet) {
+    var my = ++tseq;
+    if (!quiet) {
+      PH.skeleton("#t-body", "rows", 8);
+      PH.kpiSkeleton("#kpis", ["Receipts", "Avg transit", "Slowest", "Receive → shelf", "Quarantined"]);
+      $("#t-trunc").hidden = true;
+    }
+    var targs = tableArgs(), pk = periodKey();
+    targs.compact = 1;
+    targs.skip_options = 1;
+    if (optsKey !== pk) loadOptions(pk);
+    return PH.call("fetchTransitTimePivotData", targs, { silent: true, type: "GET" })
+      .then(function (msg) {
+        if (my !== tseq) return;
+        if (!msg || msg.success === false) throw new Error((msg && msg.error) || "The server returned an error");
+        rowsAll = expandRows(msg).map(norm);
+        if (msg.filter_options) { opts = msg.filter_options; optsKey = pk; }
+        truncated = rowsAll.length >= PAGE_LIMIT;
+        loaded = true;
+        if (optsKey === pk) fillOptions(); else fillRowOptions();
+        paintTable();
+        PH.markUpdated();
+      })
+      .catch(function (e) {
+        if (my !== tseq) return;
+        loaded = false;
+        PH.error("#t-body", e && e.message, function () { loadTable(); });
+        PH.kpis("#kpis", []);
+        $("#t-export").disabled = true;
+        $("#export").disabled = true;
+      });
+  }
+
+  function farmGroups() {
+    var set = {};
+    (opts.farms || []).concat(ALL_FARMS, chartFarms()).forEach(function (f) { if (f) set[f] = 1; });
+    var by = {};
+    Object.keys(set).forEach(function (f) { var g = PH.regionOf(f) || "Other"; (by[g] = by[g] || []).push(f); });
+    return Object.keys(PH.REGIONS).concat("Other").filter(function (g) { return by[g]; }).map(function (g) { return { group: g, items: by[g].sort() }; });
+  }
+  function ghOptions() {
+    var set = {}, fm = {};
+    function add(g, f) { if (!g) return; set[g] = 1; (fm[g] = fm[g] || {})[f] = 1; }
+    (opts.greenhouses || []).forEach(function (g) { add(g, ""); });
+    rowsAll.forEach(function (r) { add(r.gh, r.farm); });
+    chartRows().forEach(function (r) { add(r.greenhouse, r.farm); });
+    var farms = PH.values(st.get("farm"));
+    return Object.keys(set).filter(function (g) {
+      if (!farms.length) return true;
+      var f = fm[g];
+      return !f || f[""] || farms.some(function (x) { return f[x]; });
+    }).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+  }
+  function fillOptions() {
+    var years = (opts.years || []).map(String), weeks = (opts.weeks || []).map(String);
+    var s = st.get();
+    PH.options("#f-year", years.map(function (y) { return { value: y, label: y }; }), s.year);
+    PH.options("#f-week", weeks.map(function (w) { return { value: w, label: "Week " + w }; }), s.week);
+    farmMS.setOptions(farmGroups());
+    varMS.setOptions(opts.varieties || []);
+    coldMS.setOptions(distinct(rowsAll, "coldroom"));
+    growMS.setOptions(distinct(rowsAll, "grower"));
+    ghMS.setOptions(ghOptions());
+  }
+
+  function viewRows() {
+    var s = st.get();
+    var co = PH.values(s.coldroom), gr = PH.values(s.grower), sts = PH.values(s.status), q = (s.q || "").toLowerCase();
+    var tests = sts.map(function (v) { return STATUS.filter(function (x) { return x.value === v; })[0]; }).filter(Boolean);
+    return rowsAll.filter(function (r) {
+      if (co.length && co.indexOf(r.coldroom) < 0) return false;
+      if (gr.length && gr.indexOf(r.grower) < 0) return false;
+      if (tests.length && !tests.some(function (t) { return t.test(r); })) return false;
+      if (q && (r.tag + " " + r.variety + " " + r.grower + " " + r.gh + " " + r.farm + " " + r.coldroom).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+
+  /* ───────────────────────── KPIs ───────────────────────── */
+  function renderKpis(rows) {
+    var a = agg(rows);
+    var slow = null;
+    rows.forEach(function (r) { if (r.transit !== null && (!slow || r.transit > slow.transit)) slow = r; });
+    var qOn = PH.values(st.get("status")).indexOf("quarantined") >= 0;
+    PH.kpis("#kpis", [
+      { label: "Receipts", value: a.n, trend: { dir: "flat", text: PH.fmt.num(a.stems) + " stems" } },
+      { label: "Avg transit", value: dur(a.avg), trend: { dir: "flat", text: "Median " + dur(a.med), note: "P90 " + dur(a.p90) } },
+      { label: "Slowest", value: dur(a.max), trend: { dir: "flat", text: slow ? (slow.farm + " · " + shortGH(slow.gh)) : "No harvest times" }, onClick: slow ? function () { openReceipt(slow); } : null },
+      { label: "Receive → shelf", value: dur(a.r2s), trend: { dir: "flat", text: "Average dwell before shelving" } },
+      { label: "Quarantined", value: a.qpct === null ? "—" : PH.fmt.pct(a.qpct, 1), active: qOn,
+        trend: { dir: "flat", text: PH.fmt.num(a.qn) + " of " + PH.fmt.num(a.n) + " receipts" },
+        onClick: function () {
+          var cur = PH.values(st.get("status"));
+          st.set({ status: (qOn ? cur.filter(function (x) { return x !== "quarantined"; }) : cur.concat("quarantined")).join(",") });
+        } }
+    ]);
+  }
+
+  /* ───────────────────────── grouped table ───────────────────────── */
+  function groupDims() {
+    var g = PH.values(st.get("group")).filter(function (k) { return DIM[k]; });
+    return DIMS.filter(function (d) { return g.indexOf(d.key) >= 0; });
+  }
+  function visibleCols() {
+    var c = PH.values(st.get("cols"));
+    if (!c.length) c = DEFAULT_COLS.split(",");
+    return MET.filter(function (m) { return c.indexOf(m.key) >= 0; });
+  }
+  function build(rows, dims, level, parent) {
+    if (level >= dims.length) return null;
+    var d = dims[level], map = new Map();
+    rows.forEach(function (r) { var k = d.get(r); if (!map.has(k)) map.set(k, []); map.get(k).push(r); });
+    var out = [];
+    map.forEach(function (rs, label) {
+      var n = { id: ++nodeSeq, key: parent + "\u001f" + label, level: level, dim: d, label: label, rows: rs, agg: agg(rs), parent: parent, children: build(rs, dims, level + 1, parent + "\u001f" + label) };
+      nodeById[n.id] = n;
+      if (!seen.has(n.key)) { seen.add(n.key); if (n.children) open.add(n.key); }
+      out.push(n);
+    });
+    return out;
+  }
+  function cmpVals(va, vb, dir) {
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    return dir * (va - vb);
+  }
+  function sortNodes(arr) {
+    var dir = sort.dir === "asc" ? 1 : -1, k = sort.key;
+    return arr.slice().sort(function (a, b) {
+      if (k === "name") return dir * String(a.label).localeCompare(String(b.label), undefined, { numeric: true, sensitivity: "base" });
+      return cmpVals(a.agg[k], b.agg[k], dir);
+    });
+  }
+  function sortRecs(arr) {
+    var dir = sort.dir === "asc" ? 1 : -1, k = sort.key;
+    return arr.slice().sort(function (a, b) {
+      if (k === "name") return dir * String(a.tag).localeCompare(String(b.tag), undefined, { numeric: true, sensitivity: "base" });
+      return cmpVals(recAgg(a)[k], recAgg(b)[k], dir);
+    });
+  }
+  function cellVal(k, a, isRec, r) {
+    if (k === "n" || k === "stems") return PH.fmt.num(a[k]);
+    if (k === "qpct") return isRec ? (r.hasQ ? "Yes" : "—") : (a.qpct === null ? "—" : PH.fmt.pct(a.qpct, 0));
+    return dur(a[k]);
+  }
+  function chev() { return PH.icon("chevronRight", 14); }
+
+  function renderTable(rows) {
+    var el = $("#t-body"), dims = groupDims(), cols = visibleCols();
+    var gk = dims.map(function (d) { return d.key; }).join(",");
+    if (gk !== lastGroupKey) { open = new Set(); seen = new Set(); lastGroupKey = gk; }
+    nodeById = {}; nodeSeq = 0;
+    $("#t-by").textContent = dims.length ? "by " + dims.map(function (d) { return d.label.toLowerCase(); }).join(" › ") : "· every receipt";
+    var tree = dims.length ? build(rows, dims, 0, "") : null;
+    var nGroups = tree ? Object.keys(nodeById).length : 0;
+    $("#t-meta").textContent = PH.fmt.num(rows.length) + " of " + PH.fmt.num(rowsAll.length) + " receipts" + (nGroups ? " · " + PH.fmt.num(nGroups) + " groups" : "");
+    $("#t-expand").disabled = $("#t-collapse").disabled = !tree;
+    $("#t-export").disabled = $("#export").disabled = !rows.length;
+    var tr = $("#t-trunc");
+    tr.hidden = !truncated;
+    if (truncated) tr.textContent = "Showing the latest " + PH.fmt.num(PAGE_LIMIT) + " receipts for this scope. Narrow the period, farm, greenhouse or variety to see the rest.";
+    if (!rows.length) {
+      PH.empty(el, rowsAll.length ? "No receipts match these filters" : "No transit data for this period", rowsAll.length ? "Clear a filter or widen the period." : "Try a wider period or clear the farm, greenhouse and variety filters.");
+      return;
+    }
+
+    var head = '<th class="ph-sticky-col is-sortable' + (sort.key === "name" ? " is-sorted" : "") + '" data-sk="name">' + (dims.length ? esc(dims[0].label) + (dims.length > 1 ? " › …" : "") : "Receipt") + '<span class="ph-sort">' + (sort.key === "name" ? (sort.dir === "asc" ? "▲" : "▼") : "↕") + "</span></th>" +
+      cols.map(function (c) {
+        var on = sort.key === c.key;
+        return '<th class="is-num is-sortable' + (on ? " is-sorted" : "") + '" data-sk="' + c.key + '">' + esc(c.label) + '<span class="ph-sort">' + (on ? (sort.dir === "asc" ? "▲" : "▼") : "↕") + "</span></th>";
+      }).join("");
+
+    var body = "";
+    function recRow(r, level) {
+      var a = recAgg(r);
+      body += '<tr class="tt-r is-link" data-rid="' + r.i + '"><td class="ph-sticky-col"><span class="tt-name tt-ind-' + level + '"><span class="tt-tw tt-tw--none">' + chev() + '</span><span class="tt-tag">' + esc(r.tag || "—") + '</span><small class="tt-sub">' + esc(r.variety) + (r.date ? " · " + esc(r.date) : "") + "</small></span></td>" +
+        cols.map(function (c) { return '<td class="is-num">' + esc(cellVal(c.key, a, true, r)) + "</td>"; }).join("") + "</tr>";
+    }
+    function walk(nodes) {
+      sortNodes(nodes).forEach(function (n) {
+        var isOpen = open.has(n.key);
+        body += '<tr class="tt-g tt-l' + n.level + '" data-gid="' + n.id + '"><td class="ph-sticky-col"><span class="tt-name tt-ind-' + n.level + '"><button type="button" class="tt-tw" data-tog="' + n.id + '" aria-expanded="' + isOpen + '" aria-label="' + (isOpen ? "Collapse " : "Expand ") + esc(n.label) + '">' + chev() + "</button><span>" + esc(n.label) + '</span><button type="button" class="ph-link tt-det" data-det="' + n.id + '">Details</button></span></td>' +
+          cols.map(function (c) { return '<td class="is-num">' + esc(cellVal(c.key, n.agg, false)) + "</td>"; }).join("") + "</tr>";
+        if (isOpen) {
+          if (n.children) walk(n.children);
+          else sortRecs(n.rows).forEach(function (r) { recRow(r, n.level + 1); });
+        }
+      });
+    }
+    if (tree) walk(tree); else sortRecs(rows).forEach(function (r) { recRow(r, 0); });
+
+    var tot = agg(rows);
+    var foot = '<tfoot><tr><td class="ph-sticky-col">Total · ' + PH.fmt.num(rows.length) + " receipts</td>" +
+      cols.map(function (c) { return '<td class="is-num">' + esc(cellVal(c.key, tot, false)) + "</td>"; }).join("") + "</tr></tfoot>";
+
+    PH.keepScroll(function () {
+      var wrap = el.querySelector(".tt-wrap"), sl = wrap ? wrap.scrollLeft : 0, stp = wrap ? wrap.scrollTop : 0;
+      el.innerHTML = '<div class="ph-table-wrap tt-wrap"><table class="ph-table tt-table' + (st.get("dense") ? " ph-table--compact" : "") + '"><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody>" + foot + "</table></div>";
+      wrap = el.querySelector(".tt-wrap");
+      if (wrap) { wrap.scrollLeft = sl; wrap.scrollTop = stp; }
+    });
+  }
+
+  function paintTable() {
+    if (!loaded) return;
+    view = viewRows();
+    renderKpis(view);
+    renderTable(view);
+    $("#sub").textContent = PH.fmt.num(view.length) + " receipts" + (st.get("from") ? " · " + (st.get("from") === st.get("to") ? PH.fmt.date(st.get("from")) : PH.fmt.date(st.get("from")) + " to " + PH.fmt.date(st.get("to"))) : st.get("year") || st.get("week") ? " · " + [st.get("year"), st.get("week") ? "week " + st.get("week") : ""].filter(Boolean).join(", ") : " · all dates") + ". Intake-to-checkpoint transit by farm, greenhouse, variety and date.";
+  }
+
+  var tbody = $("#t-body");
+  tbody.addEventListener("click", function (e) {
+    var th = e.target.closest("th[data-sk]");
+    if (th) {
+      var k = th.dataset.sk;
+      sort = sort.key === k ? { key: k, dir: sort.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "name" ? "asc" : "desc" };
+      return renderTable(view);
+    }
+    var det = e.target.closest("[data-det]");
+    if (det) return openGroup(nodeById[+det.dataset.det]);
+    var tog = e.target.closest("[data-tog]");
+    var g = e.target.closest("tr[data-gid]");
+    if (tog || g) {
+      var n = nodeById[+(tog ? tog.dataset.tog : g.dataset.gid)];
+      if (!n) return;
+      if (open.has(n.key)) open.delete(n.key); else open.add(n.key);
+      return renderTable(view);
+    }
+    var rr = e.target.closest("tr[data-rid]");
+    if (rr) openReceipt(rowsAll[+rr.dataset.rid]);
+  });
+  $("#t-expand").addEventListener("click", function () {
+    Object.keys(nodeById).forEach(function (id) { open.add(nodeById[id].key); });
+    renderTable(view);
+  });
+  $("#t-collapse").addEventListener("click", function () { open = new Set(); renderTable(view); });
+
+  /* ───────────────────────── drill-downs ───────────────────────── */
+  var RCOLS = [
+    { key: "date", label: "Date" },
+    { key: "tag", label: "Tag ID", cls: "tt-tag" },
+    { key: "variety", label: "Variety" },
+    { key: "grower", label: "Grower" },
+    { key: "farm", label: "Farm" },
+    { key: "gh", label: "Greenhouse" },
+    { key: "coldroom", label: "Cold room" },
+    { key: "stems", label: "Stems", num: true, format: function (v) { return PH.fmt.num(v); }, total: true },
+    { key: "tHarvest", label: "Harvest" },
+    { key: "tRecv", label: "Receive" },
+    { key: "tQuar", label: "Quarantine" },
+    { key: "tShelf", label: "Shelving" },
+    { key: "transit", label: "Transit", num: true, format: dur },
+    { key: "r2q", label: "Recv → quar.", num: true, format: dur },
+    { key: "r2s", label: "Recv → shelf", num: true, format: dur },
+    { key: "q2s", label: "Quar. → shelf", num: true, format: dur }
+  ];
+  var CSV_COLS = [
+    { key: "date", label: "Date" }, { key: "week", label: "Week" }, { key: "farm", label: "Farm" }, { key: "gh", label: "Greenhouse" },
+    { key: "coldroom", label: "Cold room" }, { key: "variety", label: "Variety" }, { key: "grower", label: "Grower" }, { key: "tag", label: "Tag ID" },
+    { key: "stems", label: "Stems" }, { key: "tHarvest", label: "Harvest time" }, { key: "tRecv", label: "Receive time" },
+    { key: "tQuar", label: "Quarantine time" }, { key: "tShelf", label: "Shelving time" },
+    { key: "transit", label: "Transit (min)" }, { key: "r2q", label: "Receive to quarantine (min)" },
+    { key: "r2s", label: "Receive to shelf (min)" }, { key: "q2s", label: "Quarantine to shelf (min)" }
+  ];
+
+  function openGroup(n) {
+    if (!n) return;
+    var a = n.agg;
+    var crumbs = n.key.split("\u001f").slice(1).join(" › ");
+    var nextDim = n.children && n.children.length ? n.children[0].dim : (DIM[n.dim.key === "variety" ? "farm" : "variety"]);
+    var by = {};
+    n.rows.forEach(function (r) { var k = nextDim.get(r); (by[k] = by[k] || []).push(r); });
+    var brk = Object.keys(by).map(function (k) { var x = agg(by[k]); x.label = k; return x; });
+    var body = PH.html`<div class="tt-mhd">
+      <div class="ph-stats">
+        <div class="ph-stat"><small>Receipts</small><b>${PH.fmt.num(a.n)}</b></div>
+        <div class="ph-stat"><small>Stems</small><b>${PH.fmt.num(a.stems)}</b></div>
+        <div class="ph-stat"><small>Avg transit</small><b>${dur(a.avg)}</b></div>
+        <div class="ph-stat"><small>Median</small><b>${dur(a.med)}</b></div>
+        <div class="ph-stat"><small>P90</small><b>${dur(a.p90)}</b></div>
+        <div class="ph-stat"><small>Slowest</small><b>${dur(a.max)}</b></div>
+        <div class="ph-stat"><small>Quarantined</small><b>${a.qpct === null ? "—" : PH.fmt.pct(a.qpct, 0)}</b></div>
+      </div>
+      <div><div class="ph-card__title">By ${nextDim.label.toLowerCase()}</div><div class="tt-mtbl" id="m-brk"></div></div>
+      <div><div class="ph-card__title">Receipts</div><div class="tt-mtbl" id="m-rec"></div></div>
+    </div>`;
+    var m = PH.modal({
+      title: crumbs, sub: n.dim.label + " · " + PH.fmt.num(a.n) + " receipts", body: body, size: "xl",
+      actions: [
+        { label: "Export CSV", onClick: function () { PH.csv("transit-" + crumbs.replace(/[^A-Za-z0-9]+/g, "-").toLowerCase() + ".csv", n.rows, CSV_COLS); return false; } },
+        { label: "Close", primary: true }
+      ]
+    });
+    PH.table(m.body.querySelector("#m-brk"), {
+      columns: [
+        { key: "label", label: nextDim.label, cls: "is-strong" },
+        { key: "n", label: "Receipts", num: true, format: function (v) { return PH.fmt.num(v); } },
+        { key: "stems", label: "Stems", num: true, format: function (v) { return PH.fmt.num(v); } },
+        { key: "avg", label: "Avg", num: true, format: dur },
+        { key: "med", label: "Median", num: true, format: dur },
+        { key: "max", label: "Slowest", num: true, format: dur },
+        { key: "r2s", label: "Recv → shelf", num: true, format: dur },
+        { key: "qpct", label: "Quarantined", num: true, format: function (v) { return v === null ? "—" : PH.fmt.pct(v, 0); } }
+      ],
+      rows: brk, compact: true, sort: { key: "avg", dir: "desc" }
+    });
+    PH.table(m.body.querySelector("#m-rec"), {
+      columns: RCOLS, rows: n.rows, compact: true, tall: true, pageSize: 50, sort: { key: "transit", dir: "desc" },
+      onRowClick: function (r) { openReceipt(r); }
+    });
+  }
+
+  function openReceipt(r) {
+    if (!r) return;
+    function t(v) { return v || "—"; }
+    var body = PH.html`<dl class="ph-kv">
+      <dt>Tag ID</dt><dd class="tt-tag">${t(r.tag)}</dd>
+      <dt>Date</dt><dd>${t(r.date)} ${r.week ? "(" + r.week + ")" : ""}</dd>
+      <dt>Farm</dt><dd>${t(r.farm)}</dd>
+      <dt>Greenhouse</dt><dd>${t(r.gh)}</dd>
+      <dt>Cold room</dt><dd>${t(r.coldroom)}</dd>
+      <dt>Variety</dt><dd>${t(r.variety)}</dd>
+      <dt>Grower</dt><dd>${t(r.grower)}</dd>
+      <dt>Stems</dt><dd>${PH.fmt.num(r.stems)}</dd>
+    </dl>
+    <div class="ph-divider"></div>
+    <dl class="ph-kv">
+      <dt>Harvested</dt><dd>${t(r.tHarvest)}</dd>
+      <dt>Received</dt><dd>${t(r.tRecv)} <span class="ph-muted">· transit ${dur(r.transit)}</span></dd>
+      <dt>Quarantined</dt><dd>${t(r.tQuar)} <span class="ph-muted">${r.hasQ ? "· " + dur(r.r2q) + " after receipt" : ""}</span></dd>
+      <dt>Shelved</dt><dd>${t(r.tShelf)} <span class="ph-muted">${r.shelved ? "· " + dur(r.r2s) + " after receipt" : ""}</span></dd>
+    </dl>`;
+    PH.modal({ title: r.tag || "Receipt", sub: r.variety + " · " + r.farm, body: body, actions: [{ label: "Close", primary: true }] });
+  }
+
+  /* ───────────────────────── exports ───────────────────────── */
+  function exportReceipts() { PH.csv("transit-time-" + today + ".csv", view, CSV_COLS); }
+  function exportSummary() {
+    var dims = groupDims();
+    if (!dims.length) return exportReceipts();
+    var tree = build(view, dims, 0, ""), out = [];
+    (function walk(nodes) {
+      sortNodes(nodes).forEach(function (n) {
+        var row = { level: n.level + 1, group: n.dim.label, name: n.label, path: n.key.split("\u001f").slice(1).join(" › ") };
+        MET.forEach(function (m) { row[m.key] = n.agg[m.key] === null ? "" : Math.round(n.agg[m.key] * 10) / 10; });
+        out.push(row);
+        if (n.children) walk(n.children);
+      });
+    })(tree);
+    PH.csv("transit-time-summary-" + today + ".csv", out, [{ key: "path", label: "Group" }, { key: "group", label: "Level" }].concat(MET.map(function (m) { return { key: m.key, label: m.label + (m.key === "n" || m.key === "stems" ? "" : m.key === "qpct" ? " (%)" : " (min)") }; })));
+  }
+  $("#export").addEventListener("click", exportReceipts);
+  $("#t-export").addEventListener("click", function (e) {
+    PH.menu(e.currentTarget, [
+      { label: "Receipts (CSV)", icon: "download", onClick: exportReceipts },
+      { label: "Grouped summary (CSV)", icon: "download", onClick: exportSummary }
+    ]);
+  });
+
+  /* ═══════════════════════════════════════════════════════════
+     Charts — the Chart.js blocks below are moved verbatim from
+     the old page (chart type, datasets, colours, options, tooltips,
+     canvas sizing and the data feeding them are unchanged).
+     ═══════════════════════════════════════════════════════════ */
+  var CFG = [
+    { id: 0, title: "Harvest → Receive", se: "Receiving", from: "harvest_t", to: "receive_t", noData: "No Receiving data for this period." },
+    { id: 1, title: "Receive → Shelving", se: "Late Receipt", from: "receive_t", to: "shelving_t", noData: "No Late Receipt data for this period." },
+    { id: 2, title: "Quarantine → Review", se: "Receiving Quarantined", from: "receive_t", to: "quarantine_t", noData: "No Receiving Quarantined data for this period." },
+    { id: 3, title: "Complete Timeline", se: "", from: "harvest_t", to: "end_t", noData: "Not enough stage data to compute complete timeline." }
+  ];
+  var chartInst = null, dashData = null, cjsLoaded = (typeof Chart !== "undefined"), cseq = 0, rseq = 0, bseq = 0;
+
+  var TS_RE = /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/;
+  function parseTs(bno) { var m = TS_RE.exec(bno || ""); return m ? new Date(m[1].replace(" ", "T")).getTime() : null; }
+  function parsePosting(r) { var d = r.posting_date || ""; var t = (r.posting_time || "00:00:00").substr(0, 8); var ts = new Date(d + "T" + t).getTime(); return isNaN(ts) ? null : ts; }
+
+  function getRange() {
+    var p = st.get("cp"), now = new Date(), from, to;
+    if (p === "today") { from = to = ds(now); }
+    else if (p === "yesterday") { var y = new Date(now); y.setDate(now.getDate() - 1); from = to = ds(y); }
+    else if (p === "week") { var w = new Date(now); w.setDate(now.getDate() - 6); from = ds(w); to = ds(now); }
+    else if (p === "month") { var fm = new Date(now.getFullYear(), now.getMonth(), 1); from = ds(fm); to = ds(now); }
+    else if (p === "half") { var hy = new Date(now); hy.setMonth(now.getMonth() - 6); from = ds(hy); to = ds(now); }
+    else if (p === "year") { from = now.getFullYear() + "-01-01"; to = ds(now); }
+    else if (p === "custom" && st.get("cfrom")) { from = st.get("cfrom"); to = st.get("cto") || from; }
+    else { from = to = ds(now); }
+    return { from: from, to: to, key: from + "|" + to };
+  }
+
+  function chartRows() {
+    if (!dashData) return [];
+    return [].concat(dashData.serverTransit || [], dashData.serverDwell || [], dashData.serverQuarantine || [], dashData.serverTimeline || []);
+  }
+  function chartFarms() { return distinct(chartRows(), "farm"); }
+
+  function loadFarmDoctype() {
+    if (ALL_FARMS.length) return;
+    // name only: not every site has Farm.custom_location, and asking for it makes the server raise "Field not permitted in query".
+    // The farms of the two sites (Ravine, Karen) are the ones the region map knows.
+    PH.call("frappe.client.get_list", { doctype: "Farm", fields: ["name"], limit: 200, order_by: "name asc" }, { silent: true })
+      .then(function (r) {
+        var EXCL_FARMS = { Eldama: 1, "Post Harvest": 1, Greenville: 1 };
+        ALL_FARMS = (r || []).map(function (f) { return f.name; }).filter(function (n) { return n && !EXCL_FARMS[n] && PH.regionOf(n); }).sort();
+        if (loaded) farmMS.setOptions(farmGroups());
+      }).catch(function () {});
+  }
+
+  /* Fallback only: when a server script returns nothing for the active chart, rebuild the buckets from Stock Entries as the old page did. */
+  function fetchType(seType, range, cb) {
+    function go(start, acc) {
+      PH.call("frappe.client.get_list", {
+        doctype: "Stock Entry", fields: ["custom_greenhouse", "custom_farm", "custom_harvest_batch_no", "posting_date", "posting_time", "creation"],
+        filters: [["stock_entry_type", "=", seType], ["posting_date", ">=", range.from], ["posting_date", "<=", range.to]],
+        limit: 5000, limit_start: start, order_by: "posting_date asc,posting_time asc"
+      }, { silent: true }).then(function (r) {
+        var b = r || [], c = acc.concat(b);
+        if (b.length === 5000 && c.length < 40000) go(start + 5000, c); else cb(c);
+      }).catch(function () { cb(acc); });
+    }
+    go(0, []);
+  }
+  function processAll(res, range) {
+    var bkts = {};
+    var harvestMap = {};
+    res.h.forEach(function (r) {
+      var bno = r.custom_harvest_batch_no; if (!bno) return;
+      var t = parsePosting(r); if (!t) return;
+      if (!harvestMap[bno] || t < harvestMap[bno]) harvestMap[bno] = t;
+    });
+    function ens(bno, r) {
+      if (!bkts[bno]) bkts[bno] = { bno: bno, gh: r.custom_greenhouse || "", farm: r.custom_farm || "", harvest_t: harvestMap[bno] || parseTs(bno), receive_t: null, shelving_t: null, quarantine_t: null, review_t: null, material_t: null, end_t: null };
+      if (!bkts[bno].gh && r.custom_greenhouse) bkts[bno].gh = r.custom_greenhouse;
+      if (!bkts[bno].farm && r.custom_farm) bkts[bno].farm = r.custom_farm;
+      if (!bkts[bno].harvest_t && harvestMap[bno]) bkts[bno].harvest_t = harvestMap[bno];
+    }
+    res.r.forEach(function (r) { var b = r.custom_harvest_batch_no; if (!b) return; ens(b, r); bkts[b].receive_t = parsePosting(r); });
+    res.a.forEach(function (r) { var b = r.custom_harvest_batch_no; if (!b) return; ens(b, r); bkts[b].shelving_t = parsePosting(r); });
+    res.q.forEach(function (r) { var b = r.custom_harvest_batch_no; if (!b) return; ens(b, r); var qt = parsePosting(r); if (!bkts[b].quarantine_t || qt < bkts[b].quarantine_t) bkts[b].quarantine_t = qt; });
+    res.rj.forEach(function (r) { var b = r.custom_harvest_batch_no; if (!b) return; ens(b, r); bkts[b].review_t = parsePosting(r); });
+    res.mt.forEach(function (r) { var b = r.custom_harvest_batch_no; if (!b) return; ens(b, r); bkts[b].material_t = parsePosting(r); });
+    var earliest = {}, earliestQ = {};
+    Object.keys(bkts).forEach(function (k) {
+      var b = bkts[k]; if (!b.gh || !b.harvest_t) return;
+      b.end_t = b.material_t || b.review_t || b.shelving_t || b.quarantine_t || b.receive_t;
+      var key = (b.farm || "?") + "||" + b.gh;
+      if (!earliest[key] || b.harvest_t < earliest[key].harvest_t) earliest[key] = b;
+      if (b.quarantine_t) { if (!earliestQ[key] || b.harvest_t < earliestQ[key].harvest_t) earliestQ[key] = b; }
+    });
+    return { earliest: earliest, earliestQ: earliestQ };
+  }
+  function ensureBuckets(cb) {
+    if (dashData.bucketsDone) return cb();
+    var my = ++bseq, range = dashData.range;
+    var res = { r: [], a: [], q: [], rj: [], mt: [], h: [] }, done = 0;
+    function chk() {
+      if (++done < 6) return;
+      if (my !== bseq || !dashData || dashData.range !== range) return;
+      var p = processAll(res, range);
+      dashData.earliest = p.earliest; dashData.earliestQ = p.earliestQ; dashData.bucketsDone = true;
+      cb();
+    }
+    fetchType("Receiving", range, function (d) { res.r = d; chk(); });
+    fetchType("Late Receipt", range, function (d) { res.a = d; chk(); });
+    fetchType("Receiving Quarantined", range, function (d) { res.q = d; chk(); });
+    fetchType("Material Transfer", range, function (d) { res.mt = d; chk(); });
+    fetchType("Quarantine Rejects", range, function (d) { res.rj = d; chk(); });
+    fetchType("Harvesting", range, function (d) { res.h = d; chk(); });
+  }
+
+  var CH_METHODS = ["fetch_transit_time", "fetch_intake_dwell", "fetch_quarantine_dwell", "fetch_complete_timeline"];
+  var CH_KEYS = ["serverTransit", "serverDwell", "serverQuarantine", "serverTimeline"];
+  var CH_MINS = ["transit_minutes", "dwell_minutes", "quarantine_minutes", "timeline_minutes"];
+  function loadCharts(quiet) {
+    var my = ++cseq, range = getRange();
+    if (!quiet) { PH.skeleton("#c-panel", "block", 7); $("#c-stats").innerHTML = ""; $("#c-farms").innerHTML = ""; }
+    $("#c-note").textContent = range.from === range.to ? PH.fmt.date(range.from) : PH.fmt.date(range.from) + " to " + PH.fmt.date(range.to);
+    /* compact answer ({gh, farm, r:[[gh, farm, minutes]]}) rebuilt into the row objects the chart code has always used */
+    function rows(i) {
+      return PH.call(CH_METHODS[i], { from_date: range.from, to_date: range.to, compact: 1 }, { silent: true })
+        .then(function (m) {
+          if (m && m.r) {
+            var out = new Array(m.r.length), key = CH_MINS[i];
+            for (var j = 0; j < m.r.length; j++) {
+              var a = m.r[j], o = { greenhouse: m.gh[a[0]], farm: m.farm[a[1]] };
+              o[key] = a[2];
+              out[j] = o;
+            }
+            return { rows: out, err: m.error };
+          }
+          return { rows: (m && m.rows) || [], err: m && m.error };
+        })
+        .catch(function (e) { return { rows: [], err: (e && e.message) || "failed" }; });
+    }
+    var data = { range: range, rangeKey: range.key, serverTransit: [], serverDwell: [], serverQuarantine: [], serverTimeline: [], ready: [false, false, false, false], earliest: null, earliestQ: null, bucketsDone: false };
+    /* a quiet refresh keeps showing the old chart until the new data is complete; a normal load draws each tab as soon as its own call returns */
+    if (!quiet) dashData = data;
+    var results = [];
+    function part(i) {
+      return rows(i).then(function (res) {
+        if (my !== cseq) return res;
+        results[i] = res;
+        data[CH_KEYS[i]] = res.rows;
+        data.ready[i] = true;
+        if (data !== dashData) return res;
+        if (loaded) { farmMS.setOptions(farmGroups()); ghMS.setOptions(ghOptions()); }
+        var idx = parseInt(st.get("ctab") || "0", 10) || 0;
+        if (idx === i || (idx === 3 && data.ready.every(Boolean))) renderChart();
+        return res;
+      });
+    }
+    /* the chart tab on screen is asked for first; the others wait until the table has painted so they never delay it */
+    var active = parseInt(st.get("ctab") || "0", 10) || 0, ps = [];
+    var first = active === 3 ? [0, 1, 2, 3] : [active];
+    first.forEach(function (i) { ps[i] = part(i); });
+    var rest = [0, 1, 2, 3].filter(function (i) { return first.indexOf(i) < 0; });
+    var restStart = tablePromise.then(function () { return Promise.all(rest.map(function (i) { return (ps[i] = part(i)); })); });
+    return Promise.all(first.map(function (i) { return ps[i]; })).then(function () { return restStart; }).then(function () {
+      if (my !== cseq) return;
+      if (results.every(function (x) { return x && x.err; })) {
+        dashData = data;
+        PH.error("#c-panel", results[0].err, function () { loadCharts(); });
+        return;
+      }
+      if (quiet) {
+        dashData = data;
+        if (loaded) { farmMS.setOptions(farmGroups()); ghMS.setOptions(ghOptions()); }
+        renderChart();
+      }
+      PH.markUpdated();
+    });
+  }
+
+  function loadCJs(cb) {
+    if (cjsLoaded || typeof Chart !== "undefined") { cjsLoaded = true; window.ttChartTheme(); cb(); return; }
+    var s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js";
+    s.onload = function () { cjsLoaded = true; window.ttChartTheme(); cb(); }; document.head.appendChild(s);
+  }
+
+  function stat(lbl, val, cls) {
+    return '<div class="ph-stat"><small>' + esc(lbl) + '</small><b class="' + (cls || "") + '">' + esc(val) + "</b></div>";
+  }
+
+  function renderChart() {
+    if (!dashData) return;
+    var idx = parseInt(st.get("ctab") || "0", 10) || 0;
+    var cfg = CFG[idx], panel = $("#c-panel"), stats = $("#c-stats"), farmsEl = $("#c-farms");
+    /* the data this tab needs is still on its way: show the skeleton, the arrival of the data draws the chart */
+    var need = idx === 3 ? [0, 1, 2, 3] : [idx];
+    if (dashData.ready && need.some(function (i) { return !dashData.ready[i]; })) {
+      PH.skeleton(panel, "block", 7); stats.innerHTML = ""; farmsEl.innerHTML = "";
+      return;
+    }
+    var srcArr = [dashData.serverTransit, dashData.serverDwell, dashData.serverQuarantine, dashData.serverTimeline][idx] || [];
+    if (!srcArr.length && !dashData.bucketsDone) {
+      PH.skeleton(panel, "block", 7); stats.innerHTML = ""; farmsEl.innerHTML = "";
+      var data = dashData;
+      ensureBuckets(function () { if (data === dashData) renderChart(); });
+      return;
+    }
+    var _farmSel = PH.values(st.get("farm")), _ghSel = PH.values(st.get("gh"));
+    var filtered = [];
+    if (dashData.earliest) {
+      var src = (idx === 2 && dashData.earliestQ) ? dashData.earliestQ : dashData.earliest;
+      filtered = Object.keys(src).map(function (k) { return src[k]; }).filter(function (b) {
+        if (_farmSel.length && _farmSel.indexOf(b.farm) < 0) return false;
+        if (_ghSel.length && _ghSel.indexOf(b.gh) < 0) return false;
+        return true;
+      });
+    }
+
+    /* Per-GH durations — Tab 0 uses server transit data, Tab 1 uses server dwell data */
+    var ghEntries = [];
+    if (idx === 0 && dashData && dashData.serverTransit && dashData.serverTransit.length > 0) {
+      dashData.serverTransit.forEach(function (r) {
+        if (r.transit_minutes >= 0 && r.transit_minutes <= 4320)
+          ghEntries.push({ gh: r.greenhouse, farm: r.farm, mins: r.transit_minutes });
+      });
+    } else if (idx === 1 && dashData && dashData.serverDwell && dashData.serverDwell.length > 0) {
+      dashData.serverDwell.forEach(function (r) {
+        if (r.dwell_minutes >= 0 && r.dwell_minutes <= 10080)
+          ghEntries.push({ gh: r.greenhouse, farm: r.farm, mins: r.dwell_minutes });
+      });
+    } else if (idx === 2 && dashData && dashData.serverQuarantine && dashData.serverQuarantine.length > 0) {
+      dashData.serverQuarantine.forEach(function (r) {
+        if (r.quarantine_minutes >= 0 && r.quarantine_minutes <= 10080)
+          ghEntries.push({ gh: r.greenhouse, farm: r.farm, mins: r.quarantine_minutes });
+      });
+    } else if (idx === 3 && dashData && dashData.serverTimeline && dashData.serverTimeline.length > 0) {
+      dashData.serverTimeline.forEach(function (r) {
+        if (r.timeline_minutes >= 0 && r.timeline_minutes <= 14400)
+          ghEntries.push({ gh: r.greenhouse, farm: r.farm, mins: r.timeline_minutes });
+      });
+    } else {
+      filtered.forEach(function (b) {
+        var t1 = b[cfg.from], t2 = b[cfg.to]; if (!t1 || !t2) return;
+        var m = (t2 - t1) / 60000; if (m < -120 || m > 4320) return;
+        ghEntries.push({ gh: b.gh, farm: b.farm || "?", mins: Math.max(0, m) });
+      });
+    }
+
+    /* Apply farm/GH filters to server-sourced entries */
+    if (_farmSel.length || _ghSel.length) {
+      ghEntries = ghEntries.filter(function (e) {
+        if (_farmSel.length && _farmSel.indexOf(e.farm) < 0) return false;
+        if (_ghSel.length && _ghSel.indexOf(e.gh) < 0) return false;
+        return true;
+      });
+    }
+
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
+    if (!ghEntries.length) {
+      PH.empty(panel, cfg.noData, _farmSel.length || _ghSel.length ? "Clear the farm or greenhouse filter, or pick a wider chart period." : "Pick a wider chart period.");
+      stats.innerHTML = ""; farmsEl.innerHTML = "";
+      return;
+    }
+
+    /* Stats across all GH entries */
+    var allVals = ghEntries.map(function (e) { return e.mins; });
+    var avg = allVals.reduce(function (a, b) { return a + b; }, 0) / allVals.length;
+    var mn = Math.min.apply(null, allVals), mx = Math.max.apply(null, allVals);
+    var farmSet = {}; ghEntries.forEach(function (e) { farmSet[e.farm] = 1; });
+    stats.innerHTML = stat("Avg", fmtM(avg)) + stat("Min", fmtM(mn), "tt-good") + stat("Max", fmtM(mx), "tt-bad") + stat("Farms", Object.keys(farmSet).length);
+
+    var farms = Object.keys(farmSet).sort();
+    var ghSet = {}; ghEntries.forEach(function (e) { ghSet[e.gh] = 1; });
+    var ghs = Object.keys(ghSet).sort();
+    /* Average per farm+GH so multi-day ranges show period avg, not a random batch */
+    var lookupSum = {}, lookupCnt = {};
+    ghEntries.forEach(function (e) { var k = e.farm + "||" + e.gh; lookupSum[k] = (lookupSum[k] || 0) + e.mins; lookupCnt[k] = (lookupCnt[k] || 0) + 1; });
+    var lookup = {}; Object.keys(lookupSum).forEach(function (k) { lookup[k] = Math.round(lookupSum[k] / lookupCnt[k]); });
+
+    /* Tableau 20 — industry-standard categorical palette */
+    var GH_PAL = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2',
+      '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
+      '#1f77b4', '#aec7e8', '#ffbb78', '#98df8a', '#ff9896',
+      '#c5b0d5', '#c49c94', '#f7b6d2', '#dbdb8d', '#9edae5'];
+
+    /* Per-farm max / avg
+       idx===3 (Complete Timeline): use already-averaged per-GH lookup values so
+       multi-day ranges show the average of GH averages, not a sum-inflated figure. */
+    var farmStats = {};
+    if (idx === 3) {
+      farms.forEach(function (farm) {
+        var fVals = [], maxVal = -Infinity, maxGH = '';
+        ghs.forEach(function (gh) {
+          var k = farm + '||' + gh;
+          if (lookup[k] != null) {
+            fVals.push(lookup[k]);
+            if (lookup[k] > maxVal) { maxVal = lookup[k]; maxGH = gh; }
+          }
+        });
+        if (!fVals.length) return;
+        var fMax = Math.max.apply(null, fVals);
+        var fAvg = fVals.reduce(function (a, b) { return a + b; }, 0) / fVals.length;
+        farmStats[farm] = { max: fMax, avg: fAvg, maxGH: shortGH(maxGH) };
+      });
+    } else {
+      farms.forEach(function (farm) {
+        var es = ghEntries.filter(function (e) { return e.farm === farm; });
+        if (!es.length) return;
+        var vals = es.map(function (e) { return e.mins; });
+        var fMax = Math.max.apply(null, vals);
+        var fAvg = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+        var maxE = null;
+        for (var _j = 0; _j < es.length; _j++) { if (es[_j].mins === fMax) { maxE = es[_j]; break; } }
+        farmStats[farm] = { max: fMax, avg: fAvg, maxGH: maxE ? shortGH(maxE.gh) : '' };
+      });
+    }
+    var farmRows = farms.filter(function (f) { return farmStats[f]; }).map(function (f) { return { farm: f, avg: farmStats[f].avg, max: farmStats[f].max, maxGH: farmStats[f].maxGH }; });
+    PH.table(farmsEl, {
+      columns: [
+        { key: "farm", label: "Farm", cls: "is-strong" },
+        { key: "avg", label: "Avg", num: true, format: function (v) { return fmtM(Math.round(v)); } },
+        { key: "max", label: "Max", num: true, format: function (v) { return fmtM(v); } },
+        { key: "maxGH", label: "Slowest greenhouse" }
+      ],
+      rows: farmRows, compact: true, sort: { key: "max", dir: "desc" },
+      onRowClick: function (r) { st.set({ farm: r.farm }); }
+    });
+
+    var my = ++rseq;
+    loadCJs(function () {
+      if (my !== rseq) return;
+      panel.innerHTML = '<canvas id="aphTDC' + idx + '" style="max-height:320px"></canvas>';
+      if (chartInst) { chartInst.destroy(); chartInst = null; }
+
+      var ctx = document.getElementById('aphTDC' + idx).getContext('2d');
+      var _ghF = _ghSel.length ? 1 : 0, _farmF = _farmSel.length ? 1 : 0;
+
+      if (idx === 3) {
+        /* Complete timeline: per-farm phase breakdown
+           GREEN = harvest→receive (transit_minutes)
+           BLUE  = quarantine dwell (quarantine_minutes)
+           RED   = receive→shelf (dwell_minutes) */
+        var farmT = {}, farmD = {}, farmQ = {};
+        var ghOk = function (r) { return !_ghF || _ghSel.indexOf(r.greenhouse) > -1; };
+        (dashData.serverTransit || []).forEach(function (r) {
+          if (!ghOk(r)) return;
+          farmT[r.farm] = farmT[r.farm] || [];
+          if (r.transit_minutes >= 0) farmT[r.farm].push(r.transit_minutes);
+        });
+        (dashData.serverDwell || []).forEach(function (r) {
+          if (!ghOk(r)) return;
+          farmD[r.farm] = farmD[r.farm] || [];
+          if (r.dwell_minutes >= 0) farmD[r.farm].push(r.dwell_minutes);
+        });
+        (dashData.serverQuarantine || []).forEach(function (r) {
+          if (!ghOk(r)) return;
+          farmQ[r.farm] = farmQ[r.farm] || [];
+          if (r.quarantine_minutes >= 0) farmQ[r.farm].push(r.quarantine_minutes);
+        });
+        /* Use serverTimeline to define the full farm list (covers all 6 farms) */
+        var bFarmSet = {};
+        (dashData.serverTimeline || []).forEach(function (r) { if (r.farm && ghOk(r)) bFarmSet[r.farm] = 1; });
+        var bFarms = Object.keys(bFarmSet).sort();
+        if (_farmF) bFarms = bFarms.filter(function (f) { return _farmSel.indexOf(f) > -1; });
+        var wavg = function (arr) {
+          var a = arr || []; return a.length ? Math.round(a.reduce(function (x, y) { return x + y; }, 0) / a.length) : 0;
+        };
+        var bDatasets = [
+          {
+            label: 'Transit', backgroundColor: 'rgba(33,150,243,0.88)',
+            borderColor: '#fff', borderWidth: 0.8, borderRadius: 2, borderSkipped: false,
+            data: bFarms.map(function (f) { return wavg(farmT[f]); })
+          },
+          {
+            label: 'Intake Dwell', backgroundColor: 'rgba(244,67,54,0.88)',
+            borderColor: '#fff', borderWidth: 0.8, borderRadius: 2, borderSkipped: false,
+            data: bFarms.map(function (f) { return wavg(farmD[f]); })
+          },
+          {
+            label: 'Quarantine Dwell', backgroundColor: 'rgba(76,175,80,0.88)',
+            borderColor: '#fff', borderWidth: 0.8, borderRadius: 2, borderSkipped: false,
+            data: bFarms.map(function (f) { return wavg(farmQ[f]); })
+          }
+        ];
+        chartInst = new Chart(ctx, {
+          type: 'bar',
+          data: { labels: bFarms, datasets: bDatasets },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            animation: { duration: 280 },
+            plugins: {
+              legend: {
+                display: true, position: 'top',
+                labels: { font: { size: 11 }, color: '#555', boxWidth: 12, padding: 12 }
+              },
+              tooltip: {
+                filter: function (item) { return item.parsed.y != null && item.parsed.y > 0; },
+                callbacks: {
+                  title: function (it) { return it.length ? bFarms[it[0].dataIndex] : ''; },
+                  label: function (it) { return '  ' + it.dataset.label + ': ' + fmtM(it.parsed.y); }
+                }
+              }
+            },
+            scales: {
+              x: {
+                stacked: true, grid: { display: false },
+                ticks: { maxRotation: 45, minRotation: 30, font: { size: 11 }, color: '#9a9a9a' },
+                title: { display: true, text: 'Farm', font: { size: 11, weight: '600' }, color: '#9a9a9a', padding: { top: 6 } }
+              },
+              y: {
+                stacked: true, beginAtZero: true, grid: { color: 'rgba(0,0,0,0.04)' },
+                title: { display: true, text: 'Duration (min)', font: { size: 11, weight: '600' }, color: '#9a9a9a' },
+                ticks: {
+                  color: '#9a9a9a', font: { size: 11 }, callback: function (v) {
+                    if (v >= 60) { var h = Math.floor(v / 60), m = v % 60; return h + 'h' + (m ? ' ' + m + 'm' : ''); }
+                    return v + 'm';
+                  }
+                }
+              }
+            }
+          }
+        });
+      } else {
+        /* Tabs 0-2: per-GH Tableau 20 stacked chart */
+        var datasets = ghs.map(function (gh, i) {
+          var c = GH_PAL[i % GH_PAL.length];
+          return {
+            label: shortGH(gh),
+            data: farms.map(function (farm) { var v = lookup[farm + '||' + gh]; return v != null ? Math.round(v) : null; }),
+            backgroundColor: c + 'e0',
+            borderColor: '#ffffff',
+            borderWidth: 0.8,
+            borderRadius: 2,
+            borderSkipped: false,
+            skipNull: true
+          };
+        });
+        chartInst = new Chart(ctx, {
+          type: 'bar',
+          data: { labels: farms, datasets: datasets },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            animation: { duration: 280 },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                filter: function (item) { return item.parsed.y != null && item.parsed.y > 0; },
+                itemSort: function (a, b) { return b.parsed.y - a.parsed.y; },
+                callbacks: {
+                  title: function (it) { return it.length ? farms[it[0].dataIndex] : ''; },
+                  label: function (it) { return '  ' + it.dataset.label + ': ' + fmtM(it.parsed.y); }
+                }
+              }
+            },
+            scales: {
+              x: {
+                stacked: false, grid: { display: false },
+                ticks: { maxRotation: 45, minRotation: 30, font: { size: 11 }, color: '#9a9a9a' },
+                title: { display: true, text: 'Farm', font: { size: 11, weight: '600' }, color: '#9a9a9a', padding: { top: 6 } }
+              },
+              y: {
+                stacked: false, beginAtZero: true, grid: { color: 'rgba(0,0,0,0.04)' },
+                title: { display: true, text: 'Duration (min)', font: { size: 11, weight: '600' }, color: '#9a9a9a' },
+                ticks: {
+                  color: '#9a9a9a', font: { size: 11 }, callback: function (v) {
+                    if (v >= 60) { var h = Math.floor(v / 60), m = v % 60; return h + 'h' + (m ? ' ' + m + 'm' : ''); }
+                    return v + 'm';
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  }
+
+  /* chart controls */
+  PH.pills("#c-period", st, "cp");
+  PH.pills("#c-tabs", st, "ctab");
+  PH.dateRange({ from: "#c-from", to: "#c-to", state: st, fromKey: "cfrom", toKey: "cto" });
+  function paintCustom() { $("#c-range").hidden = st.get("cp") !== "custom"; }
+  paintCustom();
+
+  /* ───────────────────────── wiring ───────────────────────── */
+  var SERVER = ["from", "to", "year", "week", "farm", "variety", "gh"];
+  var CLIENT = ["coldroom", "grower", "status", "q", "group", "cols", "dense"];
+  var CHART_FETCH = ["cp", "cfrom", "cto"];
+  st.on(function (s, changed) {
+    var c = changed || [];
+    // alternative period pickers: choosing dates clears year/week and the other way round
+    if ((c.indexOf("from") >= 0 || c.indexOf("to") >= 0) && (s.from || s.to) && (s.year || s.week)) { st.set({ year: "", week: "" }); return; }
+    if ((c.indexOf("year") >= 0 || c.indexOf("week") >= 0) && (s.year || s.week) && (s.from || s.to)) { st.set({ from: "", to: "" }); return; }
+    // typing chart dates switches the chart to "Pick dates"; picking that gives it a day to start from
+    if ((c.indexOf("cfrom") >= 0 || c.indexOf("cto") >= 0) && s.cp !== "custom") { st.set({ cp: "custom" }); return; }
+    if (c.indexOf("cp") >= 0 && s.cp === "custom" && !s.cfrom) { st.set({ cfrom: today, cto: today }); return; }
+    paintCustom();
+    if (c.some(function (k) { return SERVER.indexOf(k) >= 0; })) {
+      if (c.indexOf("farm") >= 0 && loaded) ghMS.setOptions(ghOptions());
+      loadTable();
+    } else if (c.some(function (k) { return CLIENT.indexOf(k) >= 0; })) paintTable();
+    if (c.some(function (k) { return CHART_FETCH.indexOf(k) >= 0; })) loadCharts();
+    else if (c.some(function (k) { return k === "farm" || k === "gh" || k === "ctab"; })) renderChart();
+  });
+
+  PH.onRefresh(function () { return Promise.all([loadTable(true), loadCharts(true)]); });
+  PH.kpiSkeleton("#kpis", ["Receipts", "Avg transit", "Slowest", "Receive → shelf", "Quarantined"]);
+  PH.skeleton("#t-body", "rows", 8);
+  loadFarmDoctype();
+  tablePromise = loadTable().then(function () {}, function () {});
+  loadCharts();
+})();
+</script>
+{% endraw %}
+{% endblock %}

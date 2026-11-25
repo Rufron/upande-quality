@@ -1,0 +1,651 @@
+{% extends "templates/web.html" %}
+{% block title %}Solution Mixing · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Operations</div>
+    <h1 class="ph-head__title">Solution Mixing</h1>
+    <p class="ph-head__sub" id="sub">Chemical rates, usage by farm and recent mixes with pH and PPM</p>
+  </div>
+  <div class="ph-head__tools">
+    <button class="ph-btn" id="export-rates" type="button" disabled>Export rates CSV</button>
+    <button class="ph-btn" id="export-mixes" type="button" disabled>Export mixes CSV</button>
+  </div>
+</header>
+
+<div class="ph-filters">
+  <select class="ph-select" id="f-year" aria-label="Year"><option value="">All years</option></select>
+  <select class="ph-select" id="f-week" aria-label="Week"><option value="">All weeks</option></select>
+  <div id="f-farm"></div>
+  <div id="f-tank"></div>
+  <div id="f-chemical"></div>
+  <div id="f-status"></div>
+  <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search mix, tank, chemical…"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets"><button data-value="today">Today</button><button data-value="7d">7 days</button><button data-value="14d">14 days</button><button data-value="30d">30 days</button><button data-value="mtd">This month</button></div>
+  <div class="ph-daterange"><input type="date" id="from" aria-label="From"><span class="ph-daterange__sep">–</span><input type="date" id="to" aria-label="To"></div>
+</div>
+<div id="chips"></div>
+
+<section class="ph-kpis" id="kpis"></section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <div><h2 class="ph-card__title">Chemical rates</h2><div class="ph-card__meta">Amount used against the volume of solution, per chemical (rate per litre of solution)</div></div>
+    <div class="ph-card__meta" id="rates-meta"></div>
+  </div>
+  <div id="rates"></div>
+</section>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div><h2 class="ph-card__title">Chemical vs Volume of Solution</h2><div class="ph-card__meta">Total chemical amount vs solution volume, per chemical</div></div></div>
+    <div class="sm-chart"><canvas id="chartTrend"></canvas></div>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div><h2 class="ph-card__title">Chemical Usage per Farm</h2><div class="ph-card__meta">Stacked by chemical, totals across the selected period</div></div></div>
+    <div class="sm-chart"><canvas id="chartChemByFarm"></canvas></div>
+  </section>
+</div>
+
+<section class="ph-card">
+  <div class="ph-card__head"><div><h2 class="ph-card__title">Chemical Usage vs Stems Received (per farm)</h2><div class="ph-card__meta">Chemical amount and stems received shown side by side for each farm</div></div></div>
+  <div class="sm-chart sm-chart--tall"><canvas id="chartWeeklyVsStems"></canvas><div id="weekly-loading" class="ph-card__meta" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center">Loading stems received...</div></div>
+</section>
+
+<section class="ph-card">
+  <div class="ph-card__head"><div><h2 class="ph-card__title">Chemical Usage Trend</h2><div class="ph-card__meta">Stacked by chemical (kg / L) with Pareto cumulative %</div></div></div>
+  <div class="sm-chart sm-chart--tall"><canvas id="chartUsageTrend"></canvas></div>
+</section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <div><h2 class="ph-card__title">Usage by farm</h2><div class="ph-card__meta">Chemical amount per farm, kg for powders and L for liquids</div></div>
+    <div class="ph-card__meta" id="farms-meta"></div>
+  </div>
+  <div id="farms"></div>
+</section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <div><h2 class="ph-card__title">Recent mixes <span class="ph-badge" id="mixes-count"></span></h2><div class="ph-card__meta">Latest 50 mixes in scope. Status and search narrow this table only.</div></div>
+    <div class="ph-card__meta" id="mixes-meta"></div>
+  </div>
+  <div id="mixes"></div>
+</section>
+
+<style>
+.sm-chart{position:relative;height:300px}
+.sm-chart--tall{height:360px}
+.sm-photo{display:inline-block;width:28px;height:28px;border-radius:var(--r-sm);overflow:hidden;vertical-align:middle;box-shadow:inset 0 0 0 1px var(--hairline-2)}
+.sm-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.sm-photos{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+</style>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+/* Chart theming, moved verbatim from the original page. The only addition is the first line,
+   which lets the colour plugin register again when the page is re-entered through the sidebar
+   (Chart.js is reloaded then, but the old guard flag would survive). */
+window.__ufdMonaReg = 0;
+/* Upande UFD :: Mona chart theming — global Chart.js defaults + identifiable bar colours */
+(function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";
+      Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){
+        window.__ufdMonaReg=1;
+        Chart.register({
+          id:"ufdMonaColors",
+          beforeUpdate:function(chart){
+            var t=chart.config.type;
+            var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+            if(bars.length===1){
+              var d=bars[0];
+              d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});
+            }else if(bars.length>1){
+              bars.forEach(function(d,i){ if(typeof d.backgroundColor!=="function"){ d.backgroundColor=PAL[i%PAL.length]; }});
+            }
+          }
+        });
+      }
+    }catch(e){}
+  }
+  go();
+})();
+</script>
+<script>
+(function () {
+  /* ═══ CHARTS: moved verbatim from the original page, not to be edited ═══ */
+const ACCENT_BLUE   = '#2490ef';
+const ACCENT_TEAL   = '#2d9ea0';
+const ACCENT_GREEN  = '#29cd42';
+const ACCENT_ORANGE = '#fc9c30';
+const ACCENT_RED    = '#e63757';
+
+let charts = {};
+
+function el(id) { return document.getElementById(id); }
+function num(v, d=0) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+
+/* Format an adaptive-period key for axis labels: YYYY-MM-DD -> "Sun 08", YYYY-MM -> "Jun", MM -> "Jun", YYYY-Www kept. */
+function formatPeriodLabel(k){
+    k = String(k);
+    var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var m;
+    if((m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(k))){ var dt=new Date(+m[1],+m[2]-1,+m[3]); return DOW[dt.getDay()]+' '+m[3]; }
+    if((m=/^(\d{4})-(\d{2})$/.exec(k))){ return MON[+m[2]-1]+' '+m[1]; }
+    if((m=/^(\d{1,2})$/.exec(k))){ var i=+m[1]; if(i>=1&&i<=12) return MON[i-1]; }
+    return k;
+}
+
+function destroyCharts() {
+    Object.values(charts).forEach(c => c && c.destroy && c.destroy());
+    charts = {};
+}
+
+function lineTrend(rows) {
+    // Grouped bar: per chemical, total amount (kg/L) vs total solution volume (L). Dual axis.
+    const sorted = (rows || []).slice().sort((a,b) => Number(b.total_volume_l||0) - Number(a.total_volume_l||0));
+    const labels = sorted.map(r => r.chemical_name || r.chemical || '—');
+    const amtUnits = sorted.map(r => normAmt(r.total_amount, r.unit).unit);
+    const amt = sorted.map(r => Math.round(normAmt(r.total_amount, r.unit).value * 100) / 100);
+    const vol = sorted.map(r => Number(r.total_volume_l || 0));
+    return new Chart(el('chartTrend'), {
+        type: 'bar',
+        data: { labels, datasets: [
+            { label: 'Chemical amount', data: amt, backgroundColor: ACCENT_TEAL, yAxisID: 'yAmt', maxBarThickness: 34 },
+            { label: 'Solution volume (L)', data: vol, backgroundColor: ACCENT_BLUE, yAxisID: 'yVol', maxBarThickness: 34 }
+        ] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                tooltip: { callbacks: { label: c => c.datasetIndex === 0
+                    ? ('Amount: ' + num(c.raw, 2) + ' ' + (amtUnits[c.dataIndex] || ''))
+                    : ('Solution: ' + num(c.raw, 0) + ' L') } }
+            },
+            scales: {
+                x: { ticks: { font: { size: 9 }, maxRotation: 45 } },
+                yAmt: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Chemical amount (kg / L)' } },
+                yVol: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Solution volume (L)' } }
+            }
+        }
+    });
+}
+
+// Generate a stable color per chemical so the same chemical keeps the same
+// color across renders (helps the eye track across charts).
+const CHEM_PALETTE = [ACCENT_BLUE, ACCENT_GREEN, ACCENT_ORANGE, ACCENT_TEAL, ACCENT_RED,
+    '#7c5cfc', '#ec4899', '#06b6d4', '#84cc16', '#facc15', '#a855f7', '#f97316'];
+function colorForChem(name, idx) {
+    return CHEM_PALETTE[idx % CHEM_PALETTE.length];
+}
+
+// Normalise a chemical amount to kg (powders) or L (liquids).
+function normAmt(amount, unit) {
+    var u = (unit || '').toLowerCase(); var v = Number(amount || 0);
+    if (u === 'g')  return { value: v / 1000, unit: 'kg' };
+    if (u === 'ml') return { value: v / 1000, unit: 'L' };
+    if (u === 'kg') return { value: v, unit: 'kg' };
+    if (u === 'l')  return { value: v, unit: 'L' };
+    return { value: v, unit: unit || '' };
+}
+
+// Stacked bar (qty per chemical, per period) + Pareto cumulative-% line.
+function usageTrend(data) {
+    const id = 'chartUsageTrend';
+    const series = Object.keys(data || {});
+    if (!series.length) {
+        return new Chart(el(id), { type: 'bar', data: { labels: [], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false } });
+    }
+    const wset = {}; series.forEach(s => Object.keys(data[s]).forEach(w => { wset[w] = 1; }));
+    const periods = Object.keys(wset).sort();
+    const bars = series.map((s, i) => ({
+        type: 'bar', label: s, stack: 'usage',
+        data: periods.map(w => data[s][w] != null ? data[s][w] : 0),
+        backgroundColor: colorForChem(s, i), maxBarThickness: 40, yAxisID: 'y',
+    }));
+    const totals = periods.map(w => series.reduce((sum, s) => sum + (Number(data[s][w]) || 0), 0));
+    const grand = totals.reduce((a, b) => a + b, 0) || 1;
+    let cum = 0;
+    const cumPct = totals.map(v => { cum += v; return Math.round(cum / grand * 1000) / 10; });
+    const lineDs = {
+        type: 'line', label: 'Cumulative %', data: cumPct, yAxisID: 'yPct',
+        borderColor: '#1a1a1a', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.2,
+    };
+    return new Chart(el(id), {
+        type: 'bar',
+        data: { labels: periods.map(formatPeriodLabel), datasets: bars.concat([lineDs]) },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } },
+                tooltip: { callbacks: { label: c => c.dataset.label === 'Cumulative %'
+                    ? ('Cumulative: ' + c.parsed.y + '%')
+                    : (c.dataset.label + ': ' + num(c.raw, 2)) } }
+            },
+            scales: {
+                x: { stacked: true, ticks: { font: { size: 8 }, maxRotation: 45 } },
+                y: { stacked: true, beginAtZero: true, position: 'left', title: { display: true, text: 'Quantity (kg / L)' } },
+                yPct: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%', font: { size: 8 } } }
+            }
+        }
+    });
+}
+
+function chemUsageByFarm(rows) {
+    // rows: [{farm, chemical, unit, total_amount, mix_count}]
+    // Build a stacked bar — one bar per farm, segments per chemical+unit.
+    if (!rows || !rows.length) {
+        return new Chart(el('chartChemByFarm'), {
+            type: 'bar', data: { labels: [], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+    const farms = Array.from(new Set(rows.map(r => r.farm || '—')));
+    // Stack key = chemical (unit collapses into label for tooltip clarity).
+    const chems = Array.from(new Set(rows.map(r => r.chemical_name || r.chemical || '—')));
+    const datasets = chems.map((chem, i) => {
+        // For each farm, find the row matching this chemical (by item name).
+        const data = farms.map(f => {
+            const m = rows.find(r => r.farm === f && (r.chemical_name || r.chemical) === chem);
+            return m ? Math.round(normAmt(m.total_amount, m.unit).value * 100) / 100 : 0;
+        });
+        const unit = normAmt(1, (rows.find(r => (r.chemical_name || r.chemical) === chem) || {}).unit).unit;
+        return {
+            label: chem + (unit ? ' (' + unit + ')' : ''),
+            data, backgroundColor: colorForChem(chem, i), stack: 'a',
+        };
+    });
+    return new Chart(el('chartChemByFarm'), {
+        type: 'bar',
+        data: { labels: farms, datasets },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } },
+                       tooltip: { callbacks: {
+                           label: c => c.dataset.label + ': ' + num(c.raw, 1)
+                       } } },
+            scales: {
+                x: { beginAtZero: true, stacked: true, title: { display: true, text: 'Chemical amount (units shown in legend)' } },
+                y: { stacked: true }
+            }
+        }
+    });
+}
+
+function weeklyVsStems(rows) {
+    // Aggregate per farm: total chemical amount + total stems received,
+    // drawn as two grouped bars side by side per farm (dual axis).
+    if (!rows || !rows.length) {
+        return new Chart(el('chartWeeklyVsStems'), {
+            type: 'bar', data: { labels: ['No data in this scope'], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+    const byFarm = {};
+    rows.forEach(r => {
+        const f = r.farm || '—';
+        if (!byFarm[f]) byFarm[f] = { amount: 0, stems: 0 };
+        byFarm[f].amount += Number(r.amount || 0);
+        byFarm[f].stems  += Number(r.stems_received || 0);
+    });
+    const farms = Object.keys(byFarm).sort();
+    return new Chart(el('chartWeeklyVsStems'), {
+        type: 'bar',
+        data: {
+            labels: farms,
+            datasets: [
+                { label: 'Chemical amount', data: farms.map(f => byFarm[f].amount),
+                  backgroundColor: ACCENT_TEAL, yAxisID: 'yAmount', maxBarThickness: 46 },
+                { label: 'Stems received', data: farms.map(f => byFarm[f].stems),
+                  backgroundColor: ACCENT_BLUE, yAxisID: 'yStems', maxBarThickness: 46 },
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                       tooltip: { callbacks: { label: c => c.dataset.label + ': ' + num(c.raw, 0) } } },
+            scales: {
+                x: { ticks: { font: { size: 10 } } },
+                yAmount: { type: 'linear', position: 'left',  beginAtZero: true,
+                           title: { display: true, text: 'Chemical amount' } },
+                yStems:  { type: 'linear', position: 'right', beginAtZero: true,
+                           grid: { drawOnChartArea: false },
+                           title: { display: true, text: 'Stems received' } },
+            }
+        }
+    });
+}
+
+  /* ═══ end of verbatim chart code ═══ */
+
+  const st = PH.state({ year: "", week: "", from: "", to: "", farm: "", tank: "", chemical: "", status: "", q: "" });
+  const SERVER_KEYS = ["year", "week", "from", "to", "farm", "tank", "chemical"];
+  const CHIPS = [
+    { key: "year", label: "Year" }, { key: "week", label: "Week", text: (v) => "W" + v },
+    { key: "farm", label: "Farm", multi: true }, { key: "tank", label: "Tank", multi: true },
+    { key: "chemical", label: "Chemical", multi: true, text: (v) => chemLabel(v) },
+    { key: "status", label: "pH", multi: true }, { key: "q", label: "Search" },
+    { key: "from", label: "From", text: PH.fmt.date }, { key: "to", label: "To", text: PH.fmt.date },
+  ];
+  const PH_LOW = 3, PH_HIGH = 6.5;          // same pH window the server uses for "out of range"
+  const STATUS = ["In range", "Out of range"];
+
+  let data = null, chemNames = {}, seq = 0, ratesRows = [], mixRows = [], farmRows = [];
+
+  function chemLabel(code) { return chemNames[code] || code; }
+  function phOut(r) { const p = Number(r.ph || 0); return p < PH_LOW || p > PH_HIGH; }
+  function unitShort(u) { return normAmt(1, u).unit; }
+  function amtText(amount, unit) { const a = normAmt(amount, unit); return PH.fmt.num(a.value, 2) + (a.unit ? " " + a.unit : ""); }
+  function rateText(per1000, unit) { const r = normAmt(per1000, unit); return PH.fmt.num(r.value, 2) + " " + (r.unit === "kg" ? "g" : "ml") + "/L"; }
+
+  /* ── filters ── */
+  const farmMs = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: [], multiSite: true, plural: "farms", all: "All farms" });
+  const tankMs = PH.multiselect("#f-tank", st, "tank", { label: "Tank", options: [], plural: "tanks", all: "All tanks" });
+  const chemMs = PH.multiselect("#f-chemical", st, "chemical", { label: "Chemical", options: [], plural: "chemicals", all: "All chemicals" });
+  PH.multiselect("#f-status", st, "status", { label: "pH", options: STATUS, plural: "statuses", all: "Any pH", search: false });
+  PH.bindSelect("#f-year", st, "year");
+  PH.bindSelect("#f-week", st, "week");
+  PH.bindSearch("#f-q", st, "q");
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.activeFilters("#chips", st, CHIPS);
+
+  function setFarmOptions(farms) {
+    const groups = {}, order = [];
+    farms.forEach((f) => {
+      const g = PH.regionOf(f) || "Other farms";
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(f);
+    });
+    farmMs.setOptions(order.map((g) => ({ group: g, items: groups[g] })));
+  }
+
+  /* ── tables ── */
+  const ratesTbl = PH.table("#rates", {
+    columns: [
+      { key: "chemical_name", label: "Chemical", sortable: true, cls: "is-strong", format: (v, r) => v || r.chemical || "—" },
+      { key: "total_amount", label: "Total amount", num: true, sortable: true, sortValue: (r) => normAmt(r.total_amount, r.unit).value, format: (v, r) => PH.fmt.num(normAmt(v, r.unit).value, 2) },
+      { key: "unit", label: "Unit", sortable: true, sortValue: (r) => unitShort(r.unit), format: (v) => unitShort(v) || "—" },
+      { key: "total_volume_l", label: "Solution volume (L)", num: true, sortable: true, format: (v) => PH.fmt.num(v, 0) },
+      { key: "rate_per_1000L", label: "Rate / L", num: true, sortable: true, sortValue: (r) => normAmt(r.rate_per_1000L, r.unit).value, html: (v, r) => PH.html`<b>${rateText(v, r.unit)}</b>` },
+      { key: "mix_count", label: "Mixes", num: true, sortable: true, format: (v) => PH.fmt.num(v, 0) },
+    ],
+    rows: [], sort: { key: "total_amount", dir: "desc" }, onRowClick: openChemical, compact: true,
+    empty: "No chemical usage in this scope", emptyText: "Widen the period or clear a filter.",
+  });
+
+  const farmsTbl = PH.table("#farms", {
+    columns: [
+      { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+      { key: "site", label: "Site", sortable: true },
+      { key: "chemicals", label: "Chemicals", num: true, sortable: true, format: (v) => PH.fmt.num(v, 0) },
+      { key: "kg", label: "Powders (kg)", num: true, sortable: true, format: (v) => PH.fmt.num(v, 2), total: (all) => PH.fmt.num(PH.sum(all, "kg"), 2) },
+      { key: "litres", label: "Liquids (L)", num: true, sortable: true, format: (v) => PH.fmt.num(v, 2), total: (all) => PH.fmt.num(PH.sum(all, "litres"), 2) },
+    ],
+    rows: [], sort: { key: "farm", dir: "asc" }, onRowClick: openFarm, compact: true,
+    empty: "No farm usage in this scope", emptyText: "Widen the period or clear a filter.",
+  });
+
+  const mixesTbl = PH.table("#mixes", {
+    columns: [
+      { key: "name", label: "Mix", sortable: true, cls: "is-strong" },
+      { key: "mixing_date", label: "Date", sortable: true, format: (v) => (v ? PH.fmt.date(v) : "—") },
+      { key: "mixing_time", label: "Time", sortable: true, format: (v) => (v ? String(v).slice(0, 5) : "—") },
+      { key: "farm", label: "Farm", sortable: true },
+      { key: "tank", label: "Tank", sortable: true },
+      { key: "tank_capacity_l", label: "Volume (L)", num: true, sortable: true, format: (v) => PH.fmt.num(v, 0), total: (all) => PH.fmt.num(PH.sum(all, "tank_capacity_l"), 0) },
+      { key: "ph", label: "pH", num: true, sortable: true, html: (v, r) => PH.html`<span class="ph-badge ph-badge--${phOut(r) ? "warn" : "good"}">${PH.fmt.num(v, 1)}</span>` },
+      { key: "ppm", label: "PPM", num: true, sortable: true, format: (v) => PH.fmt.num(v, 0) },
+      { key: "chemCount", label: "Chemicals", num: true, sortable: true, format: (v) => PH.fmt.num(v, 0) },
+      { key: "photoCount", label: "Photos", num: true, sortable: true, format: (v) => (v ? PH.fmt.num(v, 0) : "—") },
+    ],
+    rows: [], sort: { key: "mixing_date", dir: "desc" }, onRowClick: openMix, compact: true, pageSize: 25,
+    empty: "No mixes match the current filters", emptyText: "Widen the period or clear a filter.",
+  });
+
+  /* ── drill-downs ── */
+  function openChemical(r) {
+    const code = r.chemical;
+    const farms = (data.chemical_per_farm || []).filter((x) => x.chemical === code && x.unit === r.unit);
+    const mixes = mixRows.filter((m) => (m.chemicals || []).some((c) => c.chemical === code));
+    const farmHtml = farms.length
+      ? PH.html`<div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Farm</th><th class="is-num">Amount</th><th class="is-num">Mixes</th></tr></thead><tbody>${PH.raw(
+          farms.map((f) => PH.html`<tr><td class="is-strong">${f.farm}</td><td class="is-num">${amtText(f.total_amount, f.unit)}</td><td class="is-num">${PH.fmt.num(f.mix_count, 0)}</td></tr>`.__raw).join(""))}</tbody></table></div>`
+      : "";
+    const mixHtml = mixes.length
+      ? PH.html`<div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Mix</th><th>Date</th><th>Farm</th><th>Tank</th><th class="is-num">Amount</th><th class="is-num">Rate / L</th></tr></thead><tbody>${PH.raw(
+          mixes.map((m) => {
+            const c = m.chemicals.find((x) => x.chemical === code);
+            return PH.html`<tr><td class="is-strong">${m.name}</td><td>${m.mixing_date ? PH.fmt.date(m.mixing_date) : "—"}</td><td>${m.farm || "—"}</td><td>${m.tank || "—"}</td><td class="is-num">${amtText(c.amount, c.unit)}</td><td class="is-num">${rateText(c.rate_per_1000L, c.unit)}</td></tr>`.__raw;
+          }).join(""))}</tbody></table></div>`
+      : "";
+    PH.modal({
+      title: r.chemical_name || r.chemical, sub: r.chemical, size: "lg",
+      body: PH.html`<div class="ph-stats"><div class="ph-stat"><small>Total amount</small><b>${amtText(r.total_amount, r.unit)}</b></div><div class="ph-stat"><small>Solution volume</small><b>${PH.fmt.num(r.total_volume_l, 0)} L</b></div><div class="ph-stat"><small>Rate</small><b>${rateText(r.rate_per_1000L, r.unit)}</b></div><div class="ph-stat"><small>Mixes</small><b>${PH.fmt.num(r.mix_count, 0)}</b></div></div>
+        <h3 class="ph-strong ph-mt">By farm</h3>${farmHtml || PH.html`<p class="ph-muted">No farm split in this scope.</p>`}
+        <h3 class="ph-strong ph-mt">Recent mixes using it</h3>${mixHtml || PH.html`<p class="ph-muted">None of the latest 50 mixes use it.</p>`}`,
+      actions: [{ label: "Close" }],
+    });
+  }
+
+  function openFarm(r) {
+    const rows = (data.chemical_per_farm || []).filter((x) => x.farm === r.farm);
+    PH.modal({
+      title: r.farm, sub: r.site || "Chemical usage", size: "lg",
+      body: PH.html`<div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Chemical</th><th class="is-num">Amount</th><th class="is-num">Mixes</th></tr></thead><tbody>${PH.raw(
+        rows.map((f) => PH.html`<tr><td class="is-strong">${f.chemical_name || f.chemical}</td><td class="is-num">${amtText(f.total_amount, f.unit)}</td><td class="is-num">${PH.fmt.num(f.mix_count, 0)}</td></tr>`.__raw).join(""))}</tbody></table></div>`,
+      actions: [{ label: "Close" }],
+    });
+  }
+
+  function openMix(r) {
+    const chems = r.chemicals || [];
+    const rowsHtml = chems.length
+      ? chems.map((c) => PH.html`<tr><td class="is-strong">${c.chemical_name || c.chemical}</td><td class="is-num">${amtText(c.amount, c.unit)}</td><td class="is-num">${rateText(c.rate_per_1000L, c.unit)}</td><td>${PH.raw(c.photo ? PH.html`<a class="sm-photo" href="${c.photo}" target="_blank" rel="noopener"><img src="${c.photo}" alt=""></a>`.__raw : '<span class="ph-muted">—</span>')}</td></tr>`.__raw).join("")
+      : "";
+    PH.modal({
+      title: r.name, sub: [r.farm, r.tank].filter(Boolean).join(" · "), size: "lg",
+      body: PH.html`<div class="ph-stats"><div class="ph-stat"><small>Mixed</small><b>${r.mixing_date ? PH.fmt.date(r.mixing_date) : "—"} ${r.mixing_time ? String(r.mixing_time).slice(0, 5) : ""}</b></div><div class="ph-stat"><small>Volume</small><b>${PH.fmt.num(r.tank_capacity_l, 0)} L</b></div><div class="ph-stat"><small>pH</small><b>${PH.fmt.num(r.ph, 1)}</b></div><div class="ph-stat"><small>PPM</small><b>${PH.fmt.num(r.ppm, 0)}</b></div></div>
+        ${PH.raw(phOut(r) ? '<div class="ph-notice ph-notice--warn ph-mt">pH is outside the ' + PH_LOW + ' to ' + PH_HIGH + ' window.</div>' : "")}
+        <h3 class="ph-strong ph-mt">Chemicals</h3>
+        ${PH.raw(rowsHtml ? PH.html`<div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Chemical</th><th class="is-num">Amount</th><th class="is-num">Rate / L</th><th>Photo</th></tr></thead><tbody>${PH.raw(rowsHtml)}</tbody></table></div>`.__raw : '<p class="ph-muted">No chemicals recorded on this mix.</p>')}`,
+      actions: [{ label: "Open Solution Mix", onClick: () => { PH.openDoc("Solution Mix", r.name); return false; } }, { label: "Close", primary: true }],
+    });
+  }
+
+  /* ── paint ── */
+  function inScopeMixes() {
+    const status = PH.values(st.get("status")), q = st.get("q").trim().toLowerCase();
+    return mixRows.filter((r) => {
+      if (status.length && !status.includes(phOut(r) ? "Out of range" : "In range")) return false;
+      if (q) {
+        const hay = [r.name, r.farm, r.tank].concat((r.chemicals || []).map((c) => c.chemical_name || c.chemical)).join(" ").toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function paintMixes() {
+    const rows = inScopeMixes();
+    mixesTbl.update(rows);
+    PH.text("#mixes-count", PH.fmt.num(rows.length, 0));
+    PH.text("#mixes-meta", rows.length === mixRows.length ? "" : rows.length + " of " + mixRows.length + " shown");
+    document.getElementById("export-mixes").disabled = !rows.length;
+  }
+
+  function paintKpis(d) {
+    const k = d.kpi || {};
+    const out = Number(k.out_of_ph_range || 0);
+    PH.kpis("#kpis", [
+      { label: "Total mixes", value: Number(k.total_mixes || 0) },
+      { label: "Volume mixed", value: Number(k.total_volume_l || 0), suffix: "L" },
+      { label: "Chemicals used", value: (d.chemical_rates || []).length, unit: "distinct chemicals" },
+      { label: "Average pH", value: k.total_mixes ? PH.fmt.num(k.avg_ph, 2) : "—", unit: "window " + PH_LOW + " to " + PH_HIGH },
+      { label: "Average PPM", value: k.total_mixes ? PH.fmt.num(k.avg_ppm, 0) : "—" },
+      {
+        label: "Out of pH range", value: out, dark: out > 0, unit: out ? "click to list them" : "all within range",
+        onClick: out ? () => st.set({ status: st.get("status") === "Out of range" ? "" : "Out of range" }) : null,
+        active: st.get("status") === "Out of range",
+      },
+    ]);
+  }
+
+  function buildFarmRows(d) {
+    const by = {};
+    (d.chemical_per_farm || []).forEach((x) => {
+      const f = by[x.farm] || (by[x.farm] = { farm: x.farm, site: PH.regionOf(x.farm) || "", chemSet: {}, kg: 0, litres: 0 });
+      f.chemSet[x.chemical] = 1;
+      const a = normAmt(x.total_amount, x.unit);
+      if (a.unit === "kg") f.kg += a.value; else if (a.unit === "L") f.litres += a.value;
+    });
+    return Object.keys(by).map((k) => { const f = by[k]; f.chemicals = Object.keys(f.chemSet).length; return f; });
+  }
+
+  function setWeeklyLoading(on) {
+    const n = document.getElementById("weekly-loading");
+    if (n) n.style.display = on ? "flex" : "none";
+  }
+
+  // Stems received is the slow query: fetched after the page has painted, then only the
+  // weekly chart is drawn (same chart code, same data shape as before).
+  function loadStems(mine, s, d) {
+    PH.call("fetchSolutionMixingOverview", {
+      year: s.year, week: s.week, farm: s.farm, tank: s.tank, chemical: s.chemical, from_date: s.from, to_date: s.to,
+      only_stems: 1,
+    }, { type: "GET", silent: true }).then((r) => {
+      if (mine !== seq) return;
+      const map = {};
+      ((r && r.stems) || []).forEach((x) => { map[x.yr + ":" + x.wk + ":" + (x.farm || "")] = Number(x.stems_received || 0); });
+      const rows = (d.weekly_chemical_vs_stems || []).map((w) => Object.assign({}, w, {
+        stems_received: map[w.yr + ":" + w.wk + ":" + (w.farm === "—" ? "" : w.farm)] || 0, stems_pending: false,
+      }));
+      d.weekly_chemical_vs_stems = rows;
+      setWeeklyLoading(false);
+      if (charts.weekly && charts.weekly.destroy) charts.weekly.destroy();
+      charts.weekly = weeklyVsStems(rows);
+    }).catch(() => {
+      if (mine !== seq) return;
+      const n = document.getElementById("weekly-loading");
+      if (n) n.textContent = "Stems received could not be loaded";
+    });
+  }
+
+  function paint(d) {
+    data = d;
+    const opts = d.filter_options || {};
+    chemNames = {};
+    (opts.chemicals || []).forEach((c) => { chemNames[c.value] = c.label; });
+    PH.options("#f-year", (opts.years || []).map(String), st.get("year"));
+    PH.options("#f-week", (opts.weeks || []).map(String), st.get("week"));
+    setFarmOptions(opts.farms || []);
+    tankMs.setOptions(opts.tanks || []);
+    chemMs.setOptions(opts.chemicals || []);
+
+    paintKpis(d);
+    ratesRows = d.chemical_rates || [];
+    ratesTbl.update(ratesRows);
+    PH.text("#rates-meta", PH.fmt.plural(ratesRows.length, "chemical"));
+    document.getElementById("export-rates").disabled = !ratesRows.length;
+
+    farmRows = buildFarmRows(d);
+    farmsTbl.update(farmRows);
+    PH.text("#farms-meta", PH.fmt.plural(farmRows.length, "farm"));
+
+    mixRows = (d.recent || []).map((r) => {
+      const chems = r.chemicals || [];
+      return Object.assign({}, r, { chemCount: chems.length, photoCount: chems.filter((c) => c.photo).length });
+    });
+    paintMixes();
+
+    destroyCharts();
+    charts.trend = lineTrend(d.chemical_rates || []);
+    charts.chemByFarm = chemUsageByFarm(d.chemical_per_farm || []);
+    const pending = (d.weekly_chemical_vs_stems || []).some((r) => r.stems_pending);
+    setWeeklyLoading(pending);
+    if (!pending) charts.weekly = weeklyVsStems(d.weekly_chemical_vs_stems || []);
+    charts.usageTrend = usageTrend(d.chemical_usage_trend || {});
+    PH.markUpdated();
+  }
+
+  function load() {
+    const mine = ++seq;
+    PH.kpiSkeleton("#kpis", ["Total mixes", "Volume mixed", "Chemicals used", "Average pH", "Average PPM", "Out of pH range"]);
+    PH.skeleton("#rates", "rows", 5);
+    PH.skeleton("#farms", "rows", 4);
+    PH.skeleton("#mixes", "rows", 6);
+    const s = st.get();
+    PH.call("fetchSolutionMixingOverview", {
+      year: s.year, week: s.week, farm: s.farm, tank: s.tank, chemical: s.chemical, from_date: s.from, to_date: s.to,
+      skip_stems: 1,
+    }, { type: "GET", silent: true }).then((d) => {
+      if (mine !== seq) return;
+      d = d || {};
+      const n = document.getElementById("weekly-loading");
+      if (n) n.textContent = "Loading stems received...";
+      paint(d);
+      if ((d.weekly_chemical_vs_stems || []).some((r) => r.stems_pending)) loadStems(mine, s, d);
+    }).catch((e) => {
+      if (mine !== seq) return;
+      PH.kpis("#kpis", []);
+      ["#rates", "#farms", "#mixes"].forEach((id) => PH.error(id, e && e.message, load));
+    });
+  }
+
+  /* ── exports ── */
+  document.getElementById("export-rates").addEventListener("click", () => {
+    PH.csv("solution-mixing-rates-" + PH.date.today() + ".csv", ratesRows.map((r) => {
+      const a = normAmt(r.total_amount, r.unit), rt = normAmt(r.rate_per_1000L, r.unit);
+      return { chemical: r.chemical_name || r.chemical, amount: a.value, unit: a.unit, volume: r.total_volume_l, rate: rt.value, rateUnit: (rt.unit === "kg" ? "g" : "ml") + "/L", mixes: r.mix_count };
+    }), [
+      { key: "chemical", label: "Chemical" }, { key: "amount", label: "Total amount" }, { key: "unit", label: "Unit" },
+      { key: "volume", label: "Solution volume (L)" }, { key: "rate", label: "Rate per L" }, { key: "rateUnit", label: "Rate unit" }, { key: "mixes", label: "Mixes" },
+    ]);
+  });
+  document.getElementById("export-mixes").addEventListener("click", () => {
+    const rows = [];
+    inScopeMixes().forEach((m) => {
+      const chems = m.chemicals && m.chemicals.length ? m.chemicals : [null];
+      chems.forEach((c) => rows.push({
+        mix: m.name, date: m.mixing_date, time: m.mixing_time ? String(m.mixing_time).slice(0, 5) : "", farm: m.farm, tank: m.tank,
+        volume: m.tank_capacity_l, ph: m.ph, ppm: m.ppm,
+        chemical: c ? c.chemical_name || c.chemical : "", amount: c ? normAmt(c.amount, c.unit).value : "", unit: c ? normAmt(c.amount, c.unit).unit : "",
+        rate: c ? normAmt(c.rate_per_1000L, c.unit).value : "", photo: c ? c.photo : "",
+      }));
+    });
+    PH.csv("solution-mixes-" + PH.date.today() + ".csv", rows, [
+      { key: "mix", label: "Mix" }, { key: "date", label: "Date" }, { key: "time", label: "Time" }, { key: "farm", label: "Farm" }, { key: "tank", label: "Tank" },
+      { key: "volume", label: "Volume (L)" }, { key: "ph", label: "pH" }, { key: "ppm", label: "PPM" }, { key: "chemical", label: "Chemical" },
+      { key: "amount", label: "Amount" }, { key: "unit", label: "Unit" }, { key: "rate", label: "Rate per L (g or ml)" }, { key: "photo", label: "Photo" },
+    ]);
+  });
+
+  st.on((s, changed) => {
+    const keys = changed || [];
+    if (!keys.length || keys.some((k) => SERVER_KEYS.includes(k))) load();
+    else if (data) { paintMixes(); paintKpis(data); }
+  });
+  PH.onRefresh(load);
+  load();
+})();
+</script>
+{% endraw %}
+{% endblock %}

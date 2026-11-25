@@ -1,0 +1,646 @@
+{% extends "templates/web.html" %}
+{% block title %}Intake FTR Overview · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<style>
+/* Intake FTR — page-only layout (tokens + spacing scale only). Chart wrapper sizes are the old page's. */
+.ftr-chart-scroll{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}
+.ftr-chart-scroll canvas{min-width:600px}
+.ftr-box{position:relative;height:300px}
+.ftr-box.tall{min-height:360px}
+.ftr-note{margin:0;padding:var(--sp-6) 0;text-align:center;color:var(--ink-mute)}
+.ftr-note[hidden]{display:none}
+.ftr-pick{display:inline-flex;align-items:center;gap:var(--sp-2);margin:0 0 var(--sp-4)}
+.ftr-pick[hidden]{display:none}
+.ftr-sub{display:flex;flex-wrap:wrap;gap:var(--sp-5);margin:0 0 var(--sp-5);color:var(--ink-3)}
+</style>
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Overview</div>
+    <h1 class="ph-head__title">Intake FTR Overview</h1>
+    <p class="ph-head__sub" id="sub">First Time Right intake quality, quarantine drivers and pest/disease trends</p>
+  </div>
+  <div class="ph-head__tools"><button class="ph-btn" id="export">Export table (CSV)</button></div>
+</header>
+
+<div class="ph-filters">
+  <div id="f-year"></div>
+  <div id="f-week"></div>
+  <div id="f-farm"></div>
+  <div id="f-variety"></div>
+  <div id="f-gh"></div>
+  <div id="f-issue"></div>
+  <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search tables…"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets"><button data-value="today">Today</button><button data-value="7d">7 days</button><button data-value="14d">14 days</button><button data-value="30d">30 days</button><button data-value="mtd">This month</button></div>
+  <div class="ph-daterange"><input type="date" id="from"><span class="ph-daterange__sep">–</span><input type="date" id="to"></div>
+</div>
+<div id="chips"></div>
+<div class="ftr-pick" id="pick" hidden></div>
+
+<section class="ph-kpis" id="kpis"></section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <div class="ph-tabs" id="tabs">
+      <button class="ph-tab is-on" data-tab="farms">Farms</button>
+      <button class="ph-tab" data-tab="issues">Issues</button>
+      <button class="ph-tab" data-tab="varieties">Varieties</button>
+      <button class="ph-tab" data-tab="gh">Greenhouses</button>
+      <button class="ph-tab" data-tab="pests">Pests by farm</button>
+      <button class="ph-tab" data-tab="diseases">Diseases</button>
+    </div>
+    <div class="ph-card__meta" id="meta"></div>
+  </div>
+  <div id="tbl"></div>
+</section>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Quarantined Buckets per Issue</div><div class="ph-card__meta">Click on any bar to filter · scroll horizontally</div></div>
+    <div class="ftr-chart-scroll"><canvas id="chartIssue" style="cursor:pointer;min-width:600px;"></canvas></div>
+    <p class="ftr-note" id="e-chartIssue" hidden>No quarantined buckets for these filters.</p>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Quarantined Buckets per Variety</div><div class="ph-card__meta">Click on any bar to filter · scroll horizontally</div></div>
+    <div class="ftr-chart-scroll"><canvas id="chartVariety" style="min-width:600px;"></canvas></div>
+    <p class="ftr-note" id="e-chartVariety" hidden>No quarantined buckets for these filters.</p>
+  </section>
+</div>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Quarantined Buckets per GH</div><div class="ph-card__meta">Click on any bar to filter · scroll horizontally</div></div>
+    <div class="ftr-chart-scroll"><canvas id="chartGH" style="min-width:600px;"></canvas></div>
+    <p class="ftr-note" id="e-chartGH" hidden>No quarantined buckets for these filters.</p>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">FTR Score per Unit (Farm)</div><div class="ph-card__meta">Weekly FTR percentage trend by farm</div></div>
+    <div class="ftr-box"><canvas id="chartFTRUnit"></canvas></div>
+    <p class="ftr-note" id="e-chartFTRUnit" hidden>No FTR data for these filters.</p>
+  </section>
+</div>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">FTR per Year</div><div class="ph-card__meta">Weekly FTR percentage trend by year</div></div>
+    <div class="ftr-box"><canvas id="chartFTRYear"></canvas></div>
+    <p class="ftr-note" id="e-chartFTRYear" hidden>No FTR data for these filters.</p>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Pest Trend by Farm</div><div class="ph-card__meta">Pest counts across farms</div></div>
+    <div class="ftr-box tall"><canvas id="pestTrendChart"></canvas></div>
+    <p class="ftr-note" id="e-pestTrendChart" hidden>No pest counts for these filters.</p>
+  </section>
+</div>
+
+<div class="ph-row ph-row--2">
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Diseases by Farm</div><div class="ph-card__meta">Stacked by disease · Pareto cumulative %</div></div>
+    <div class="ftr-box tall"><canvas id="diseasesChart"></canvas></div>
+    <p class="ftr-note" id="e-diseasesChart" hidden>No disease counts for these filters.</p>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Major Pests — Last 4 Weeks</div><div class="ph-card__meta">Top pests by weekly count · colour-coded by pest</div></div>
+    <div class="ftr-box" style="height:340px"><canvas id="majorPestsChart"></canvas></div>
+    <p class="ftr-note" id="e-majorPestsChart" hidden>No pest counts for these filters.</p>
+  </section>
+</div>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+      if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+
+    Chart.defaults.font.family = "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    Chart.defaults.font.size = 10;
+    Chart.defaults.color = "#8a8780";
+    Chart.defaults.borderColor = "rgba(10,10,10,0.06)";   // faint ink gridlines (Mona)
+
+    // Mona palette — monochrome ink ramp, teal as the single accent for selection
+    const COLORS = {
+        veryHigh: "#0a0a0a", high: "#3a3a34", medium: "#5a5a52", low: "#8a8780", veryLow: "#b8b6ae", selected: "#228883"
+    };
+    // Shared categorical palette — varied but Mona-harmonized (muted, earthy) so each
+    // bar/series is easy to identify without going neon.
+    const UFD_PALETTE = ["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+    const BAR_PALETTE = UFD_PALETTE;   // single-series bars colour per-category
+    const LINE_COLORS = ["#0a0a0a","#228883","#b45309","#5d8230","#3d54b0","#8466c7","#a16207"];
+
+  let chartInstances = {};
+  let selectedIssue = null;
+  var DATA = null, seq = 0, tab = "farms", tbl = null, exportRows = [], exportCols = [], optsKey = "";
+
+  
+      /* Format an adaptive-period key for axis labels: YYYY-MM-DD -> "Sun 08", YYYY-MM -> "Jun", MM -> "Jun", YYYY-Www kept. */
+    function formatPeriodLabel(k){
+        k = String(k);
+        var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var m;
+        if((m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(k))){ var dt=new Date(+m[1],+m[2]-1,+m[3]); return DOW[dt.getDay()]+' '+m[3]; }
+        if((m=/^(\d{4})-(\d{2})$/.exec(k))){ return MON[+m[2]-1]+' '+m[1]; }
+        if((m=/^(\d{1,2})$/.exec(k))){ var i=+m[1]; if(i>=1&&i<=12) return MON[i-1]; }
+        return k;
+    }
+    function formatNumber(n) { return (n === null || n === undefined) ? "0" : Number(n).toLocaleString(); }
+    function shortNum(v) { if (v >= 1000000) return (v/1000000).toFixed(1)+"M"; if (v >= 1000) return (v/1000).toFixed(1)+"k"; return v; }
+    function truncate(s, maxLen) { s = String(s || ""); return s.length > maxLen ? s.substring(0, maxLen) + "..." : s; }
+    function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  /* ═════════ CHARTS: moved verbatim from the old page ═════════ */
+      function renderBarChart(canvasId, data, labelKey, valueKey, valueLabel) {
+        // Pareto: bars (stems) sorted high->low + cumulative % line on the right axis.
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (!data || !data.length) return;
+
+        let rows = data.map(d => ({ label: truncate(d[labelKey] || "--", 30), value: Number(d[valueKey] || 0) }));
+        rows.sort((a, b) => b.value - a.value);
+        let labels = rows.map(r => r.label);
+        let values = rows.map(r => r.value);
+        let maxVal = Math.max(...values, 1);
+        let total = values.reduce((s, v) => s + v, 0) || 1;
+        let run = 0;
+        let cumPct = values.map(v => { run += v; return Math.round((run / total) * 1000) / 10; });
+        // Each category gets its own colour for easy identification; when an issue is
+        // selected, non-selected bars dim to 25% alpha so the pick still stands out.
+        let bgColors = labels.map((lb, i) => {
+            let base = BAR_PALETTE[i % BAR_PALETTE.length];
+            return (selectedIssue && lb !== selectedIssue) ? base + "40" : base;
+        });
+
+        let ctx = canvas.getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [
+                    { type: "bar", label: valueLabel, data: values, backgroundColor: bgColors, borderRadius: 3, maxBarThickness: 35, yAxisID: "y", order: 2 },
+                    { type: "line", label: "Cumulative %", data: cumPct, borderColor: "#0a0a0a", backgroundColor: "transparent", borderWidth: 2, pointRadius: 2, tension: 0.2, yAxisID: "yPct", order: 1 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                onClick: (e, active) => {
+                    let bar = active.find(a => a.datasetIndex === 0);
+                    if (bar) {
+                        let idx = bar.index;
+                        selectedIssue = (selectedIssue === labels[idx]) ? null : labels[idx];
+                        loadData();
+                    }
+                },
+                plugins: {
+                    tooltip: { callbacks: { label: (ctx) => ctx.dataset.type === "line" ? `Cumulative ${ctx.parsed.y}%` : `${formatNumber(ctx.parsed.y)} ${valueLabel}` } },
+                    legend: { display: true, position: "top", labels: { boxWidth: 10, font: { size: 9 } } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 0, font: { size: 8 } } },
+                    y: { beginAtZero: true, position: "left", ticks: { callback: (v) => shortNum(v), font: { size: 8 } }, title: { display: true, text: valueLabel, font: { size: 9 } } },
+                    yPct: { beginAtZero: true, max: 100, position: "right", grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%", font: { size: 8 } } }
+                }
+            }
+        });
+    }
+      function renderLineChart(canvasId, data, labelPrefix) {
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (!data || Object.keys(data).length === 0) return;
+
+        let allWeeks = new Set();
+        for (let key in data) {
+            for (let week in data[key]) allWeeks.add(week);
+        }
+        let weeksSorted = Array.from(allWeeks).sort();
+        let datasets = [];
+        let idx = 0;
+        for (let key in data) {
+            let seriesData = weeksSorted.map(w => data[key][w] || 100);
+            datasets.push({ label: `${labelPrefix} ${key}`, data: seriesData, borderColor: LINE_COLORS[idx % LINE_COLORS.length], backgroundColor: "transparent", borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false });
+            idx++;
+        }
+
+        let ctx = canvas.getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "line",
+            data: { labels: weeksSorted.map(formatPeriodLabel), datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } },
+                    legend: { position: "top", labels: { boxWidth: 10, font: { size: 9 } } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 45, font: { size: 8 } } },
+                    y: { min: 0, max: 100, ticks: { callback: (v) => v + "%", font: { size: 8 } } }
+                }
+            }
+        });
+    }
+      // Pest Trend by Farm - stacked bar (one stack segment per pest type)
+    function renderPestTrendTable(pestTrend) {
+        let canvasId = "pestTrendChart";
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        let farms = pestTrend.farms || [];
+        let data = pestTrend.data || {};
+        let pestTypes = Object.keys(data).sort();
+        if (!farms.length || !pestTypes.length) return;
+        let palette = UFD_PALETTE;
+        let datasets = pestTypes.map((pest, i) => ({
+            label: pest,
+            data: farms.map(f => (data[pest] && data[pest][f]) || 0),
+            backgroundColor: palette[i % palette.length],
+            stack: "pests",
+            maxBarThickness: 48
+        }));
+        let ctx = canvas.getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "bar",
+            data: { labels: farms, datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 8 } } },
+                    tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + formatNumber(c.parsed.y) } },
+                    datalabels: { display: false }
+                },
+                scales: {
+                    x: { stacked: true, ticks: { maxRotation: 45, font: { size: 8 } } },
+                    y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => shortNum(v), font: { size: 8 } } }
+                }
+            }
+        });
+    }
+      function renderPestWeekly(trend, weeks) {
+        const id = "majorPestsChart";
+        if (chartInstances[id]) chartInstances[id].destroy();
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const pests = Object.keys(trend || {});
+        let wk = (weeks && weeks.length) ? weeks.slice() : [];
+        if (!wk.length) { const set = new Set(); pests.forEach(p => Object.keys(trend[p] || {}).forEach(w => set.add(w))); wk = Array.from(set).sort(); }
+        if (!pests.length || !wk.length) return;
+        const labels = wk.map(w => { const m = /W(\d+)/.exec(w); return m ? "W" + m[1] : w; });
+        const palette = UFD_PALETTE;
+        const datasets = pests.map((pn, i) => ({
+            label: pn,
+            data: wk.map(w => (trend[pn] && trend[pn][w] != null) ? trend[pn][w] : 0),
+            borderColor: palette[i % palette.length], backgroundColor: "transparent",
+            borderWidth: 2, pointRadius: 3, tension: 0.3, spanGaps: true,
+        }));
+        chartInstances[id] = new Chart(canvas.getContext("2d"), {
+            type: "line",
+            data: { labels, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 9 } } },
+                    datalabels: { display: false },
+                    tooltip: { callbacks: { label: c => c.dataset.label + ": " + formatNumber(c.parsed.y) } }
+                },
+                scales: {
+                    x: { title: { display: true, text: "Week" }, ticks: { font: { size: 9 } } },
+                    y: { beginAtZero: true, title: { display: true, text: "Count" }, ticks: { callback: v => shortNum(v), font: { size: 9 } } }
+                }
+            }
+        });
+    }
+      function renderDiseaseStackedPareto(matrix) {
+        const id = "diseasesChart";
+        if (chartInstances[id]) chartInstances[id].destroy();
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const farms = (matrix && matrix.farms) || [];
+        const data = (matrix && matrix.data) || {};
+        const diseases = Object.keys(data).sort();
+        if (!farms.length || !diseases.length) return;
+        const farmTotal = {};
+        farms.forEach(f => { farmTotal[f] = diseases.reduce((sum, d) => sum + ((data[d] && data[d][f]) || 0), 0); });
+        const sortedFarms = farms.slice().sort((a, b) => farmTotal[b] - farmTotal[a]);
+        const grand = sortedFarms.reduce((sum, f) => sum + farmTotal[f], 0) || 1;
+        let cum = 0;
+        const cumPct = sortedFarms.map(f => { cum += farmTotal[f]; return Math.round(cum / grand * 1000) / 10; });
+        const palette = UFD_PALETTE;
+        const barDs = diseases.map((d, i) => ({
+            label: d, data: sortedFarms.map(f => (data[d] && data[d][f]) || 0),
+            backgroundColor: palette[i % palette.length], stack: "diseases", maxBarThickness: 48, yAxisID: "y",
+        }));
+        const lineDs = {
+            label: "Cumulative %", type: "line", data: cumPct, yAxisID: "yPct",
+            borderColor: "#0a0a0a", backgroundColor: "transparent", borderWidth: 2, pointRadius: 3, tension: 0.2,
+            datalabels: { display: false }
+        };
+        chartInstances[id] = new Chart(canvas.getContext("2d"), {
+            type: "bar",
+            data: { labels: sortedFarms, datasets: barDs.concat([lineDs]) },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 8 } } },
+                    datalabels: { display: false },
+                    tooltip: { callbacks: { label: c => c.dataset.label === "Cumulative %" ? ("Cumulative: " + c.parsed.y + "%") : (c.dataset.label + ": " + formatNumber(c.parsed.y)) } }
+                },
+                scales: {
+                    x: { stacked: true, ticks: { maxRotation: 45, font: { size: 8 } } },
+                    y: { stacked: true, beginAtZero: true, position: "left", ticks: { callback: v => shortNum(v), font: { size: 8 } }, title: { display: true, text: "Stems", font: { size: 9 } } },
+                    yPct: { beginAtZero: true, max: 100, position: "right", grid: { drawOnChartArea: false }, ticks: { callback: v => v + "%", font: { size: 8 } } }
+                }
+            }
+        });
+    }
+  /* ═════════ end of charts ═════════ */
+
+  // The chart blocks above call loadData() when a bar is clicked.
+  function loadData() { load(); }
+
+  /* ───────── filters ───────── */
+  const st = PH.state({ year: "", week: "", from: "", to: "", farm: "", variety: "", gh: "", issue: "", q: "" });
+  const mYear = PH.multiselect("#f-year", st, "year", { label: "Year", options: [], plural: "years", all: "All years", search: false });
+  const mWeek = PH.multiselect("#f-week", st, "week", { label: "Week", options: [], plural: "weeks", all: "All weeks" });
+  const mFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: [], multiSite: true, plural: "farms", all: "All farms" });
+  const mVar = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All varieties" });
+  const mGh = PH.multiselect("#f-gh", st, "gh", { label: "GH", options: [], plural: "greenhouses", all: "All greenhouses" });
+  const mIssue = PH.multiselect("#f-issue", st, "issue", { label: "Issue", options: [], plural: "issues", all: "All issues" });
+  PH.bindSearch("#f-q", st, "q");
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.activeFilters("#chips", st, [
+    { key: "year", label: "Year", multi: true },
+    { key: "week", label: "Week", multi: true, text: (w) => "W" + w },
+    { key: "farm", label: "Farm", multi: true },
+    { key: "variety", label: "Variety", multi: true },
+    { key: "gh", label: "GH", multi: true },
+    { key: "issue", label: "Issue", multi: true },
+    { key: "from", label: "From", text: (v) => PH.fmt.date(v) },
+    { key: "to", label: "To", text: (v) => PH.fmt.date(v) },
+    { key: "q", label: "Search" },
+  ]);
+
+  function farmGroups(list) {
+    const seen = {}, groups = [];
+    Object.keys(PH.REGIONS).forEach((r) => {
+      const items = list.filter((f) => PH.REGIONS[r].some((x) => x.toLowerCase() === String(f).toLowerCase()));
+      items.forEach((f) => (seen[f] = 1));
+      if (items.length) groups.push({ group: r, items: items });
+    });
+    const rest = list.filter((f) => !seen[f]);
+    if (rest.length) groups.push({ group: "Other", items: rest });
+    return groups;
+  }
+  var OPTS = null;   // option lists do not depend on the filters: fetched once, then cached
+  function setOptions(o) {
+    const key = JSON.stringify(o);
+    if (key === optsKey) return;
+    optsKey = key;
+    mYear.setOptions((o.years || []).map(String));
+    mWeek.setOptions((o.weeks || []).map((w) => ({ value: String(w), label: "W" + w })));
+    mFarm.setOptions(farmGroups(o.farms || []));
+    mVar.setOptions(o.varieties || []);
+    mGh.setOptions(o.greenhouses || []);
+    mIssue.setOptions(o.control_actions || []);
+  }
+
+  /* Date range and week are alternatives (as before): picking one clears the other. */
+  st.on((s, changed) => {
+    if ((changed.includes("from") || changed.includes("to")) && (s.from || s.to) && s.week) return st.set({ week: "" });
+    if (changed.includes("week") && s.week && (s.from || s.to)) return st.set({ from: "", to: "" });
+    selectedIssue = null;
+    if (changed.length === 1 && changed[0] === "q") { paintTable(); return; }
+    load();
+  });
+
+  /* ───────── load ───────── */
+  function params() {
+    return {
+      year: st.get("year"), farm: st.get("farm"), week: st.get("week"),
+      variety: st.get("variety"), greenhouse: st.get("gh"),
+      from_date: st.get("from"), to_date: st.get("to"),
+      selected_issue: selectedIssue || st.get("issue") || "",
+      skip_options: OPTS ? 1 : "",
+    };
+  }
+  const KPI_LABELS = ["Total reports", "Stems received", "Stems checked", "Quarantined", "Overall FTR", "Sampled"];
+  function load() {
+    const my = ++seq;
+    PH.kpiSkeleton("#kpis", KPI_LABELS);
+    PH.skeleton("#tbl", "rows", 6);
+    paintPick();
+    PH.call("fetchIntakeFtrOverview", params(), { silent: true, type: "GET" })
+      .then((msg) => {
+        if (my !== seq) return;
+        DATA = msg || {};
+        if (DATA.filter_options && Object.keys(DATA.filter_options).length) OPTS = DATA.filter_options;
+        else if (OPTS) DATA.filter_options = OPTS;
+        paintAll();
+        PH.markUpdated();
+      })
+      .catch((e) => {
+        if (my !== seq) return;
+        PH.set("#kpis", "");
+        PH.error("#tbl", e.message, load);
+      });
+  }
+
+  function paintPick() {
+    const el = document.getElementById("pick");
+    el.hidden = !selectedIssue;
+    if (selectedIssue) PH.set(el, PH.html`<span class="ph-filter-chip">Chart pick: <b>${selectedIssue}</b><button type="button" aria-label="Clear chart pick">×</button></span>`);
+  }
+  document.getElementById("pick").addEventListener("click", (e) => {
+    if (e.target.closest("button")) { selectedIssue = null; load(); }
+  });
+
+  function paintAll() {
+    const d = DATA, k = d.kpi || {};
+    setOptions(d.filter_options || {});
+    PH.kpis("#kpis", [
+      { label: "Total reports", value: k.total_reports || 0 },
+      { label: "Stems received", value: PH.fmt.compact(k.total_stems_received || 0), title: num(k.total_stems_received || 0) },
+      { label: "Stems checked", value: PH.fmt.compact(k.total_stems_checked || 0), title: num(k.total_stems_checked || 0) },
+      { label: "Quarantined", value: PH.fmt.compact(k.total_quarantined || 0), title: num(k.total_quarantined || 0) },
+      { label: "Overall FTR", value: PH.fmt.num(k.overall_ftr || 0, 2), suffix: "%", bar: Math.min(k.overall_ftr || 0, 100), barClass: (k.overall_ftr || 0) >= 80 ? "good" : (k.overall_ftr || 0) >= 60 ? "warn" : "bad" },
+      { label: "Sampled", value: PH.fmt.num(k.overall_sampled || 0, 2), suffix: "%" },
+    ]);
+    const has = {
+      chartIssue: (d.quarantined_by_issue || []).length, chartVariety: (d.quarantined_by_variety || []).length,
+      chartGH: (d.quarantined_by_gh || []).length, chartFTRUnit: Object.keys(d.ftr_unit_by_farm || {}).length,
+      chartFTRYear: Object.keys(d.ftr_by_year || {}).length,
+      pestTrendChart: ((d.pest_trend || {}).farms || []).length && Object.keys((d.pest_trend || {}).data || {}).length,
+      diseasesChart: ((d.disease_by_farm || {}).farms || []).length && Object.keys((d.disease_by_farm || {}).data || {}).length,
+      majorPestsChart: Object.keys(d.major_pests_trend || {}).length,
+    };
+    Object.keys(has).forEach((id) => {
+      document.getElementById("e-" + id).hidden = !!has[id];
+      document.getElementById(id).hidden = !has[id];
+    });
+    renderBarChart("chartIssue", d.quarantined_by_issue || [], "reason", "total_count", "Total Stems");
+    renderBarChart("chartVariety", d.quarantined_by_variety || [], "variety", "total_quarantined", "Quarantined Stems");
+    renderBarChart("chartGH", d.quarantined_by_gh || [], "greenhouse", "total_quarantined", "Quarantined Stems");
+    renderLineChart("chartFTRUnit", d.ftr_unit_by_farm || {}, "Farm");
+    renderLineChart("chartFTRYear", d.ftr_by_year || {}, "Year");
+    renderPestTrendTable(d.pest_trend || {});
+    renderDiseaseStackedPareto(d.disease_by_farm || {});
+    renderPestWeekly(d.major_pests_trend || {}, d.major_pests_weeks || []);
+    paintPick();
+    paintTable();
+  }
+
+  /* ───────── tables ───────── */
+  const num = (v) => PH.fmt.num(v);
+  const NF = (key) => ({ key: key, num: true, sortable: true, format: num, total: (rows) => num(PH.sum(rows, key)) });
+  function ftrBadge(v) {
+    const c = v >= 80 ? "good" : v >= 60 ? "warn" : "bad";
+    return PH.raw('<span class="ph-badge ph-badge--' + c + '">' + PH.fmt.num(v, 2) + "%</span>");
+  }
+  function match(label) {
+    const q = (st.get("q") || "").toLowerCase();
+    return !q || String(label || "").toLowerCase().indexOf(q) !== -1;
+  }
+  function withShare(rows, key) {
+    const tot = PH.sum(rows, key) || 0;
+    return rows.map((r) => Object.assign({}, r, { share: tot ? (Number(r[key]) / tot) * 100 : 0 }));
+  }
+  const shareCol = { key: "share", label: "Share", num: true, sortable: true, format: (v) => PH.fmt.num(v, 1) + "%", total: () => "100%" };
+
+  function tabConfig() {
+    const d = DATA || {};
+    if (tab === "farms") {
+      const rows = (d.ftr_by_farm || []).filter((r) => match(r.farm));
+      return {
+        title: "Farms", sort: { key: "stems_received", dir: "desc" }, rows: rows,
+        columns: [
+          { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+          Object.assign(NF("stems_received"), { label: "Stems received" }),
+          Object.assign(NF("quarantined"), { label: "Quarantined" }),
+          { key: "ftr", label: "Intake FTR score", num: true, sortable: true, html: (v) => ftrBadge(v), total: (all) => {
+            const r = PH.sum(all, "stems_received"), q = PH.sum(all, "quarantined");
+            return r > 0 ? PH.fmt.num(((r - q) / r) * 100, 2) + "%" : "—";
+          } },
+        ],
+        onRowClick: farmModal, empty: "No farms", emptyText: "No intake reports match these filters.",
+      };
+    }
+    if (tab === "issues") {
+      const rows = withShare((d.quarantined_by_issue || []).filter((r) => match(r.reason)), "total_count");
+      return {
+        title: "Issues", sort: { key: "total_count", dir: "desc" }, rows: rows,
+        columns: [{ key: "reason", label: "Issue", sortable: true, cls: "is-strong" }, Object.assign(NF("total_count"), { label: "Stems" }), shareCol],
+        onRowClick: (r) => { selectedIssue = r.reason; load(); },
+        empty: "No issues", emptyText: "No quarantine issues recorded for these filters. Click a row to filter the page to that issue.",
+      };
+    }
+    if (tab === "varieties" || tab === "gh") {
+      const isV = tab === "varieties", lk = isV ? "variety" : "greenhouse";
+      const rows = withShare(((isV ? d.quarantined_by_variety : d.quarantined_by_gh) || []).filter((r) => match(r[lk])), "total_quarantined");
+      return {
+        title: isV ? "Varieties" : "Greenhouses", sort: { key: "total_quarantined", dir: "desc" }, rows: rows,
+        columns: [{ key: lk, label: isV ? "Variety" : "Greenhouse", sortable: true, cls: "is-strong" }, Object.assign(NF("total_quarantined"), { label: "Quarantined stems" }), shareCol],
+        onRowClick: (r) => dimModal(isV ? "variety" : "gh", isV ? "Variety" : "Greenhouse", r[lk], r.total_quarantined, r.share),
+        empty: "Nothing quarantined", emptyText: "No quarantined stems for these filters.",
+      };
+    }
+    if (tab === "pests") {
+      const pt = d.pest_trend || {}, farms = pt.farms || [], data = pt.data || {};
+      const rows = Object.keys(data).filter(match).map((p) => {
+        const r = { pest: p, total: 0 };
+        farms.forEach((f) => { r["f_" + f] = (data[p] && data[p][f]) || 0; r.total += r["f_" + f]; });
+        return r;
+      });
+      const cols = [{ key: "pest", label: "Pest", sortable: true, cls: "is-strong" }].concat(farms.map((f) => Object.assign(NF("f_" + f), { label: f })), [Object.assign(NF("total"), { label: "Total", cls: "is-strong" })]);
+      return { title: "Pests by farm", sort: { key: "total", dir: "desc" }, rows: rows, columns: cols, onRowClick: pestModal, empty: "No pests", emptyText: "No pest counts for these filters." };
+    }
+    const dis = (d.diseases_summary || []).filter((r) => match(r.disease_name));
+    return {
+      title: "Diseases", sort: { key: "sum_of_stems", dir: "desc" }, rows: dis,
+      columns: [{ key: "disease_name", label: "Disease", sortable: true, cls: "is-strong" }, Object.assign(NF("sum_of_stems"), { label: "Stems" }), Object.assign(NF("occurrence_count"), { label: "Reports" })],
+      onRowClick: diseaseModal, empty: "No diseases", emptyText: "No disease counts for these filters.",
+    };
+  }
+
+  function paintTable() {
+    if (!DATA) return;
+    const cfg = tabConfig();
+    exportRows = cfg.rows; exportCols = cfg.columns.map((c) => ({ key: c.key, label: c.label }));
+    tbl = PH.table("#tbl", { columns: cfg.columns, rows: cfg.rows, sort: cfg.sort, onRowClick: cfg.onRowClick, tall: true, compact: true, empty: cfg.empty, emptyText: cfg.emptyText });
+    PH.text("#meta", PH.fmt.num(cfg.rows.length) + " rows");
+  }
+  document.getElementById("tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (!b) return;
+    tab = b.dataset.tab;
+    PH.$$("#tabs .ph-tab").forEach((x) => x.classList.toggle("is-on", x === b));
+    paintTable();
+  });
+  document.getElementById("export").addEventListener("click", () => {
+    if (!exportRows.length) return PH.toast("Nothing to export", "warn");
+    PH.csv("intake-ftr-" + tab + ".csv", exportRows, exportCols);
+  });
+
+  /* ───────── drill-downs ───────── */
+  function miniTable(head, rows) {
+    if (!rows.length) return '<p class="ph-muted">Nothing recorded.</p>';
+    return '<div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr>' +
+      head.map((h, i) => '<th class="' + (i ? "is-num" : "") + '">' + PH.esc(h) + "</th>").join("") + "</tr></thead><tbody>" +
+      rows.map((r) => "<tr>" + r.map((c, i) => '<td class="' + (i ? "is-num" : "is-strong") + '">' + PH.esc(c) + "</td>").join("") + "</tr>").join("") +
+      "</tbody></table></div>";
+  }
+  function farmModal(r) {
+    const d = DATA || {}, pt = (d.pest_trend || {}).data || {}, dz = (d.disease_by_farm || {}).data || {}, tr = (d.ftr_unit_by_farm || {})[r.farm] || {};
+    const pests = Object.keys(pt).filter((p) => pt[p][r.farm]).sort((a, b) => pt[b][r.farm] - pt[a][r.farm]).map((p) => [p, num(pt[p][r.farm])]);
+    const dis = Object.keys(dz).filter((p) => dz[p][r.farm]).sort((a, b) => dz[b][r.farm] - dz[a][r.farm]).map((p) => [p, num(dz[p][r.farm])]);
+    const trend = Object.keys(tr).sort().map((p) => [formatPeriodLabel(p), PH.fmt.num(tr[p], 2) + "%"]);
+    PH.modal({
+      title: r.farm, sub: "Intake FTR for the current filters", size: "lg",
+      body: '<div class="ph-stats ph-mb"><div class="ph-stat"><small>Stems received</small><b>' + PH.esc(num(r.stems_received)) + '</b></div><div class="ph-stat"><small>Quarantined</small><b>' + PH.esc(num(r.quarantined)) + '</b></div><div class="ph-stat"><small>FTR score</small><b>' + PH.esc(PH.fmt.num(r.ftr, 2)) + "%</b></div></div>" +
+        '<div class="ph-row ph-row--3"><div><h4>Pests</h4>' + miniTable(["Pest", "Count"], pests) + "</div><div><h4>Diseases</h4>" + miniTable(["Disease", "Count"], dis) + "</div><div><h4>FTR trend</h4>" + miniTable(["Period", "FTR"], trend) + "</div></div>",
+      actions: [{ label: "Filter to this farm", primary: true, onClick: () => st.set({ farm: r.farm }) }, { label: "Close" }],
+    });
+  }
+  function dimModal(key, label, value, qty, share) {
+    PH.modal({
+      title: value, sub: label,
+      body: PH.html`<dl class="ph-kv"><dt>Quarantined stems</dt><dd>${num(qty)}</dd><dt>Share of listed total</dt><dd>${PH.fmt.num(share, 1)}%</dd></dl>`,
+      actions: [{ label: "Filter to this " + label.toLowerCase(), primary: true, onClick: () => st.set({ [key]: value }) }, { label: "Close" }],
+    });
+  }
+  function pestModal(r) {
+    const farms = ((DATA.pest_trend || {}).farms || []).filter((f) => r["f_" + f]).map((f) => [f, num(r["f_" + f])]);
+    const wk = ((DATA.major_pests_trend || {})[r.pest]) || null;
+    const weeks = wk ? Object.keys(wk).sort().map((w) => [w, num(wk[w])]) : [];
+    PH.modal({
+      title: r.pest, sub: "Total " + num(r.total), size: "lg",
+      body: '<div class="ph-row ph-row--2"><div><h4>By farm</h4>' + miniTable(["Farm", "Count"], farms) + "</div>" + (wk ? "<div><h4>Weekly (major pest)</h4>" + miniTable(["Week", "Count"], weeks) + "</div>" : "") + "</div>",
+      actions: [{ label: "Filter to this issue", primary: true, onClick: () => st.set({ issue: r.pest }) }, { label: "Close" }],
+    });
+  }
+  function diseaseModal(r) {
+    const m = ((DATA.disease_by_farm || {}).data || {})[r.disease_name] || {};
+    const farms = Object.keys(m).sort((a, b) => m[b] - m[a]).map((f) => [f, num(m[f])]);
+    PH.modal({
+      title: r.disease_name, sub: num(r.sum_of_stems) + " stems in " + num(r.occurrence_count) + " reports",
+      body: "<h4>By farm</h4>" + miniTable(["Farm", "Count"], farms),
+      actions: [{ label: "Filter to this issue", primary: true, onClick: () => st.set({ issue: r.disease_name }) }, { label: "Close" }],
+    });
+  }
+
+  PH.onRefresh(load);
+  load();
+})();
+</script>
+{% endraw %}
+{% endblock %}

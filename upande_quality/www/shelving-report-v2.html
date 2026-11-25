@@ -1,0 +1,496 @@
+{% extends "templates/web.html" %}
+{% block title %}Shelving Report · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Operations</div>
+    <h1 class="ph-head__title">Shelving Report</h1>
+    <p class="ph-head__sub" id="sub">Cold-store shelf inventory: stems, buckets and freshness by farm and variety.</p>
+  </div>
+  <div class="ph-head__tools"><button class="ph-btn" id="btn-export" type="button">Export CSV</button></div>
+</header>
+
+<div class="ph-filters">
+  <div id="f-farm"></div>
+  <div id="f-status"></div>
+  <div id="f-variety"></div>
+  <div id="f-gh"></div>
+  <div id="f-wh"></div>
+  <div id="f-len"></div>
+  <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search variety, shelf, bucket…"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets"><button data-value="all" type="button">All dates</button><button data-value="today" type="button">Today</button><button data-value="7d" type="button">7 days</button><button data-value="14d" type="button">14 days</button><button data-value="30d" type="button">30 days</button></div>
+  <div class="ph-daterange"><input type="date" id="from" aria-label="Harvest from"><span class="ph-daterange__sep">–</span><input type="date" id="to" aria-label="Harvest to"></div>
+</div>
+<div id="chips"></div>
+
+<nav class="ph-tabs" id="tabs" aria-label="Views">
+  <button class="ph-tab" data-tab="stock" type="button">Shelf stock <span class="ph-tab__count" id="tab-stock" hidden></span></button>
+  <button class="ph-tab" data-tab="cold" type="button">Cold room <span class="ph-tab__count" id="tab-cold" hidden></span></button>
+</nav>
+
+<section id="pane-stock">
+  <section class="ph-kpis" id="kpis"></section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Freshness</div><div class="ph-card__meta">Click a status to filter. Age counts from harvest date.</div></div>
+    <div id="fresh"></div>
+  </section>
+  <section class="ph-card ph-card--flush">
+    <div class="ph-card__head">
+      <div class="ph-card__title">Shelf detail</div>
+      <div class="ph-card__tools">
+        <div class="ph-pills" id="group"><button data-value="bucket" type="button">Buckets</button><button data-value="shelf" type="button">By shelf</button><button data-value="variety" type="button">By variety</button><button data-value="farm" type="button">By farm</button><button data-value="gh" type="button">By greenhouse</button></div>
+        <span class="ph-card__meta" id="meta"></span>
+      </div>
+    </div>
+    <div id="tbl"></div>
+  </section>
+</section>
+
+<section id="pane-cold" hidden>
+  <section class="ph-kpis" id="ckpis"></section>
+  <section class="ph-card">
+    <div class="ph-card__head"><div class="ph-card__title">Occupancy by farm</div><div class="ph-card__meta" id="cmeta">Bucket slots filled, fullest first. Click a farm to filter.</div></div>
+    <div id="cfarms"></div>
+  </section>
+  <section class="ph-card ph-card--flush">
+    <div class="ph-card__head"><div class="ph-card__title">Clear first: old stock</div><div class="ph-card__meta" id="cold-meta"></div></div>
+    <div id="ctbl-old"></div>
+  </section>
+  <section class="ph-card ph-card--flush">
+    <div class="ph-card__head"><div class="ph-card__title">Freeing soon: fully allocated</div><div class="ph-card__meta" id="free-meta"></div></div>
+    <div id="ctbl-free"></div>
+  </section>
+</section>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script>
+(function () {
+  "use strict";
+  const st = PH.state({ tab: "stock", group: "bucket", farm: "", status: "", variety: "", gh: "", wh: "", len: "", q: "", from: "", to: "" });
+  const STATUS = [
+    { value: "Fresh", label: "Fresh (3 days or less)", badge: "good" },
+    { value: "Ageing", label: "Ageing (4 days)", badge: "warn" },
+    { value: "Old", label: "Old (5 days or more)", badge: "bad" },
+    { value: "Unknown", label: "Unknown (no date)", badge: "outline" },
+  ];
+  function statusOf(emoji) {
+    const cp = emoji ? emoji.codePointAt(0) : 0;
+    return cp === 0x1f7e2 ? "Fresh" : cp === 0x1f7e0 ? "Ageing" : cp === 0x1f534 ? "Old" : "Unknown";
+  }
+  const badgeOf = (s) => (STATUS.find((x) => x.value === s) || STATUS[3]).badge;
+  const shortWh = (s) => String(s || "").replace(/ - KR$/, "");
+  const lenNum = (s) => parseFloat(s) || 0;
+  const today = PH.date.today();
+  const daysBetween = (d) => (d ? Math.round((PH.date.parse(today) - PH.date.parse(d)) / 86400000) : null);
+
+  let ALL = [];
+  let CR = null, crSig = null, crSeq = 0, crLoading = false, seq = 0, hvSeq = 0, harvested = 0, hvDone = 0, hvTotal = 1, hvFailed = false, loaded = false;
+  let tbl = null;
+
+  /* ── filters ─────────────────────────────────────────────────── */
+  const mFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: [], multiSite: true, plural: "farms", all: "All farms" });
+  PH.multiselect("#f-status", st, "status", { label: "Status", options: STATUS.map((s) => ({ value: s.value, label: s.label })), plural: "statuses", all: "All statuses", search: false });
+  const mVar = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All varieties" });
+  const mGh = PH.multiselect("#f-gh", st, "gh", { label: "Greenhouse", options: [], plural: "greenhouses", all: "All greenhouses" });
+  const mWh = PH.multiselect("#f-wh", st, "wh", { label: "Warehouse", options: [], plural: "warehouses", all: "All warehouses" });
+  const mLen = PH.multiselect("#f-len", st, "len", { label: "Length", options: [], plural: "lengths", all: "All lengths" });
+  PH.bindSearch("#f-q", st, "q");
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.pills("#group", st, "group");
+  document.querySelector('#presets [data-value="all"]').addEventListener("click", () => st.set({ from: "", to: "" }));
+  const syncAll = () => {
+    const none = !st.get("from") && !st.get("to");
+    document.querySelector('#presets [data-value="all"]').classList.toggle("is-on", none);
+  };
+  st.on(syncAll);
+  PH.activeFilters("#chips", st, [
+    { key: "farm", label: "Farm", multi: true }, { key: "status", label: "Status", multi: true },
+    { key: "variety", label: "Variety", multi: true }, { key: "gh", label: "Greenhouse", multi: true },
+    { key: "wh", label: "Warehouse", multi: true }, { key: "len", label: "Length", multi: true },
+    { key: "q", label: "Search" }, { key: "from", label: "From", text: PH.fmt.date }, { key: "to", label: "To", text: PH.fmt.date },
+  ]);
+
+  const tabs = document.getElementById("tabs");
+  function paintTabs() {
+    const t = st.get("tab");
+    tabs.querySelectorAll(".ph-tab").forEach((b) => b.classList.toggle("is-on", b.dataset.tab === t));
+    document.getElementById("pane-stock").hidden = t !== "stock";
+    document.getElementById("pane-cold").hidden = t !== "cold";
+    document.getElementById("f-gh").hidden = document.getElementById("f-wh").hidden = document.getElementById("f-len").hidden = document.getElementById("f-variety").hidden = document.getElementById("f-status").hidden = t !== "stock";
+    document.querySelector(".ph-filters .ph-daterange").hidden = document.getElementById("presets").hidden = t !== "stock";
+    document.getElementById("sub").textContent = t === "stock"
+      ? "Cold-store shelf inventory: stems, buckets and freshness by farm and variety."
+      : "Live shelf occupancy, allocation and ageing. Farm and search apply here; the other filters belong to Shelf stock.";
+  }
+  tabs.addEventListener("click", (e) => {
+    const b = e.target.closest(".ph-tab");
+    if (b) st.set({ tab: b.dataset.tab });
+  });
+
+  /* ── data: shelf stock ───────────────────────────────────────── */
+  /* compact response: dictionary-encoded rows -> the row objects the page uses */
+  function decode(res) {
+    if (!res || !res.compact) return (res && res.rows) || [];
+    const d = res.dict || {};
+    return (res.rows || []).map((r) => ({
+      variety: d.variety[r[0]], farm: d.farm[r[1]], status: d.status[r[2]], date_added: r[3], shelf: r[4],
+      warehouse: d.warehouse[r[5]], origin_greenhouse: d.origin_greenhouse[r[6]], stem_length: d.stem_length[r[7]],
+      qty: r[8], bucket_id: r[9],
+    }));
+  }
+  function rowsOf(cols, rows) {
+    return (rows || []).map((a) => { const o = {}; for (let i = 0; i < cols.length; i++) o[cols[i]] = a[i]; return o; });
+  }
+  function prep(r) {
+    const s = statusOf(r.status);
+    return Object.assign({}, r, {
+      st: s, gh: shortWh(r.origin_greenhouse), wh: shortWh(r.warehouse),
+      age: daysBetween(r.date_added), hay: [r.variety, r.shelf, r.bucket_id, r.farm].join("|").toLowerCase(),
+    });
+  }
+  function setOptions() {
+    const farms = PH.uniq(ALL.map((r) => r.farm)).sort();
+    const groups = {};
+    farms.forEach((f) => { const g = PH.regionOf(f) || "Other"; (groups[g] = groups[g] || []).push(f); });
+    mFarm.setOptions(Object.keys(groups).sort().map((g) => ({ group: g, items: groups[g] })));
+    mVar.setOptions(PH.uniq(ALL.map((r) => r.variety)).sort());
+    mGh.setOptions(PH.uniq(ALL.map((r) => r.gh)).sort());
+    mWh.setOptions(PH.uniq(ALL.map((r) => r.wh)).sort());
+    mLen.setOptions(PH.uniq(ALL.map((r) => r.stem_length)).sort((a, b) => lenNum(a) - lenNum(b)));
+  }
+  function filtered(skipStatus) {
+    const f = {
+      farm: PH.values(st.get("farm")), status: PH.values(st.get("status")), variety: PH.values(st.get("variety")),
+      gh: PH.values(st.get("gh")), wh: PH.values(st.get("wh")), len: PH.values(st.get("len")),
+    };
+    const from = st.get("from"), to = st.get("to"), q = st.get("q").toLowerCase().trim();
+    return ALL.filter((r) =>
+      (!f.farm.length || f.farm.includes(r.farm || "")) &&
+      (skipStatus || !f.status.length || f.status.includes(r.st)) &&
+      (!f.variety.length || f.variety.includes(r.variety || "")) &&
+      (!f.gh.length || f.gh.includes(r.gh || "")) &&
+      (!f.wh.length || f.wh.includes(r.wh || "")) &&
+      (!f.len.length || f.len.includes(r.stem_length || "")) &&
+      !(from && r.date_added && r.date_added < from) && !(to && r.date_added && r.date_added > to) &&
+      (!q || r.hay.indexOf(q) >= 0));
+  }
+
+  function load(silent) {
+    const my = ++seq;
+    if (!silent) {
+      PH.kpiSkeleton("#kpis", ["Total stems", "Buckets", "Shelves used", "Farms", "Harvested"]);
+      PH.skeleton("#tbl", "rows", 8);
+      PH.skeleton("#fresh", "block");
+    }
+    // Stock renders as soon as the shelf rows arrive; the harvested KPI (a slow
+    // Stock Entry sum) and the cold-room data are fetched alongside and fill in later.
+    loadHarvested();
+    return PH.call("fetch_shelving_report", { compact: 1, skip_harvested: 1 }, { silent: true }).then((res) => {
+      if (my !== seq) return;
+      ALL = decode(res).map(prep);
+      loaded = true;
+      setOptions();
+      paint();
+      PH.markUpdated();
+      if (st.get("tab") !== "cold") setTimeout(() => { if (!CR && !crLoading) loadCold(false, true); }, 0);
+    }).catch((e) => {
+      if (my !== seq) return;
+      PH.error("#tbl", e && e.message, () => load());
+      PH.set("#kpis", "");
+      PH.set("#fresh", "");
+    });
+  }
+  /* Harvested stems: one Stock Entry Detail lookup per harvesting entry makes a wide range
+     slow in a single query, so the range is split into day chunks fetched 6 at a time and
+     summed as they arrive (the KPI shows the running total and a progress note). */
+  const DAY = 86400000;
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  const loadHarvested = PH.debounce(function () {
+    const my = ++hvSeq;
+    const from = st.get("from") || st.get("to") || today, to = st.get("to") || st.get("from") || today;
+    const lo = from <= to ? from : to, hi = from <= to ? to : from;
+    const t0 = Date.parse(lo + "T00:00:00Z"), t1 = Date.parse(hi + "T00:00:00Z");
+    const nDays = Math.round((t1 - t0) / DAY) + 1;
+    const step = Math.max(1, Math.ceil(nDays / 60));
+    const chunks = [];
+    for (let t = t0; t <= t1; t += step * DAY) chunks.push([iso(t), iso(Math.min(t + (step - 1) * DAY, t1))]);
+    const farm = st.get("farm");
+    harvested = 0; hvDone = 0; hvTotal = chunks.length; hvFailed = false;
+    if (loaded) paintKpis(filtered());
+    let next = 0;
+    const worker = () => {
+      if (my !== hvSeq || next >= chunks.length) return Promise.resolve();
+      const c = chunks[next++], a = { date_from: c[0], date_to: c[1] };
+      if (farm) a.farm = farm;
+      return PH.call("get_shelving_harvested", a, { silent: true }).then((r) => {
+        if (my !== hvSeq) return;
+        harvested += (r && r.harvested) || 0; hvDone++;
+        if (loaded && (hvDone === hvTotal || hvDone % 3 === 0)) paintKpis(filtered());
+      }).catch(() => { if (my === hvSeq) { hvFailed = true; hvDone++; } }).then(worker);
+    };
+    Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]).then(() => {
+      if (my === hvSeq && loaded) paintKpis(filtered());
+    });
+  }, 250);
+
+  function harvestSub() {
+    const f = st.get("from"), t = st.get("to");
+    if (hvDone < hvTotal) return "Counting harvest… " + hvDone + " of " + hvTotal + (hvTotal === 1 ? " day" : " chunks");
+    if (hvFailed) return "Partial: some days failed to load";
+    if (!f && !t) return "Stems harvested today";
+    const a = f || t, b = t || f;
+    return a === b ? "Harvested " + PH.fmt.date(a) : "Harvested " + PH.fmt.date(a) + " to " + PH.fmt.date(b);
+  }
+  function paintKpis(rows) {
+    const shelves = new Set(rows.map((r) => r.shelf).filter(Boolean)).size;
+    const farms = new Set(rows.map((r) => r.farm).filter(Boolean)).size;
+    const old = rows.filter((r) => r.st === "Old").length;
+    PH.kpis("#kpis", [
+      { label: "Total stems", value: PH.sum(rows, "qty"), unit: "Stems on shelf" },
+      { label: "Buckets", value: rows.length, unit: "Bucket entries" },
+      { label: "Shelves used", value: shelves, unit: "Shelves holding stock" },
+      { label: "Farms", value: farms, unit: "Contributing farms" },
+      { label: "Harvested", value: harvested, unit: harvestSub() },
+      { label: "Old buckets", value: old, unit: "5 days or more", onClick: () => st.set({ status: "Old" }) },
+    ]);
+  }
+
+  function paintFresh() {
+    const rows = filtered(true), sel = PH.values(st.get("status"));
+    const tot = PH.sum(rows, "qty");
+    PH.set("#fresh", `<div class="ph-tiles ph-tiles--sm">${STATUS.map((s) => {
+      const rs = rows.filter((r) => r.st === s.value), stems = PH.sum(rs, "qty");
+      const pct = tot ? (stems / tot) * 100 : 0;
+      const tone = s.badge === "outline" ? "" : s.badge;
+      return `<div class="ph-tile is-link${sel.includes(s.value) ? " is-on" : ""}" data-status="${PH.esc(s.value)}">
+        <div class="ph-tile__head"><div><div class="ph-tile__name">${PH.esc(s.value)}</div><div class="ph-tile__sub">${PH.esc(s.label.replace(/^[A-Za-z]+ \(/, "").replace(/\)$/, ""))}</div></div><span class="ph-badge ph-badge--${s.badge}">${PH.fmt.num(rs.length)} buckets</span></div>
+        <div class="ph-progress ph-progress--${tone || "ink"}"><i style="width:${pct.toFixed(1)}%"></i></div>
+        <div class="ph-progress-row"><span>${PH.fmt.num(stems)} stems</span><span>${pct.toFixed(0)}%</span></div></div>`;
+    }).join("")}</div>`);
+  }
+  document.getElementById("fresh").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-status]");
+    if (!t) return;
+    const v = t.dataset.status, cur = PH.values(st.get("status"));
+    st.set({ status: cur.length === 1 && cur[0] === v ? "" : v });
+  });
+
+  /* grouped / detail table */
+  const GROUPS = {
+    shelf: { label: "Shelf", get: (r) => r.shelf || "(none)" },
+    variety: { label: "Variety", get: (r) => r.variety || "(none)" },
+    farm: { label: "Farm", get: (r) => r.farm || "(none)" },
+    gh: { label: "Greenhouse", get: (r) => r.gh || "(none)" },
+  };
+  const statusBadge = (v) => PH.html`<span class="ph-badge ph-badge--${badgeOf(v)}">${v}</span>`;
+  const BUCKET_COLS = [
+    { key: "variety", label: "Variety", cls: "is-strong" },
+    { key: "farm", label: "Farm" },
+    { key: "st", label: "Status", html: (v) => statusBadge(v).__raw },
+    { key: "date_added", label: "Harvest date", format: (v) => (v ? PH.fmt.date(v) : "—"), sortValue: (r) => r.date_added || "" },
+    { key: "age", label: "Age (d)", num: true, format: (v) => (v == null ? "—" : v) },
+    { key: "shelf", label: "Shelf", cls: "ph-mono" },
+    { key: "wh", label: "Warehouse" },
+    { key: "gh", label: "Origin GH" },
+    { key: "stem_length", label: "Length", sortValue: (r) => lenNum(r.stem_length) },
+    { key: "qty", label: "Qty", num: true, total: true, format: (v) => PH.fmt.num(v) },
+    { key: "bucket_id", label: "Bucket ID", cls: "ph-mono ph-muted" },
+  ];
+  function groupRows(rows, g) {
+    const m = PH.groupBy(rows, GROUPS[g].get);
+    return Array.from(m, ([k, rs]) => ({
+      key: k, rows: rs, buckets: rs.length, stems: PH.sum(rs, "qty"),
+      shelves: new Set(rs.map((r) => r.shelf)).size, farms: new Set(rs.map((r) => r.farm)).size,
+      oldest: Math.max.apply(null, rs.map((r) => (r.age == null ? -1 : r.age))),
+      fresh: rs.filter((r) => r.st === "Fresh").length, ageing: rs.filter((r) => r.st === "Ageing").length, old: rs.filter((r) => r.st === "Old").length,
+    }));
+  }
+  function bucketModal(r) {
+    PH.modal({
+      title: r.variety || "Bucket", sub: r.bucket_id,
+      body: PH.html`<dl class="ph-kv"><dt>Status</dt><dd>${statusBadge(r.st)}</dd><dt>Farm</dt><dd>${r.farm || "—"}</dd><dt>Shelf</dt><dd class="ph-mono">${r.shelf || "—"}</dd>
+        <dt>Harvest date</dt><dd>${r.date_added ? PH.fmt.date(r.date_added) : "—"}${r.age == null ? "" : " (" + r.age + " days)"}</dd>
+        <dt>Warehouse</dt><dd>${r.warehouse || "—"}</dd><dt>Origin greenhouse</dt><dd>${r.origin_greenhouse || "—"}</dd><dt>Stem length</dt><dd>${r.stem_length || "—"}</dd><dt>Stems</dt><dd>${PH.fmt.num(r.qty)}</dd></dl>`,
+      actions: [{ label: "Close" }],
+    });
+  }
+  function groupModal(g) {
+    const m = PH.modal({ title: g.key, sub: PH.fmt.num(g.buckets) + " buckets · " + PH.fmt.num(g.stems) + " stems", size: "xl", drawer: true, body: '<div id="m-tbl"></div>', actions: [{ label: "Close" }] });
+    PH.table(m.body.querySelector("#m-tbl"), { columns: BUCKET_COLS, rows: g.rows, sort: { key: "age", dir: "desc" }, pageSize: 100, compact: true, tall: true, onRowClick: bucketModal });
+  }
+  function paintTable(rows) {
+    const g = st.get("group");
+    PH.text("#meta", PH.fmt.num(rows.length) + " buckets");
+    if (g === "bucket" || !GROUPS[g]) {
+      tbl = PH.table("#tbl", { columns: BUCKET_COLS, rows, sort: { key: "date_added", dir: "desc" }, pageSize: 50, tall: true, compact: true, onRowClick: bucketModal, empty: "No shelf stock matches", emptyText: "Widen the filters or clear the search." });
+      return;
+    }
+    tbl = PH.table("#tbl", {
+      columns: [
+        { key: "key", label: GROUPS[g].label, cls: "is-strong" },
+        { key: "buckets", label: "Buckets", num: true, total: true, format: (v) => PH.fmt.num(v) },
+        { key: "stems", label: "Stems", num: true, total: true, format: (v) => PH.fmt.num(v) },
+        { key: "shelves", label: "Shelves", num: true, format: (v) => PH.fmt.num(v) },
+        { key: "farms", label: "Farms", num: true, format: (v) => PH.fmt.num(v) },
+        { key: "fresh", label: "Fresh", num: true, total: true },
+        { key: "ageing", label: "Ageing", num: true, total: true },
+        { key: "old", label: "Old", num: true, total: true },
+        { key: "oldest", label: "Oldest (d)", num: true, format: (v) => (v < 0 ? "—" : v) },
+      ],
+      rows: groupRows(rows, g), sort: { key: "stems", dir: "desc" }, pageSize: 50, tall: true, compact: true, onRowClick: groupModal,
+      empty: "No shelf stock matches", emptyText: "Widen the filters or clear the search.",
+    });
+  }
+
+  function paint() {
+    if (!loaded) return;
+    const rows = filtered();
+    PH.text("#tab-stock", PH.fmt.num(rows.length));
+    document.getElementById("tab-stock").hidden = false;
+    paintKpis(rows);
+    paintFresh();
+    paintTable(rows);
+  }
+
+  /* ── data: cold room ─────────────────────────────────────────── */
+  function loadCold(force, background) {
+    const sig = st.get("farm");
+    if (!force && CR && crSig === sig) return background ? undefined : paintCold();
+    const my = ++crSeq;
+    crSig = sig;
+    crLoading = true;
+    if (!background || st.get("tab") === "cold") coldSkeleton();
+    PH.call("get_coldroom_occupancy", sig ? { farm: sig, lite: 1 } : { lite: 1 }, { silent: true }).then((r) => {
+      if (my !== crSeq) return;
+      crLoading = false;
+      CR = r || null;
+      if (CR && CR.lite) {
+        CR.old_stock = rowsOf(CR.old_cols, CR.old_stock);
+        CR.freeing_soon = rowsOf(CR.free_cols, CR.freeing_soon);
+      }
+      if (st.get("tab") === "cold") paintCold(); else paintColdBadge();
+      PH.markUpdated();
+    }).catch((e) => {
+      if (my !== crSeq) return;
+      crLoading = false;
+      CR = null; crSig = null;
+      if (background && st.get("tab") !== "cold") return;
+      ["#ctbl-old", "#ctbl-free"].forEach((s) => PH.set(s, ""));
+      PH.set("#ckpis", "");
+      PH.error("#cfarms", e && e.message, () => loadCold(true));
+    });
+  }
+  function paintColdBadge() {
+    const o = (CR && CR.overall) || {};
+    PH.text("#tab-cold", PH.fmt.num(o.old || 0));
+    document.getElementById("tab-cold").hidden = !(o.old > 0);
+  }
+  function coldSkeleton() {
+    PH.kpiSkeleton("#ckpis", ["Occupancy", "Occupied shelves", "Free shelves", "Freeing soon", "Old stock"]);
+    PH.skeleton("#cfarms", "tiles", 4);
+    PH.skeleton("#ctbl-old", "rows", 4);
+    PH.skeleton("#ctbl-free", "rows", 4);
+  }
+  const chips = (ids) => PH.raw(String(ids || "").split(/,\s*/).filter(Boolean).slice(0, 4).map((b) => PH.html`<span class="ph-badge ph-badge--outline">${b}</span>`).join(" ") + (String(ids || "").split(/,\s*/).filter(Boolean).length > 4 ? ' <span class="ph-muted">+more</span>' : ""));
+  function coldModal(r, kind) {
+    const ids = String(r.bucket_ids || "").split(/,\s*/).filter(Boolean);
+    PH.modal({
+      title: "Shelf " + r.shelf, sub: r.farm,
+      body: PH.html`<dl class="ph-kv"><dt>Buckets</dt><dd>${PH.fmt.num(r.buckets)}</dd>${(kind === "old"
+        ? PH.html`<dt>Stems</dt><dd>${PH.fmt.num(r.stems)}</dd><dt>Oldest harvest</dt><dd>${r.oldest ? PH.fmt.date(r.oldest) : "—"}</dd><dt>Age</dt><dd>${r.age} days</dd>`
+        : PH.html`<dt>Allocated</dt><dd>${PH.fmt.num(r.allocated_qty)}</dd>`)}<dt>Bucket IDs</dt><dd>${PH.raw(ids.map((b) => PH.html`<span class="ph-badge ph-badge--outline">${b}</span>`).join(" ") || "—")}</dd></dl>`,
+      actions: [{ label: "Close" }],
+    });
+  }
+  function paintCold() {
+    if (!CR) return;
+    const o = CR.overall || {}, q = st.get("q").toLowerCase().trim();
+    const keep = (r) => !q || [r.shelf, r.farm, r.bucket_ids].join("|").toLowerCase().indexOf(q) >= 0;
+    const oldDays = CR.old_days || 5;
+    PH.kpis("#ckpis", [
+      { label: "Occupancy", value: o.occupancy_pct || 0, suffix: "%", unit: PH.fmt.num(o.buckets || 0) + " / " + PH.fmt.num(o.capacity || 0) + " bucket slots", bar: o.occupancy_pct || 0 },
+      { label: "Occupied shelves", value: o.occupied || 0, unit: "of " + PH.fmt.num(o.shelves || 0) + " shelves" },
+      { label: "Free shelves", value: o.free || 0, unit: "ready for fresh stock" },
+      { label: "Freeing soon", value: o.freeing || 0, unit: "fully allocated" },
+      { label: "Old stock", value: o.old || 0, unit: "shelves " + oldDays + " days or more" },
+    ]);
+    PH.text("#cmeta", "Shelf capacity " + (CR.capacity_per_shelf || 2) + " buckets each. Fullest first. Click a farm to filter.");
+    const farms = CR.by_farm || [];
+    PH.set("#cfarms", farms.length ? `<div class="ph-tiles ph-tiles--sm">${farms.map((f) => {
+      const occ = Number(f.occupancy_pct) || 0, tone = occ >= 90 ? "bad" : occ >= 70 ? "warn" : "signal";
+      return `<div class="ph-tile is-link" data-farm="${PH.esc(f.farm)}">
+        <div class="ph-tile__head"><div><div class="ph-tile__name">${PH.esc(f.farm)}</div><div class="ph-tile__sub">${PH.fmt.num(f.shelves)} shelves</div></div><span class="ph-badge ph-badge--${tone === "signal" ? "signal" : tone}">${Math.round(occ)}%</span></div>
+        <div class="ph-progress ph-progress--${tone}"><i style="width:${Math.min(100, occ)}%"></i></div>
+        <div class="ph-tile__stats"><div class="ph-stat"><small>Occupied</small><b>${PH.fmt.num(f.occupied)}</b></div><div class="ph-stat"><small>Free</small><b>${PH.fmt.num(f.free)}</b></div><div class="ph-stat"><small>Old</small><b>${PH.fmt.num(f.old)}</b></div></div></div>`;
+    }).join("")}</div>` : '<div class="ph-empty"><div class="ph-empty__title">No farms</div></div>');
+    const old = (CR.old_stock || []).filter(keep), fre = (CR.freeing_soon || []).filter(keep);
+    PH.text("#cold-meta", PH.fmt.num(old.length) + " shelves · shelves holding stock " + oldDays + "+ days, oldest first");
+    PH.text("#free-meta", PH.fmt.num(fre.length) + " shelves · will clear for fresh stock");
+    PH.text("#tab-cold", PH.fmt.num((o.old || 0)));
+    document.getElementById("tab-cold").hidden = !(o.old > 0);
+    PH.table("#ctbl-old", {
+      columns: [
+        { key: "shelf", label: "Shelf", cls: "is-strong ph-mono" }, { key: "farm", label: "Farm" },
+        { key: "age", label: "Age (d)", num: true, format: (v) => v + "d" },
+        { key: "buckets", label: "Buckets", num: true, total: true, format: (v) => PH.fmt.num(v) },
+        { key: "stems", label: "Stems", num: true, total: true, format: (v) => PH.fmt.num(v) },
+        { key: "oldest", label: "Oldest harvest", format: (v) => (v ? PH.fmt.date(v) : "—") },
+        { key: "bucket_ids", label: "Buckets", sortable: false, html: (v) => chips(v).__raw },
+      ],
+      rows: old, sort: { key: "age", dir: "desc" }, pageSize: 25, compact: true, onRowClick: (r) => coldModal(r, "old"),
+      empty: "No old stock", emptyText: "No shelves hold stock " + oldDays + " days or older.",
+    });
+    PH.table("#ctbl-free", {
+      columns: [
+        { key: "shelf", label: "Shelf", cls: "is-strong ph-mono" }, { key: "farm", label: "Farm" },
+        { key: "buckets", label: "Buckets", num: true, total: true, format: (v) => PH.fmt.num(v) },
+        { key: "allocated_qty", label: "Allocated", num: true, total: true, format: (v) => PH.fmt.num(v) },
+        { key: "bucket_ids", label: "Buckets", sortable: false, html: (v) => chips(v).__raw },
+      ],
+      rows: fre, sort: { key: "buckets", dir: "desc" }, pageSize: 25, compact: true, onRowClick: (r) => coldModal(r, "free"),
+      empty: "Nothing freeing soon", emptyText: "No fully-allocated shelves.",
+    });
+  }
+  document.getElementById("cfarms").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-farm]");
+    if (t) st.set({ farm: t.dataset.farm });
+  });
+
+  /* ── wiring ──────────────────────────────────────────────────── */
+  document.getElementById("btn-export").addEventListener("click", () => {
+    if (st.get("tab") === "cold") {
+      if (!CR) return PH.toast("Nothing to export yet", "warn");
+      const rows = (CR.old_stock || []).map((r) => Object.assign({ list: "Old stock" }, r)).concat((CR.freeing_soon || []).map((r) => Object.assign({ list: "Freeing soon" }, r)));
+      return PH.csv("cold-room-" + today + ".csv", rows, ["list", "shelf", "farm", "buckets", "stems", "age", "oldest", "allocated_qty", "bucket_ids"].map((k) => ({ key: k, label: k })));
+    }
+    const rows = filtered();
+    if (!rows.length) return PH.toast("Nothing to export", "warn");
+    PH.csv("shelving-report-" + today + ".csv", rows, [
+      ["variety", "Variety"], ["farm", "Farm"], ["st", "Status"], ["date_added", "Harvest date"], ["age", "Age (d)"], ["shelf", "Shelf"],
+      ["warehouse", "Warehouse"], ["origin_greenhouse", "Origin GH"], ["stem_length", "Length"], ["qty", "Qty"], ["bucket_id", "Bucket ID"],
+    ].map((c) => ({ key: c[0], label: c[1] })));
+  });
+
+  st.on((s, changed) => {
+    paintTabs();
+    const harvestKeys = ["from", "to", "farm"];
+    if (changed.some((k) => harvestKeys.includes(k))) loadHarvested();
+    if (s.tab === "cold") loadCold(false);
+    else {
+      paint();
+      if (changed.includes("farm") && loaded) loadCold(false, true);
+    }
+  });
+  PH.onRefresh(() => { load(true); if (st.get("tab") === "cold") loadCold(true); else { CR = null; crSig = null; } });
+  paintTabs();
+  syncAll();
+  load();
+  if (st.get("tab") === "cold") loadCold(true);
+})();
+</script>
+{% endraw %}
+{% endblock %}

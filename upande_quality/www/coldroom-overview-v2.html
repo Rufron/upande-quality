@@ -1,0 +1,635 @@
+{% extends "templates/web.html" %}
+{% block title %}Coldroom Operations · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<style>
+/* Coldroom Operations — page-only layout (tokens + spacing scale only). */
+.cr-chart{position:relative;width:100%;min-height:300px}
+.cr-rooms{max-height:560px;overflow-y:auto}
+.cr-rooms .ph-list__row{grid-template-columns:14px minmax(0,1fr) auto}
+.cr-val{display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-1)}
+.cr-val b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+.cr-val.is-high b{color:var(--bad)}
+.cr-val.is-low b{color:var(--signal)}
+.cr-tbl td,.cr-tbl th{white-space:nowrap}
+.cr-tbl td.cr-wrap{white-space:normal;min-width:220px}
+.cr-tbl tbody tr{cursor:pointer}
+.cr-badges{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
+.cr-sec{margin:var(--sp-6) 0 var(--sp-3);color:var(--ink-mute);font-weight:600;text-transform:uppercase;letter-spacing:.12em}
+.cr-sec:first-child{margin-top:0}
+.cr-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.cr-stat{background:var(--surface);border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4);box-shadow:inset 0 0 0 1px var(--hairline)}
+.cr-stat small{display:block;color:var(--ink-mute);margin-bottom:var(--sp-1)}
+.cr-stat b{color:var(--ink);font-size:1.4em;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.cr-note{color:var(--ink-mute);margin:var(--sp-3) 0 0}
+.ph-overlay--drawer .ph-modal{width:min(780px,100%)}
+</style>
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Overview</div>
+    <h1 class="ph-head__title">Coldroom Operations</h1>
+    <p class="ph-head__sub" id="sub">Cold room temperatures, cleaning records and inspections.</p>
+  </div>
+  <div class="ph-head__tools"></div>
+</header>
+
+<div class="ph-filters" id="filters">
+  <div id="f-year"></div>
+  <div id="f-week"></div>
+  <div id="f-farm"></div>
+  <div id="f-cold"></div>
+  <div id="f-mode"></div>
+  <div id="f-sensor"></div>
+  <div id="f-sstatus"></div>
+  <div class="ph-pills" id="f-result" role="group" aria-label="Inspection result"><button data-value="">All inspections</button><button data-value="issues">With issues</button><button data-value="ok">All good</button></div>
+  <label class="ph-search" for="f-q"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search sensor, farm, person…" autocomplete="off" aria-label="Search"></label>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets" role="group" aria-label="Date presets"><button data-value="today">Today</button><button data-value="7d">7 days</button><button data-value="30d">30 days</button><button data-value="mtd">Month to date</button></div>
+  <div class="ph-daterange"><input type="date" id="from" aria-label="From"><span class="ph-daterange__sep">–</span><input type="date" id="to" aria-label="To"></div>
+</div>
+<div id="chips"></div>
+
+<section class="ph-kpis" id="kpis" aria-live="polite"></section>
+
+<div class="ph-row ph-row--2-1">
+  <section class="ph-card">
+    <div class="ph-card__head">
+      <div>
+        <div class="ph-card__title">Cold Room Monitoring</div>
+        <div class="ph-card__meta">Temperature over time · Karen Roses · today · shaded = outside 0–8°C</div>
+      </div>
+    </div>
+    <div class="cr-chart" id="chart-host"><canvas id="sensorChart"></canvas></div>
+    <div id="chart-empty" hidden></div>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head">
+      <div>
+        <div class="ph-card__title">Cold Room Temperatures</div>
+        <div class="ph-card__meta">Live · Karen Roses · <span id="sensorAsOf"></span></div>
+      </div>
+    </div>
+    <div class="cr-rooms" id="rooms"></div>
+  </section>
+</div>
+
+<nav class="ph-tabs" id="tabs" aria-label="Records">
+  <button class="ph-tab" data-tab="sensors">Sensor readings</button>
+  <button class="ph-tab" data-tab="cleanings">Cleanings</button>
+  <button class="ph-tab" data-tab="inspections">Inspections</button>
+  <button class="ph-tab" data-tab="temps">Manual temperature logs</button>
+</nav>
+
+<section class="ph-card ph-card--flush" id="pane-sensors">
+  <div class="ph-card__head">
+    <div>
+      <div class="ph-card__title">Sensor Readings</div>
+      <div class="ph-card__meta" id="meta-sensors">Cold rooms · Karen Roses · today (use the date range to change)</div>
+    </div>
+    <div class="ph-card__tools"><button class="ph-btn ph-btn--sm" id="exp-sensors" type="button">Export CSV</button></div>
+  </div>
+  <div id="t-sensors"></div>
+</section>
+
+<section class="ph-card ph-card--flush" id="pane-cleanings" hidden>
+  <div class="ph-card__head">
+    <div>
+      <div class="ph-card__title">Cleanings</div>
+      <div class="ph-card__meta" id="meta-cleanings">Latest cleaning records</div>
+    </div>
+    <div class="ph-card__tools"><button class="ph-btn ph-btn--sm" id="exp-cleanings" type="button">Export CSV</button></div>
+  </div>
+  <div id="t-cleanings"></div>
+</section>
+
+<section class="ph-card ph-card--flush" id="pane-inspections" hidden>
+  <div class="ph-card__head">
+    <div>
+      <div class="ph-card__title">Inspections</div>
+      <div class="ph-card__meta" id="meta-inspections">Latest inspections, issues highlighted</div>
+    </div>
+    <div class="ph-card__tools"><button class="ph-btn ph-btn--sm" id="exp-inspections" type="button">Export CSV</button></div>
+  </div>
+  <div id="t-inspections"></div>
+</section>
+
+<section class="ph-card ph-card--flush" id="pane-temps" hidden>
+  <div class="ph-card__head">
+    <div>
+      <div class="ph-card__title">Manual temperature logs</div>
+      <div class="ph-card__meta" id="meta-temps">Cold Store Temperature Log, readings entered by staff</div>
+    </div>
+    <div class="ph-card__tools"><button class="ph-btn ph-btn--sm" id="exp-temps" type="button">Export CSV</button></div>
+  </div>
+  <div id="t-temps"></div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script>
+(function () {
+  "use strict";
+
+  /* ── chart (moved verbatim from the original page) ───────────────────── */
+  let sensorChart = null;
+  function el(id) { return document.getElementById(id); }
+function renderSensorChart(d){
+  if(sensorChart){sensorChart.destroy();sensorChart=null;}
+  var host=el('sensorChart'); if(!host)return;
+  var logs=(d&&d.logs)||[];
+  if(!logs.length)return;
+  var palette=['#007BE0','#1BA964','#E37D00','#6846E3','#3BBDE5','#E34AA6','#DB7706','#0FB5AE'];
+  var rows=logs.slice().sort(function(a,b){return String(a.timestamp).localeCompare(String(b.timestamp));});
+  var labels=[]; var seen={};
+  rows.forEach(function(r){var t=String(r.timestamp||'').slice(0,16); if(!(t in seen)){seen[t]=labels.length;labels.push(t);}});
+  var bySensor={};
+  rows.forEach(function(r){var s=r.sensor||'—'; if(!bySensor[s]){bySensor[s]=[];for(var i=0;i<labels.length;i++)bySensor[s].push(null);} bySensor[s][seen[String(r.timestamp||'').slice(0,16)]]=(r.value==null?null:r.value);});
+  var names=Object.keys(bySensor).sort();
+  var lohi=(d.thresholds&&d.thresholds['Cold Room'])||[0,8];
+  var lo=lohi[0], hi=lohi[1];
+  var basePr=labels.length>140?0:(labels.length>70?1.8:2.8);
+  function oor(v){return v!=null&&((hi!=null&&v>hi)||(lo!=null&&v<lo));}
+  var datasets=names.map(function(nm,i){var col=palette[i%palette.length];return {label:nm,data:bySensor[nm],borderColor:col,backgroundColor:col,pointBorderColor:'#fff',pointBorderWidth:1,pointBackgroundColor:function(ctx){var v=ctx.raw;if(v==null)return col;if(hi!=null&&v>hi)return '#E03636';if(lo!=null&&v<lo)return '#007BE0';return col;},pointRadius:function(ctx){var v=ctx.raw;if(v==null)return 0;return oor(v)?5:basePr;},pointHoverRadius:6,tension:0.35,borderWidth:2,spanGaps:true,fill:false};});
+  var dset={};labels.forEach(function(l){dset[l.slice(0,10)]=1;});var multiDay=Object.keys(dset).length>1;
+  // y-axis range snug to the data (plus a little headroom to show the target bands)
+  var allv=[];names.forEach(function(nm){bySensor[nm].forEach(function(v){if(v!=null)allv.push(v);});});
+  var dmin=allv.length?Math.min.apply(null,allv):(lo!=null?lo:0), dmax=allv.length?Math.max.apply(null,allv):(hi!=null?hi:8);
+  var yMin=Math.floor(Math.min(dmin,lo!=null?lo:dmin)-1);
+  var yMax=Math.ceil(Math.max(dmax,hi!=null?hi:dmax)+1);
+  var zonePlugin={id:'coldroomZones',beforeDatasetsDraw:function(chart){var ctx=chart.ctx,ca=chart.chartArea,ys=chart.scales.y;if(!ca||!ys)return;ctx.save();if(hi!=null){var yh=ys.getPixelForValue(hi);if(yh>ca.top){ctx.fillStyle='rgba(224,54,54,0.07)';ctx.fillRect(ca.left,ca.top,ca.right-ca.left,yh-ca.top);}ctx.strokeStyle='rgba(224,54,54,0.55)';ctx.lineWidth=1;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(ca.left,yh);ctx.lineTo(ca.right,yh);ctx.stroke();}if(lo!=null){var yl=ys.getPixelForValue(lo);if(yl<ca.bottom){ctx.fillStyle='rgba(0,123,224,0.07)';ctx.fillRect(ca.left,yl,ca.right-ca.left,ca.bottom-yl);}ctx.strokeStyle='rgba(0,123,224,0.5)';ctx.lineWidth=1;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(ca.left,yl);ctx.lineTo(ca.right,yl);ctx.stroke();}ctx.setLineDash([]);ctx.restore();}};
+  sensorChart=new Chart(host,{type:'line',data:{labels:labels,datasets:datasets},plugins:[zonePlugin],options:{responsive:true,maintainAspectRatio:true,aspectRatio:1.6,layout:{padding:{top:10,right:14,bottom:4,left:4}},interaction:{mode:'index',intersect:false},elements:{line:{borderCapStyle:'round',borderJoinStyle:'round'}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:'#717171',font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:8,callback:function(val){var l=this.getLabelForValue(val)||'';return multiDay?l.slice(5):l.slice(11);}}},y:{min:yMin,max:yMax,grid:{color:'#EDEDED',drawTicks:false},border:{display:false},ticks:{color:'#717171',font:{size:11},padding:6,stepSize:1,callback:function(v){return v+'°';}}}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',boxWidth:8,boxHeight:8,padding:14,color:'#525252',font:{size:11}}},tooltip:{backgroundColor:'#fff',titleColor:'#171717',bodyColor:'#525252',borderColor:'#E2E2E2',borderWidth:1,padding:10,cornerRadius:8,usePointStyle:true,titleFont:{size:11,weight:'600'},bodyFont:{size:11},boxPadding:4,callbacks:{label:function(c){var v=c.parsed.y;var f=oor(v)?'  ⚠':'';return '  '+c.dataset.label+': '+(v==null?'—':v.toFixed(1)+' °C')+f;}}}}}});
+}
+
+  /* ── helpers ─────────────────────────────────────────────────────────── */
+  const N = (v, d) => PH.fmt.num(v, d);
+  const GOOD = ["Good condition", "Clean"];
+  const AREAS = [["floor", "Floor"], ["roof", "Roof"], ["walls", "Walls"], ["lights", "Lights"], ["doors", "Doors"], ["shelves", "Shelves"], ["drainage", "Drainage"], ["evaporators", "Evaporators"]];
+  const SLOTS = [["s_8am", "8am"], ["s_10am", "10am"], ["s_12pm", "12pm"], ["s_2pm", "2pm"], ["s_4pm", "4pm"], ["s_6pm", "6pm"], ["s_8pm", "8pm"]];
+  const STATUS = { high: ["High", "bad"], low: ["Low", "signal"], ok: ["In range", "good"], na: ["No reading", "outline"] };
+  const T1 = (v) => (v == null || v === "" || !isFinite(+v) ? "—" : (+v).toFixed(1));
+  const slotT = (v) => (v == null || v === "" || !isFinite(+v) || +v === 0 ? "—" : (+v).toFixed(1));
+  const day = (s) => String(s || "").slice(0, 10);
+  const badge = (txt, kind) => PH.raw('<span class="ph-badge ph-badge--' + kind + '">' + PH.esc(txt) + "</span>");
+  const dash = (v) => (v == null || v === "" ? "—" : v);
+  const shortCold = (s) => String(s || "").replace(/ - [A-Z]{1,4}$/, "");
+
+  // MySQL WEEK(d, 1): Monday first, week 0 before the first week with 4+ days
+  function weekOf(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "");
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    const dow = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dow);
+    const y0 = Date.UTC(d.getUTCFullYear(), 0, 1);
+    const iso = Math.ceil(((d - y0) / 86400000 + 1) / 7);
+    if (iso >= 52 && +m[2] === 1) return 0;
+    if (iso === 1 && +m[2] === 12) return 53;
+    return iso;
+  }
+  // 1.5 L / 800 ml / 12 g/L ... friendly units (from the original page)
+  function fmtAmount(value, unit) {
+    if (value == null || value === "") return "—";
+    const v = Number(value);
+    if (!isFinite(v)) return "—";
+    const u = (unit || "").toLowerCase();
+    const n = (x, d) => N(x, d);
+    if (u === "ml/l") return n(v, v < 10 ? 1 : 0) + " ml/L";
+    if (u === "g/l") return n(v, v < 10 ? 1 : 0) + " g/L";
+    if (u === "ml") return v >= 1000 ? n(v / 1000, 2) + " L" : n(v, 0) + " ml";
+    if (u === "g") return v >= 1000 ? n(v / 1000, 2) + " kg" : n(v, 0) + " g";
+    if (u === "l") return n(v, v < 10 ? 1 : 0) + " L";
+    if (u === "kg") return n(v, v < 10 ? 2 : 0) + " kg";
+    return n(v, 1) + (u ? " " + u : "");
+  }
+  function chem(name, rate, unit, vol) {
+    if (!name && !rate && !vol) return "";
+    const p = [];
+    if (name) p.push(name);
+    if (rate) p.push(fmtAmount(rate, unit));
+    if (vol) p.push(fmtAmount(vol, "L") + " solution");
+    return p.join(" · ");
+  }
+
+  /* ── state & filters ─────────────────────────────────────────────────── */
+  const st = PH.state({ tab: "sensors", year: "", week: "", farm: "", cold: "", mode: "", sensor: "", sstatus: "", result: "", q: "", from: "", to: "" });
+  const OV_KEYS = ["year", "week", "farm", "cold", "from", "to"];
+  const SENS_KEYS = ["farm", "from", "to"];
+
+  const mYear = PH.multiselect("#f-year", st, "year", { label: "Year", options: [], plural: "years", all: "All years", search: false });
+  const mWeek = PH.multiselect("#f-week", st, "week", { label: "Week", options: [], plural: "weeks", all: "All weeks" });
+  const mFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: PH.regionGroups(), multiSite: true, plural: "farms", all: "All farms" });
+  const mCold = PH.multiselect("#f-cold", st, "cold", { label: "Cold store", options: [], plural: "cold stores", all: "All cold stores" });
+  const mMode = PH.multiselect("#f-mode", st, "mode", { label: "Cleaning mode", options: [], plural: "modes", all: "All modes", search: false });
+  const mSensor = PH.multiselect("#f-sensor", st, "sensor", { label: "Sensor", options: [], plural: "sensors", all: "All sensors" });
+  PH.multiselect("#f-sstatus", st, "sstatus", { label: "Reading", options: [{ value: "high", label: "High" }, { value: "low", label: "Low" }, { value: "ok", label: "In range" }, { value: "na", label: "No reading" }], plural: "statuses", all: "All readings", search: false });
+  PH.pills("#f-result", st, "result");
+  PH.bindSearch("#f-q", st, "q");
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.activeFilters("#chips", st, [
+    { key: "year", label: "Year", multi: true }, { key: "week", label: "Week", multi: true },
+    { key: "farm", label: "Farm", multi: true }, { key: "cold", label: "Cold store", multi: true, text: shortCold },
+    { key: "mode", label: "Mode", multi: true }, { key: "sensor", label: "Sensor", multi: true },
+    { key: "sstatus", label: "Reading", multi: true, text: (v) => (STATUS[v] ? STATUS[v][0] : v) },
+    { key: "result", label: "Inspections", text: (v) => (v === "issues" ? "With issues" : "All good") },
+    { key: "q", label: "Search" },
+    { key: "from", label: "From", text: PH.fmt.date }, { key: "to", label: "To", text: PH.fmt.date },
+  ]);
+
+  function groupFarms(list) {
+    const g = new Map();
+    list.forEach((f) => {
+      const r = PH.regionOf(f) || "Other farms";
+      if (!g.has(r)) g.set(r, []);
+      g.get(r).push(f);
+    });
+    return Array.from(g, ([group, items]) => ({ group, items: items.sort() }));
+  }
+
+  /* ── data ────────────────────────────────────────────────────────────── */
+  let OV = null, SD = null, ovErr = "", sErr = "";
+  let seqO = 0, seqS = 0;
+
+  function ovArgs() {
+    const y = PH.values(st.get("year")), w = PH.values(st.get("week")), c = PH.values(st.get("cold"));
+    return {
+      year: y.length === 1 ? y[0] : "", years: y.join(","),
+      week: w.length === 1 ? w[0] : "", weeks: w.join(","),
+      farm: st.get("farm"),
+      coldstore: c.length === 1 ? c[0] : "", coldstores: c.join(","),
+      from_date: st.get("from"), to_date: st.get("to"), limit: 200,
+    };
+  }
+
+  function loadOverview(silent) {
+    const my = ++seqO;
+    if (!silent) ["#t-cleanings", "#t-inspections", "#t-temps"].forEach((s) => PH.skeleton(s, "rows", 6));
+    PH.call("fetchColdroomOverview", ovArgs(), { silent: true, type: "GET" })
+      .then((d) => {
+        if (my !== seqO) return;
+        OV = d || {}; ovErr = "";
+        const fo = OV.filter_options || {};
+        mYear.setOptions((fo.years || []).map(String));
+        mWeek.setOptions((fo.weeks || []).map((w) => ({ value: String(w), label: "Week " + w })));
+        mCold.setOptions((fo.coldstores || []).map((c) => ({ value: c, label: shortCold(c) })));
+        mFarm.setOptions(groupFarms(PH.uniq((fo.farms || []).concat(sensorFarms()))));
+        mMode.setOptions(PH.uniq((OV.cleanings || []).map((r) => r.mode_of_cleaning)).sort());
+        paintOverview();
+        PH.markUpdated();
+      })
+      .catch((e) => {
+        if (my !== seqO) return;
+        ovErr = (e && e.message) || "Could not load";
+        OV = null;
+        paintOverview();
+      });
+  }
+
+  function loadSensors(silent) {
+    const my = ++seqS;
+    if (!silent) { PH.skeleton("#t-sensors", "rows", 6); PH.skeleton("#rooms", "rows", 5); }
+    PH.call("fetchColdroomSensorTemps", { farm: st.get("farm"), from_date: st.get("from"), to_date: st.get("to") }, { silent: true, type: "GET" })
+      .then((d) => {
+        if (my !== seqS) return;
+        SD = d || {}; sErr = "";
+        mSensor.setOptions((SD.cold_rooms || []).map((r) => r.sensor));
+        paintSensors();
+        PH.markUpdated();
+      })
+      .catch((e) => {
+        if (my !== seqS) return;
+        sErr = (e && e.message) || "Could not load sensor data";
+        SD = null;
+        paintSensors();
+      });
+  }
+  const sensorFarms = () => PH.uniq(((SD && SD.cold_rooms) || []).map((r) => r.farm));
+
+  /* ── tables ──────────────────────────────────────────────────────────── */
+  const sensorTbl = PH.table("#t-sensors", {
+    columns: [
+      { key: "timestamp", label: "Time", html: (v) => PH.esc(String(v || "").slice(0, 19)) },
+      { key: "farm", label: "Farm" },
+      { key: "monitoring", label: "Type" },
+      { key: "sensor", label: "Sensor", cls: "is-strong" },
+      { key: "value", label: "°C", num: true, format: (v) => T1(v) },
+      { key: "status", label: "Status", html: (v) => badge((STATUS[v] || [String(v || "").toUpperCase() || "—"])[0], (STATUS[v] || [0, "outline"])[1]) },
+    ],
+    rows: [], sort: { key: "timestamp", dir: "desc" }, pageSize: 50, compact: true, tall: true,
+    empty: "No readings for the selected range", emptyText: "Without a date range the log shows today only.",
+    onRowClick: (r) => sensorDrawer(r.sensor),
+  });
+
+  const cleanTbl = PH.table("#t-cleanings", {
+    columns: [
+      { key: "cleaning_date", label: "Date", html: (v) => PH.esc(PH.fmt.date(v)) },
+      { key: "farm", label: "Farm" },
+      { key: "coldstore", label: "Cold store", format: (v) => shortCold(v) || "—" },
+      { key: "mode_of_cleaning", label: "Mode" },
+      { key: "detergent_txt", label: "Detergent", cls: "cr-wrap" },
+      { key: "disinfectant_txt", label: "Disinfectant", cls: "cr-wrap" },
+      { key: "coldroom_volume_disinfected_m3", label: "Room vol (m³)", num: true, format: (v) => (+v ? N(v, 0) : "—"), total: (rows) => N(PH.sum(rows, "coldroom_volume_disinfected_m3"), 0) },
+      { key: "stock_quantity_stems", label: "Stems in stock", num: true, format: (v) => (+v ? N(v, 0) : "—") },
+      { key: "disinfected_by", label: "Disinfected by" },
+      { key: "supervised_by", label: "Supervised by" },
+    ],
+    rows: [], sort: { key: "cleaning_date", dir: "desc" }, pageSize: 50, compact: true, tall: true,
+    empty: "No cleaning records", emptyText: "Nothing matches the filters.",
+    onRowClick: (r) => cleaningDrawer(r),
+  });
+
+  const inspTbl = PH.table("#t-inspections", {
+    columns: [
+      { key: "inspection_date", label: "Date", html: (v) => PH.esc(PH.fmt.date(v)) },
+      { key: "farm", label: "Farm" },
+      { key: "coldstore", label: "Cold store", format: (v) => shortCold(v) || "—" },
+      { key: "n_issues", label: "Result", html: (v, r) => (v ? badge(v + (v === 1 ? " area with issues" : " areas with issues"), "bad") : badge("All good", "good")) },
+      { key: "issue_txt", label: "Issues found", cls: "cr-wrap", html: (v, r) => (r.issues.length ? PH.raw('<div class="cr-badges">' + r.issues.map((i) => '<span class="ph-badge ph-badge--warn">' + PH.esc(i.label + ": " + i.vals.join(", ")) + "</span>").join("") + "</div>") : "—") },
+      { key: "inspected_by", label: "Inspector" },
+    ],
+    rows: [], sort: { key: "inspection_date", dir: "desc" }, pageSize: 50, compact: true, tall: true,
+    empty: "No inspections", emptyText: "Nothing matches the filters.",
+    onRowClick: (r) => inspectionDrawer(r),
+  });
+
+  const tempCols = [
+    { key: "when", label: "Logged" },
+    { key: "farm", label: "Farm" },
+    { key: "coldstore", label: "Cold store", format: (v) => shortCold(v) || "—" },
+  ].concat(SLOTS.map((s) => ({ key: s[0], label: s[1], num: true, format: (v) => slotT(v) })))
+    .concat([{ key: "avg_temp", label: "Avg °C", num: true, format: (v) => T1(v) }, { key: "max_temp", label: "Max °C", num: true, cls: "is-strong", format: (v) => T1(v) }]);
+  const tempTbl = PH.table("#t-temps", {
+    columns: tempCols, rows: [], sort: { key: "when", dir: "desc" }, pageSize: 50, compact: true, tall: true,
+    empty: "No temperature logs", emptyText: "Nothing matches the filters, or none were entered in this range.",
+    onRowClick: (r) => tempDrawer(r),
+  });
+
+  /* ── filtering (client side, on top of what the server already narrowed) ─ */
+  function dateOk(d, vals) {
+    const yrs = PH.values(st.get("year")), wks = PH.values(st.get("week"));
+    if (yrs.length > 1 && !yrs.includes(String(d).slice(0, 4))) return false;
+    if (wks.length > 1 && !wks.includes(String(weekOf(d)))) return false;
+    return true;
+  }
+  const inList = (picked, v) => !picked.length || picked.includes(v);
+  const clientOnly = () => !!(st.get("mode") || st.get("result") || st.get("q"));
+
+  function filtered() {
+    const farms = PH.values(st.get("farm")), colds = PH.values(st.get("cold")), modes = PH.values(st.get("mode"));
+    const q = st.get("q").trim().toLowerCase(), res = st.get("result");
+    const common = (r, d) => inList(farms, r.farm) && inList(colds, r.coldstore) && dateOk(d);
+    const o = OV || {};
+    const cleanings = (o.cleanings || []).map((r) => Object.assign({}, r, {
+      detergent_txt: [r.detergent_used, r.detergent_rate ? fmtAmount(r.detergent_rate, r.detergent_rate_unit) : "", r.detergent_solution_volume_l ? fmtAmount(r.detergent_solution_volume_l, "L") + " solution" : ""].filter(Boolean).join(" · ") || "—",
+      disinfectant_txt: chem(r.disinfectant_used, r.disinfectant_rate, r.disinfectant_rate_unit, r.disinfectant_solution_volume_l) || "—",
+    })).filter((r) => common(r, r.cleaning_date) && inList(modes, r.mode_of_cleaning) &&
+      PH.match(r, q, ["farm", "coldstore", "mode_of_cleaning", "detergent_used", "disinfectant_used", "equipment_used", "disinfected_by", "supervised_by"]));
+    const inspections = (o.inspections || []).map((r) => {
+      const issues = [];
+      AREAS.forEach((a) => {
+        const bad = ((r.cond || {})[a[0]] || []).filter((v) => GOOD.indexOf(v) < 0);
+        if (bad.length) issues.push({ area: a[0], label: a[1], vals: bad });
+      });
+      return Object.assign({}, r, { issues, n_issues: issues.length });
+    }).filter((r) => common(r, r.inspection_date) && (!res || (res === "issues" ? r.n_issues > 0 : r.n_issues === 0)) &&
+      (!q || PH.match(r, q, ["farm", "coldstore", "inspected_by"]) || r.issues.some((i) => (i.label + " " + i.vals.join(" ")).toLowerCase().includes(q))));
+    const temps = (o.temperature || []).map((r) => Object.assign({}, r, {
+      when: String(r.created || "").slice(0, 16).replace("T", " ") || r.log_date || "",
+      max_temp: r.max_temp != null && +r.max_temp > -200 ? r.max_temp : null,
+    })).filter((r) => common(r, r.log_date) && PH.match(r, q, ["farm", "coldstore"]));
+    return { cleanings, inspections, temps };
+  }
+
+  function sensorSets() {
+    const picked = PH.values(st.get("sensor")), sst = PH.values(st.get("sstatus")), q = st.get("q").trim().toLowerCase();
+    const s = SD || {};
+    const byS = (s.logs || []).filter((r) => inList(picked, r.sensor));
+    const rowOk = (r) => inList(sst, r.status) && PH.match(r, q, ["sensor", "farm"]);
+    return {
+      bySensor: byS,
+      logs: byS.filter(rowOk),
+      rooms: (s.cold_rooms || []).filter((r) => inList(picked, r.sensor) && rowOk(r)),
+    };
+  }
+
+  /* ── painting ────────────────────────────────────────────────────────── */
+  function paintKpis() {
+    const f = filtered(), o = OV;
+    const vals = SD && !sErr ? sensorSets().bySensor.map((r) => r.value).filter((v) => v != null) : [];
+    const has = vals.length > 0;
+    const min = has ? Math.min.apply(null, vals) : null, max = has ? Math.max.apply(null, vals) : null;
+    const avg = has ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    const complete = o && (o.cleanings || []).length < (o.row_limit || 50);
+    const useLocal = complete || clientOnly();
+    const cl = o ? (useLocal ? f.cleanings.length : (o.kpi || {}).cleanings) : null;
+    const ins = o ? (useLocal ? f.inspections.length : (o.kpi || {}).inspections) : null;
+    const iss = o ? (useLocal ? f.inspections.filter((r) => r.n_issues).length : (o.kpi || {}).inspections_with_issues) : null;
+    const partial = o && !complete && clientOnly() ? "in the latest " + N((o.cleanings || []).length) : "";
+    const loadS = !SD && !sErr, loadO = !OV && !ovErr;
+    const T = (v) => (v == null ? (loadS ? "…" : "—") : T1(v));
+    const C = (v, load) => (v == null ? (load ? "…" : "—") : v);
+    PH.kpis("#kpis", [
+      { label: "Min temp", value: T(min), suffix: min == null ? "" : "°C", unit: "Lowest reading" },
+      { label: "Max temp", value: T(max), suffix: max == null ? "" : "°C", unit: "Highest reading" },
+      { label: "Avg temp", value: T(avg), suffix: avg == null ? "" : "°C", unit: has ? N(vals.length) + " readings" : "" },
+      { label: "Cleanings", value: C(cl, loadO), unit: partial, onClick: () => st.set({ tab: "cleanings" }) },
+      { label: "Inspections", value: C(ins, loadO), unit: partial, onClick: () => st.set({ tab: "inspections" }) },
+      { label: "Insp. with issues", value: C(iss, loadO), unit: ins ? N((iss / ins) * 100, 0) + "% of inspections" : "", onClick: () => st.set({ tab: "inspections", result: "issues" }) },
+    ]);
+  }
+
+  function paintOverview() {
+    const f = filtered();
+    const show = (sel, tbl, rows, meta, id, label) => {
+      if (ovErr) return PH.error(sel, ovErr, () => loadOverview());
+      tbl.update(rows);
+      const n = (OV[label] || []).length, cap = OV.row_limit || 50;
+      PH.text(id, N(rows.length) + " of " + N(n) + " loaded" + (n >= cap ? " (latest " + N(cap) + ")" : "") + meta);
+    };
+    show("#t-cleanings", cleanTbl, f.cleanings, "", "#meta-cleanings", "cleanings");
+    show("#t-inspections", inspTbl, f.inspections, "", "#meta-inspections", "inspections");
+    show("#t-temps", tempTbl, f.temps, "", "#meta-temps", "temperature");
+    paintKpis();
+  }
+
+  function roomRow(r) {
+    const s = STATUS[r.status] || STATUS.na;
+    const dot = r.status === "ok" ? "good" : r.status === "high" ? "bad" : r.status === "low" ? "signal" : "";
+    const ts = r.timestamp ? String(r.timestamp).slice(5, 16) : "";
+    return PH.html`<div class="ph-list__row is-link" data-sensor="${r.sensor}" role="button" tabindex="0">
+      <span class="ph-dot${dot ? " ph-dot--" + dot : ""}"></span>
+      <div><div class="ph-list__name">${r.sensor}</div><div class="ph-list__meta">${s[0]}${ts ? " · " + ts : ""}</div></div>
+      <div class="cr-val is-${r.status || "na"}"><b>${r.value == null ? "—" : r.value.toFixed(1) + " °C"}</b></div></div>`.__raw;
+  }
+
+  function paintSensors() {
+    const host = el("chart-host"), emptyEl = el("chart-empty");
+    if (sErr) {
+      if (sensorChart) { sensorChart.destroy(); sensorChart = null; }
+      host.hidden = true; emptyEl.hidden = false;
+      PH.error(emptyEl, sErr, () => loadSensors());
+      PH.error("#rooms", sErr, () => loadSensors());
+      PH.error("#t-sensors", sErr, () => loadSensors());
+      PH.text("#sensorAsOf", "");
+      paintKpis();
+      return;
+    }
+    if (!SD) return;
+    const s = sensorSets();
+    // chart: same renderer, fed the sensor-filtered logs
+    if (s.bySensor.length) {
+      host.hidden = false; emptyEl.hidden = true;
+      renderSensorChart(Object.assign({}, SD, { logs: s.bySensor }));
+    } else {
+      if (sensorChart) { sensorChart.destroy(); sensorChart = null; }
+      host.hidden = true; emptyEl.hidden = false;
+      PH.empty(emptyEl, "No readings in this range", "Without a date range the chart shows today only.");
+    }
+    PH.text("#sensorAsOf", SD.as_of ? "as of " + String(SD.as_of).slice(0, 16) : "");
+    const rooms = el("rooms");
+    if (!(SD.cold_rooms || []).length) PH.empty(rooms, "No cold room sensors", "No temperature sensors are set up for the chosen farms.");
+    else if (!s.rooms.length) PH.empty(rooms, "No sensors match", "Change the sensor, reading or search filter.");
+    else PH.set(rooms, '<div class="ph-list ph-list--flush">' + s.rooms.map(roomRow).join("") + "</div>");
+    sensorTbl.update(s.logs);
+    const hi = s.bySensor.filter((r) => r.status === "high").length, lo = s.bySensor.filter((r) => r.status === "low").length;
+    PH.text("#meta-sensors", N(s.logs.length) + " of " + N((SD.logs || []).length) + " readings" + (hi || lo ? " · " + N(hi) + " high, " + N(lo) + " low" : "") + (st.get("from") ? "" : " · today"));
+    mFarm.setOptions(groupFarms(PH.uniq(((OV && (OV.filter_options || {}).farms) || []).concat(sensorFarms()))));
+    paintKpis();
+  }
+
+  function paintClient() { paintOverview(); if (SD || sErr) paintSensors(); }
+
+  /* ── drill-downs ─────────────────────────────────────────────────────── */
+  function kv(pairs) {
+    return PH.html`<dl class="ph-kv">${pairs.map((p) => PH.html`<dt>${p[0]}</dt><dd>${p[1] == null || p[1] === "" ? "—" : p[1]}</dd>`)}</dl>`;
+  }
+  function sensorDrawer(name) {
+    const logs = ((SD && SD.logs) || []).filter((r) => r.sensor === name);
+    const room = ((SD && SD.cold_rooms) || []).find((r) => r.sensor === name) || {};
+    const vals = logs.map((r) => r.value).filter((v) => v != null);
+    const out = logs.filter((r) => r.status === "high" || r.status === "low").length;
+    const lh = (SD && SD.thresholds && SD.thresholds["Cold Room"]) || [0, 8];
+    const stat = (k, v) => '<div class="cr-stat"><small>' + PH.esc(k) + "</small><b>" + PH.esc(v) + "</b></div>";
+    const wrap = document.createElement("div");
+    PH.set(wrap, '<div class="cr-stats">' +
+      stat("Latest", room.value == null ? "—" : T1(room.value) + " °C") +
+      stat("Min", vals.length ? T1(Math.min.apply(null, vals)) + " °C" : "—") +
+      stat("Max", vals.length ? T1(Math.max.apply(null, vals)) + " °C" : "—") +
+      stat("Avg", vals.length ? T1(vals.reduce((a, b) => a + b, 0) / vals.length) + " °C" : "—") +
+      stat("Out of range", N(out)) + "</div>" +
+      '<div class="cr-sec">Readings in range</div><div id="dr-tbl"></div>' +
+      '<p class="cr-note">Allowed range ' + PH.esc(lh[0] + "–" + lh[1]) + " °C. The log shows up to 800 readings for the chosen dates.</p>");
+    const m = PH.modal({ title: name, sub: [room.farm, room.timestamp ? "last reading " + String(room.timestamp).slice(0, 16) : ""].filter(Boolean).join(" · "), body: wrap, drawer: true, actions: [{ label: "Close" }] });
+    PH.table(m.body.querySelector("#dr-tbl"), {
+      columns: [
+        { key: "timestamp", label: "Time", html: (v) => PH.esc(String(v || "").slice(0, 19)) },
+        { key: "value", label: "°C", num: true, format: (v) => T1(v) },
+        { key: "status", label: "Status", html: (v) => badge((STATUS[v] || ["—"])[0], (STATUS[v] || [0, "outline"])[1]) },
+      ],
+      rows: logs, sort: { key: "timestamp", dir: "desc" }, pageSize: 25, compact: true, empty: "No readings for this sensor in the range",
+    });
+  }
+  function cleaningDrawer(r) {
+    PH.modal({
+      title: "Cleaning · " + PH.fmt.date(r.cleaning_date), sub: [r.farm, shortCold(r.coldstore)].filter(Boolean).join(" · "), drawer: true,
+      body: PH.html`<div class="cr-sec">Cleaning</div>${kv([["Mode", r.mode_of_cleaning], ["Equipment", r.equipment_used], ["Room volume disinfected", +r.coldroom_volume_disinfected_m3 ? N(r.coldroom_volume_disinfected_m3, 0) + " m³" : ""], ["Stems in stock", +r.stock_quantity_stems ? N(r.stock_quantity_stems, 0) : ""]])}
+        <div class="cr-sec">Detergent</div>${kv([["Product", r.detergent_used], ["Rate", r.detergent_rate ? fmtAmount(r.detergent_rate, r.detergent_rate_unit) : ""], ["Solution volume", r.detergent_solution_volume_l ? fmtAmount(r.detergent_solution_volume_l, "L") : ""]])}
+        <div class="cr-sec">Disinfectant</div>${kv([["Product", r.disinfectant_used], ["Rate", r.disinfectant_rate ? fmtAmount(r.disinfectant_rate, r.disinfectant_rate_unit) : ""], ["Solution volume", r.disinfectant_solution_volume_l ? fmtAmount(r.disinfectant_solution_volume_l, "L") : ""]])}
+        <div class="cr-sec">People</div>${kv([["Disinfected by", r.disinfected_by], ["Supervised by", r.supervised_by]])}`,
+      actions: [{ label: "Open record", onClick: () => { PH.openDoc("Coldroom Cleaning Record", r.name); return false; } }, { label: "Close", primary: true }],
+    });
+  }
+  function inspectionDrawer(r) {
+    const rows = AREAS.map((a) => {
+      const vals = (r.cond || {})[a[0]] || [];
+      const cell = vals.length ? vals.map((v) => '<span class="ph-badge ph-badge--' + (GOOD.indexOf(v) < 0 ? "bad" : "good") + '">' + PH.esc(v) + "</span>").join(" ") : "—";
+      return "<tr><td class=\"is-strong\">" + a[1] + "</td><td><div class=\"cr-badges\">" + cell + "</div></td></tr>";
+    }).join("");
+    PH.modal({
+      title: "Inspection · " + PH.fmt.date(r.inspection_date), sub: [r.farm, shortCold(r.coldstore), r.inspected_by].filter(Boolean).join(" · "), drawer: true,
+      body: PH.raw('<div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Area</th><th>Condition</th></tr></thead><tbody>' + rows + "</tbody></table></div>"),
+      actions: [{ label: "Open record", onClick: () => { PH.openDoc("Coldroom Inspection Log", r.name); return false; } }, { label: "Close", primary: true }],
+    });
+  }
+  function tempDrawer(r) {
+    const rows = SLOTS.map((s) => "<tr><td class=\"is-strong\">" + s[1] + "</td><td class=\"is-num\">" + slotT(r[s[0]]) + "</td></tr>").join("");
+    PH.modal({
+      title: "Temperature log · " + (r.log_date ? PH.fmt.date(r.log_date) : "—"), sub: [r.farm, shortCold(r.coldstore)].filter(Boolean).join(" · "), drawer: true,
+      body: PH.raw('<div class="cr-stats"><div class="cr-stat"><small>Average</small><b>' + PH.esc(T1(r.avg_temp)) + ' °C</b></div><div class="cr-stat"><small>Max</small><b>' + PH.esc(T1(r.max_temp)) + ' °C</b></div></div><div class="ph-table-wrap"><table class="ph-table ph-table--compact"><thead><tr><th>Time of day</th><th class="is-num">°C</th></tr></thead><tbody>' + rows + "</tbody></table></div>"),
+      actions: [{ label: "Close" }],
+    });
+  }
+
+  /* ── events, export, tabs ────────────────────────────────────────────── */
+  const roomsEl = el("rooms");
+  roomsEl.addEventListener("click", (e) => { const r = e.target.closest("[data-sensor]"); if (r) sensorDrawer(r.dataset.sensor); });
+  roomsEl.addEventListener("keydown", (e) => { if (e.key !== "Enter" && e.key !== " ") return; const r = e.target.closest("[data-sensor]"); if (r) { e.preventDefault(); sensorDrawer(r.dataset.sensor); } });
+
+  const stamp = () => PH.date.today();
+  function exp(rows, name, cols) {
+    if (!rows.length) return PH.toast("Nothing to export yet.");
+    PH.csv(name + "-" + stamp() + ".csv", rows, cols);
+  }
+  el("exp-sensors").addEventListener("click", () => exp(sensorSets().logs, "coldroom-sensor-readings", [
+    { key: "timestamp", label: "Time", csv: (v) => String(v || "").slice(0, 19) }, { key: "farm", label: "Farm" }, { key: "monitoring", label: "Type" },
+    { key: "sensor", label: "Sensor" }, { key: "value", label: "Temperature (°C)" }, { key: "status", label: "Status", csv: (v) => String(v || "").toUpperCase() }]));
+  el("exp-cleanings").addEventListener("click", () => exp(filtered().cleanings, "coldroom-cleanings", [
+    { key: "cleaning_date", label: "Date" }, { key: "farm", label: "Farm" }, { key: "coldstore", label: "Cold store" }, { key: "mode_of_cleaning", label: "Mode" },
+    { key: "detergent_used", label: "Detergent" }, { key: "detergent_rate", label: "Detergent rate" }, { key: "detergent_rate_unit", label: "Detergent rate unit" }, { key: "detergent_solution_volume_l", label: "Detergent volume (L)" },
+    { key: "disinfectant_used", label: "Disinfectant" }, { key: "disinfectant_rate", label: "Disinfectant rate" }, { key: "disinfectant_rate_unit", label: "Disinfectant rate unit" }, { key: "disinfectant_solution_volume_l", label: "Disinfectant volume (L)" },
+    { key: "coldroom_volume_disinfected_m3", label: "Room volume (m3)" }, { key: "stock_quantity_stems", label: "Stems in stock" }, { key: "equipment_used", label: "Equipment" },
+    { key: "disinfected_by", label: "Disinfected by" }, { key: "supervised_by", label: "Supervised by" }]));
+  el("exp-inspections").addEventListener("click", () => exp(filtered().inspections, "coldroom-inspections", [
+    { key: "inspection_date", label: "Date" }, { key: "farm", label: "Farm" }, { key: "coldstore", label: "Cold store" }, { key: "inspected_by", label: "Inspector" },
+    { key: "n_issues", label: "Areas with issues" }].concat(AREAS.map((a) => ({ key: "cond", label: a[1], csv: (v) => ((v || {})[a[0]] || []).join("; ") })))));
+  el("exp-temps").addEventListener("click", () => exp(filtered().temps, "coldroom-temperature-logs", [
+    { key: "when", label: "Logged" }, { key: "farm", label: "Farm" }, { key: "coldstore", label: "Cold store" }].concat(SLOTS.map((s) => ({ key: s[0], label: s[1] + " (°C)" })))
+    .concat([{ key: "avg_temp", label: "Avg (°C)" }, { key: "max_temp", label: "Max (°C)" }])));
+
+  function paintTabs() {
+    const t = ["sensors", "cleanings", "inspections", "temps"].includes(st.get("tab")) ? st.get("tab") : "sensors";
+    PH.$$("#tabs .ph-tab").forEach((b) => b.classList.toggle("is-on", b.dataset.tab === t));
+    ["sensors", "cleanings", "inspections", "temps"].forEach((k) => { el("pane-" + k).hidden = k !== t; });
+  }
+  el("tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) st.set({ tab: b.dataset.tab }); });
+
+  st.on((s, changed) => {
+    if (changed.length === 1 && changed[0] === "tab") return paintTabs();
+    paintTabs();
+    const ov = changed.some((k) => OV_KEYS.includes(k)), se = changed.some((k) => SENS_KEYS.includes(k));
+    if (ov) loadOverview();
+    if (se) loadSensors();
+    if (!ov && !se) paintClient();
+    else if (!ov) paintOverview();
+    else if (!se && (SD || sErr)) paintSensors();
+  });
+  PH.onRefresh(() => { loadOverview(true); loadSensors(true); });
+
+  PH.kpiSkeleton("#kpis", ["Min temp", "Max temp", "Avg temp", "Cleanings", "Inspections", "Insp. with issues"]);
+  paintTabs();
+  loadOverview();
+  loadSensors();
+})();
+</script>
+<script>
+(function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){window.__ufdMonaReg=1;Chart.register({id:"ufdMonaColors",beforeUpdate:function(chart){
+        var t=chart.config.type;var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+        if(bars.length===1){var d=bars[0];d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});}
+        else if(bars.length>1){bars.forEach(function(d,i){if(typeof d.backgroundColor!=="function"){d.backgroundColor=PAL[i%PAL.length];}});}
+      }});}
+    }catch(e){}
+  }
+  go();
+})();
+</script>
+{% endraw %}
+{% endblock %}
