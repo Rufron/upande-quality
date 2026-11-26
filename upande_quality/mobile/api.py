@@ -16674,7 +16674,9 @@ def _received_not_shelved_buckets(day, scope):
 		"  FROM ("
 		"   SELECT r.custom_bucket_id AS bucket, MAX(TIMESTAMP(r.posting_date, r.posting_time)) AS last_received"
 		"   FROM `tabStock Entry` r"
-		"   WHERE r.stock_entry_type IN " + receipt_types + " AND r.docstatus = 1 AND r.posting_date = %(day)s"
+		"   WHERE r.stock_entry_type IN "
+		+ receipt_types
+		+ " AND r.docstatus = 1 AND r.posting_date = %(day)s"
 		"   AND IFNULL(r.custom_bucket_id, '') != ''"
 		+ (" AND r.farm IN %(farms)s" if scope else "")
 		+ "   GROUP BY r.custom_bucket_id"
