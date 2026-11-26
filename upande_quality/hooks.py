@@ -102,13 +102,16 @@ doctype_js = {"Bucket Logistics Route": "public/js/bucket_logistics_route.js"}
 # ----------
 
 website_route_rules = [
-	# Quality v2 pages: /quality-dashboard-v2/<page>-v2 (www/<page>-v2.html). 
+	# Quality v2 pages: /quality-dashboard-v2/<page>-v2 (www/<page>-v2.html).
 	{"from_route": "/quality-dashboard-v2/intake-ftr-overview-v2", "to_route": "intake-ftr-overview-v2"},
 	{"from_route": "/quality-dashboard-v2/coldroom-overview-v2", "to_route": "coldroom-overview-v2"},
 	{"from_route": "/quality-dashboard-v2/packhouse-overview-v2", "to_route": "packhouse-overview-v2"},
 	{"from_route": "/quality-dashboard-v2/shelving-report-v2", "to_route": "shelving-report-v2"},
 	{"from_route": "/quality-dashboard-v2/transit-time-v2", "to_route": "transit-time-v2"},
-	{"from_route": "/quality-dashboard-v2/solution-mixing-overview-v2", "to_route": "solution-mixing-overview-v2"},
+	{
+		"from_route": "/quality-dashboard-v2/solution-mixing-overview-v2",
+		"to_route": "solution-mixing-overview-v2",
+	},
 	{"from_route": "/quality-dashboard-v2/quality-trends-v2", "to_route": "quality-trends-v2"},
 	{"from_route": "/quality-dashboard-v2/quality-raw-data-v2", "to_route": "quality-raw-data-v2"},
 	{"from_route": "/quality-dashboard-v2/rejects-v2", "to_route": "rejects-v2"},

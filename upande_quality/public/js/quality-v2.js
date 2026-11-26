@@ -828,7 +828,15 @@
 
 	PH.multiselect = function (container, st, key, o) {
 		const el = PH.$(container);
-		if (!el) return { setOptions() {}, values: () => [], set() {}, clear() {}, open() {}, close() {} };
+		if (!el)
+			return {
+				setOptions() {},
+				values: () => [],
+				set() {},
+				clear() {},
+				open() {},
+				close() {},
+			};
 		o = o || {};
 		el.classList.add("ph-msp");
 		el.innerHTML =
@@ -846,7 +854,9 @@
 		let groups = []; // [{group|null, items:[{value,label}]}]
 		let q = "";
 		const norm = (it) =>
-			it && typeof it === "object" ? { value: String(it.value), label: String(it.label ?? it.value) } : { value: String(it), label: String(it) };
+			it && typeof it === "object"
+				? { value: String(it.value), label: String(it.label ?? it.value) }
+				: { value: String(it), label: String(it) };
 		const flat = () => groups.reduce((a, g) => a.concat(g.items), []);
 		const picked = () => PH.values(st.get(key));
 		const labelOf = (v) => {
@@ -863,14 +873,20 @@
 		}
 		function summary() {
 			const p = picked();
-			const s = !p.length ? o.all || "All" : p.length === 1 ? labelOf(p[0]) : p.length + " " + (o.plural || "selected");
+			const s = !p.length
+				? o.all || "All"
+				: p.length === 1
+				? labelOf(p[0])
+				: p.length + " " + (o.plural || "selected");
 			return s;
 		}
 		function paintButton() {
 			const p = picked();
 			btn.innerHTML =
 				(o.label ? '<span class="ph-msp__lab">' + PH.esc(o.label) + "</span>" : "") +
-				'<span class="ph-msp__val">' + PH.esc(summary()) + "</span>";
+				'<span class="ph-msp__val">' +
+				PH.esc(summary()) +
+				"</span>";
 			btn.classList.toggle("is-on", p.length > 0);
 		}
 		function paintList() {
@@ -878,20 +894,47 @@
 				needle = q.trim().toLowerCase();
 			const known = new Set(flat().map((i) => i.value));
 			const extra = [...on].filter((v) => !known.has(v)); // picks from the URL not in the list (yet)
-			const gs = groups.concat(extra.length ? [{ group: null, items: extra.map(norm) }] : []);
+			const gs = groups.concat(
+				extra.length ? [{ group: null, items: extra.map(norm) }] : []
+			);
 			let html = "";
 			gs.forEach((g) => {
-				const items = g.items.filter((i) => !needle || (i.label + " " + (g.group || "")).toLowerCase().includes(needle));
+				const items = g.items.filter(
+					(i) =>
+						!needle || (i.label + " " + (g.group || "")).toLowerCase().includes(needle)
+				);
 				if (!items.length) return;
 				if (g.group != null) {
 					const n = g.items.filter((i) => on.has(i.value)).length;
-					const state = n === 0 ? "" : n === g.items.length ? " checked" : " data-partial";
+					const state =
+						n === 0 ? "" : n === g.items.length ? " checked" : " data-partial";
 					html += o.multiSite
-						? '<label class="ph-msp__grp"><input type="checkbox" data-group="' + PH.esc(g.group) + '"' + state + "><span>" + PH.esc(g.group) + '</span><small>' + n + "/" + g.items.length + "</small></label>"
-						: '<div class="ph-msp__grp ph-msp__grp--plain">' + PH.esc(g.group) + "</div>";
+						? '<label class="ph-msp__grp"><input type="checkbox" data-group="' +
+						  PH.esc(g.group) +
+						  '"' +
+						  state +
+						  "><span>" +
+						  PH.esc(g.group) +
+						  "</span><small>" +
+						  n +
+						  "/" +
+						  g.items.length +
+						  "</small></label>"
+						: '<div class="ph-msp__grp ph-msp__grp--plain">' +
+						  PH.esc(g.group) +
+						  "</div>";
 				}
 				items.forEach((i) => {
-					html += '<label class="ph-msp__opt' + (g.group != null ? " is-nested" : "") + '"><input type="checkbox" value="' + PH.esc(i.value) + '"' + (on.has(i.value) ? " checked" : "") + "><span>" + PH.esc(i.label) + "</span></label>";
+					html +=
+						'<label class="ph-msp__opt' +
+						(g.group != null ? " is-nested" : "") +
+						'"><input type="checkbox" value="' +
+						PH.esc(i.value) +
+						'"' +
+						(on.has(i.value) ? " checked" : "") +
+						"><span>" +
+						PH.esc(i.label) +
+						"</span></label>";
 				});
 			});
 			list.innerHTML = html || '<div class="ph-msp__none">No matches</div>';
@@ -903,7 +946,9 @@
 		}
 		function commit(vals) {
 			const known = flat().map((i) => i.value);
-			const ordered = known.filter((v) => vals.includes(v)).concat(vals.filter((v) => !known.includes(v)));
+			const ordered = known
+				.filter((v) => vals.includes(v))
+				.concat(vals.filter((v) => !known.includes(v)));
 			st.set({ [key]: ordered.join(",") });
 			if (o.onChange) o.onChange(ordered);
 		}
@@ -953,7 +998,9 @@
 			else {
 				// Select all picks what the search shows (everything when the search is empty)
 				const needle = q.trim().toLowerCase();
-				const vis = flat().filter((i) => !needle || i.label.toLowerCase().includes(needle)).map((i) => i.value);
+				const vis = flat()
+					.filter((i) => !needle || i.label.toLowerCase().includes(needle))
+					.map((i) => i.value);
 				commit([...new Set(picked().concat(vis))]);
 			}
 		});
@@ -988,18 +1035,32 @@
 			specs.forEach((sp) => {
 				const def = st.defaults[sp.key];
 				const v = s[sp.key];
-				if (sp.multi) PH.values(v).forEach((x) => chips.push({ sp, x, text: sp.text ? sp.text(x) : x }));
-				else if (v !== def && v !== "" && v != null) chips.push({ sp, x: null, text: sp.text ? sp.text(v) : String(v) });
+				if (sp.multi)
+					PH.values(v).forEach((x) =>
+						chips.push({ sp, x, text: sp.text ? sp.text(x) : x })
+					);
+				else if (v !== def && v !== "" && v != null)
+					chips.push({ sp, x: null, text: sp.text ? sp.text(v) : String(v) });
 			});
 			el.hidden = !chips.length;
 			el.innerHTML =
 				chips
 					.map(
 						(c, i) =>
-							'<span class="ph-filter-chip">' + (c.sp.label ? PH.esc(c.sp.label) + ": " : "") + "<b>" + PH.esc(c.text) + '</b><button type="button" data-i="' + i + '" aria-label="Remove ' + PH.esc(c.text) + '">×</button></span>'
+							'<span class="ph-filter-chip">' +
+							(c.sp.label ? PH.esc(c.sp.label) + ": " : "") +
+							"<b>" +
+							PH.esc(c.text) +
+							'</b><button type="button" data-i="' +
+							i +
+							'" aria-label="Remove ' +
+							PH.esc(c.text) +
+							'">×</button></span>'
 					)
 					.join("") +
-				(chips.length > 1 ? '<button type="button" class="ph-link" data-clear>Clear all</button>' : "");
+				(chips.length > 1
+					? '<button type="button" class="ph-link" data-clear>Clear all</button>'
+					: "");
 			el._chips = chips;
 		}
 		el.addEventListener("click", (e) => {
@@ -1011,7 +1072,12 @@
 			const b = e.target.closest("button[data-i]");
 			if (!b) return;
 			const c = el._chips[+b.dataset.i];
-			if (c.x != null) st.set({ [c.sp.key]: PH.values(st.get(c.sp.key)).filter((v) => v !== c.x).join(",") });
+			if (c.x != null)
+				st.set({
+					[c.sp.key]: PH.values(st.get(c.sp.key))
+						.filter((v) => v !== c.x)
+						.join(","),
+				});
 			else st.set({ [c.sp.key]: st.defaults[c.sp.key] });
 		});
 		st.on(paint);
@@ -2084,9 +2150,7 @@
 		const cs = document.currentScript;
 		if (!cs) return false;
 		const src = cs.src || "";
-		return (
-			!src || (src.includes("/assets/upande_quality/") && !/\/quality-v2\.js/.test(src))
-		);
+		return !src || (src.includes("/assets/upande_quality/") && !/\/quality-v2\.js/.test(src));
 	};
 	const pageOf = () => (inPage !== null ? inPage : pageGen);
 	const own = (gen, undo) => {
