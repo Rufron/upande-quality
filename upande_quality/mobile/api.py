@@ -2910,6 +2910,24 @@ def _shelf_sort_key(shelf):
 	return (0, m.group(1), int(m.group(2)), m.group(3))
 
 
+def _quality_b_sql(alias="opl"):
+	"""SQL true for a Quality B pick list: it is submitted when it is made, yet its remote buckets still wait
+	at their farm for whichever truck collects them."""
+	if not frappe.db.has_column("Order Pick List", "quality_b"):
+		return "0"
+	return "IFNULL(" + alias + ".quality_b, 0) = 1"
+
+
+def _quality_b_opls(opls):
+	"""The Quality B pick lists among `opls`."""
+	opls = [o for o in (opls or []) if o]
+	if not opls or not frappe.db.has_column("Order Pick List", "quality_b"):
+		return set()
+	return set(
+		frappe.get_all("Order Pick List", filters={"name": ["in", opls], "quality_b": 1}, pluck="name")
+	)
+
+
 def _row_farm(r):
 	"""The farm a pick row's bucket is at: the row's own farm (the shelf it was
 	allocated from), else the first word of its warehouse. Reused bucket ids leave an
@@ -3351,12 +3369,15 @@ def fetchAllocatedBuckets():
 			show_unscheduled = frappe.utils.cint(
 				frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
 			)
+			# Quality B: no truck is planned for it; the farm loads it onto the truck that collects it.
+			quality_b = _quality_b_opls(list(opl_map))
 			pick_list_items = [
 				it
 				for it in pick_list_items
 				if it["parent"] in opl_map
 				and (
 					(it.get("transfer_priority") or "") == "ASAP"
+					or it["parent"] in quality_b
 					or (
 						not int(opl_map[it["parent"]].get("docstatus") or 0)
 						and (
@@ -3521,8 +3542,10 @@ def fetchAllocatedBuckets():
 						"scheduled": 1
 						if item["parent"] in on_farm_trip
 						or item["parent"] in awaiting_truck
+						or item["parent"] in quality_b
 						or (item.get("transfer_priority") or "") == "ASAP"
 						else 0,
+						"quality_b": 1 if item["parent"] in quality_b else 0,
 						# scheduled for packing, no truck assigned yet: prepare it on a trolley
 						"awaiting_truck": 1 if item["parent"] in awaiting_truck else 0,
 					}
@@ -4823,7 +4846,10 @@ def getFarmPlannedTrips():
 				WHERE pli.parenttype = 'Order Pick List' AND pli.awaiting_transfer = 1
 				  AND pli.in_transit = 0 AND IFNULL(pli.bucket, '') != ''
 				  AND COALESCE(NULLIF(pli.farm, ''), SUBSTRING_INDEX(pli.source_warehouse, ' ', 1)) = %(farm)s
-				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND IFNULL(pli.transfer_priority, '') = 'ASAP'))
+				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND (IFNULL(pli.transfer_priority, '') = 'ASAP'
+				       OR """
+				+ _quality_b_sql()
+				+ """)))
 				  AND (so.delivery_date IS NULL OR so.delivery_date >= %(today)s)""",
 				{"farm": farm_name, "today": frappe.utils.today()},
 				as_dict=True,
@@ -4856,11 +4882,20 @@ def getFarmPlannedTrips():
 				"Order Pick List", filters={"name": ["in", opl_list]}, fields=["name", "team"]
 			):
 				opl_teams[o.name] = o.get("team") or ""
+			quality_b = _quality_b_opls(opl_list)
 			out = {}
 			for op in opl_list:
 				sc = all_schedules.get(op) or {}
 				team = sc.get("team") or opl_teams.get(op) or ""
-				if team or sc:
+				if op in quality_b:
+					# loaded onto whichever truck collects it: never waits for a schedule or a trip
+					out[op] = {
+						"team": team,
+						"schedule": sc.get("schedule") or 0,
+						"scheduled": 1,
+						"quality_b": 1,
+					}
+				elif team or sc:
 					out[op] = {"team": team, "schedule": sc.get("schedule") or 0, "scheduled": 1 if sc else 0}
 			return out
 
@@ -10418,7 +10453,9 @@ def setOfflineTrolleyFlags():
 							       -- Another order's row only when the farm app works that order:
 							       -- delivering today or later, a draft (or an ASAP replacement).
 							       AND (so.delivery_date IS NULL OR so.delivery_date >= %(today)s)
-							       AND (opl.docstatus = 0 OR IFNULL(pli.transfer_priority, '') = 'ASAP')))""",
+							       AND (opl.docstatus = 0 OR IFNULL(pli.transfer_priority, '') = 'ASAP' OR """
+							+ _quality_b_sql()
+							+ """)))""",
 							{"b": bucket, "p": parent, "f": farm, "today": frappe.utils.today()},
 							as_dict=True,
 						)
@@ -13793,7 +13830,10 @@ def transferBucket():
 		mid_transfer = frappe.db.sql(
 			"""
             SELECT pli.name FROM `tabPick List Item` pli
-            JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus = 0
+            JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+              AND (opl.docstatus = 0 OR """
+			+ _quality_b_sql()
+			+ """)
             WHERE pli.parenttype = 'Order Pick List' AND pli.bucket = %s
               AND (pli.awaiting_transfer = 1 OR pli.in_transit = 1
                    OR pli.loaded_in_trolley = 1) LIMIT 1""",
