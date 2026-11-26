@@ -3582,6 +3582,18 @@ def fetchMixingTanks():
 		frappe.response["message"] = {"status": "error", "message": str(e)}
 
 
+def packing_teams(farm=None):
+	"""Packing Teams (upande_packhouse) for the station's farm; every team when the farm has none."""
+	if not frappe.db.exists("DocType", "Packing Teams"):
+		return []
+	# Older upande_packhouse versions have no sales_farm on Packing Teams.
+	if farm and frappe.db.has_column("Packing Teams", "sales_farm"):
+		teams = frappe.get_all("Packing Teams", filters={"sales_farm": farm}, pluck="name", order_by="name")
+		if teams:
+			return teams
+	return frappe.get_all("Packing Teams", pluck="name", order_by="name")
+
+
 @frappe.whitelist()
 def fetchPackhouseQCFormData():
 	try:
@@ -3744,6 +3756,25 @@ def fetchPackhouseQCFormData():
 			return ""
 
 		today = frappe.utils.today()
+		# Grading QC grades ahead of dispatch, so it lists orders delivering tomorrow
+		# through 3 days out instead of today's orders.
+		grading = data.get("inspection_mode") == "Grading QC"
+		date_vals = {
+			"today": today,
+			"d_from": frappe.utils.add_days(today, 1),
+			"d_to": frappe.utils.add_days(today, 3),
+		}
+		# Older upande_packhouse versions have no delivery_date on the OPL.
+		delivery = (
+			"COALESCE(opl.delivery_date, so.delivery_date)"
+			if frappe.db.has_column("Order Pick List", "delivery_date")
+			else "so.delivery_date"
+		)
+		date_cond = (
+			delivery + " BETWEEN %(d_from)s AND %(d_to)s"
+			if grading
+			else "(opl.date_created = %(today)s OR so.delivery_date = %(today)s)"
+		)
 
 		def todays_orders_by_spec(specs):
 			"""Spec name -> set of today's OPL names matching it."""
@@ -3759,10 +3790,9 @@ def fetchPackhouseQCFormData():
 				" INNER JOIN `tabPacking Guide` pg ON pg.parent = opl.name"
 				" LEFT JOIN `tabSales Order` so ON so.name = opl.sales_order"
 				" WHERE opl.docstatus < 2"
-				"   AND (opl.date_created = %(today)s OR so.delivery_date = %(today)s)"
-				"   AND opl.customer IN %(customers)s"
+				"   AND " + date_cond + "   AND opl.customer IN %(customers)s"
 				"   AND pg.variety IS NOT NULL AND pg.variety != ''",
-				{"today": today, "customers": tuple(customers)},
+				{**date_vals, "customers": tuple(customers)},
 				as_dict=1,
 			)
 			if not pg_rows:
@@ -3819,21 +3849,24 @@ def fetchPackhouseQCFormData():
 		# and/or the selected Specification (only that spec's matching orders).
 		team_filter = data.get("team", "").strip() if data.get("team") else ""
 		# Drafts are included and can be QC'd like submitted orders; cancelled are excluded.
-		opl_conds = ["docstatus < 2"]
-		opl_vals = {}
+		opl_conds = ["opl.docstatus < 2"]
+		opl_vals = dict(date_vals)
+		if grading and team_filter:
+			opl_conds.append(date_cond)
 		if spec_filter:
 			# An empty tuple is invalid SQL, so a spec with no matches gets a
 			# name that can never exist.
-			opl_conds.append("name IN %(spec_opls)s")
+			opl_conds.append("opl.name IN %(spec_opls)s")
 			opl_vals["spec_opls"] = tuple(spec_matches.get(spec_filter) or ("",))
 		if team_filter:
-			opl_conds.append("team = %(team)s")
+			opl_conds.append("opl.team = %(team)s")
 			opl_vals["team"] = team_filter
 		opl_rows = frappe.db.sql(
-			"SELECT name, customer, team, farm,"
-			" custom_total_stems, order_name, schedule_number, docstatus"
-			" FROM `tabOrder Pick List`"
-			" WHERE " + " AND ".join(opl_conds) + " ORDER BY docstatus ASC, modified DESC LIMIT 300",
+			"SELECT opl.name, opl.customer, opl.team, opl.farm,"
+			" opl.custom_total_stems, opl.order_name, opl.schedule_number, opl.docstatus"
+			" FROM `tabOrder Pick List` opl"
+			" LEFT JOIN `tabSales Order` so ON so.name = opl.sales_order"
+			" WHERE " + " AND ".join(opl_conds) + " ORDER BY opl.docstatus ASC, opl.modified DESC LIMIT 300",
 			opl_vals,
 			as_dict=1,
 		)
@@ -4292,6 +4325,7 @@ def fetchPackhouseQCFormData():
 			"qc_incharge_options": [dict(u) for u in incharge_rows],
 			"pending_quarantine_stems": pending_quarantine_stems,
 			"airport_return_detail": airport_return_detail,
+			"packing_teams": packing_teams(data.get("farm")),
 		}
 
 	except Exception as e:
