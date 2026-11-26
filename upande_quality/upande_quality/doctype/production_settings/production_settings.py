@@ -71,10 +71,10 @@ def discard_age_resolver():
 	Packhouse) wins; else a Discard Age by Item Group row listing the variety; else its item group's row
 	(one with no varieties) in Discard Age by Item Group, or the nearest
 	parent group with a row (Spray Roses covers Spray Roses - Bombastics); else the top-level
-	Discard Age (5 when blank). age.fallback(item) skips the variety's own age. Build one per
+	Discard Age. age.fallback(item) skips the variety's own age. Build one per
 	request and reuse it in loops; lookups are cached inside."""
 	ps = frappe.get_cached_doc("Production Settings")
-	default = flt(ps.discard_age) or 5.0
+	default = flt(ps.discard_age)
 	ages, variety_ages = {}, {}
 	for r in ps.get("discard_age_by_item_group") or []:
 		if not r.item_group or flt(r.discard_age) <= 0:

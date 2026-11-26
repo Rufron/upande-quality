@@ -5,7 +5,7 @@
 # (no imports; no augmented assignment on dict/list items; frappe.db.sql ok).
 
 CAP = 2
-OLD_DAYS = 5
+OLD_DAYS = frappe.utils.flt(frappe.db.get_single_value('Production Settings', 'discard_age'))
 
 farm = frappe.form_dict.get('farm') or ''
 farms = [f.strip() for f in farm.split(',') if f.strip()] if farm else []

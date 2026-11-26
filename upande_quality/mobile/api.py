@@ -2910,6 +2910,24 @@ def _shelf_sort_key(shelf):
 	return (0, m.group(1), int(m.group(2)), m.group(3))
 
 
+def _quality_b_sql(alias="opl"):
+	"""SQL true for a Quality B pick list: it is submitted when it is made, yet its remote buckets still wait
+	at their farm for whichever truck collects them."""
+	if not frappe.db.has_column("Order Pick List", "quality_b"):
+		return "0"
+	return "IFNULL(" + alias + ".quality_b, 0) = 1"
+
+
+def _quality_b_opls(opls):
+	"""The Quality B pick lists among `opls`."""
+	opls = [o for o in (opls or []) if o]
+	if not opls or not frappe.db.has_column("Order Pick List", "quality_b"):
+		return set()
+	return set(
+		frappe.get_all("Order Pick List", filters={"name": ["in", opls], "quality_b": 1}, pluck="name")
+	)
+
+
 def _row_farm(r):
 	"""The farm a pick row's bucket is at: the row's own farm (the shelf it was
 	allocated from), else the first word of its warehouse. Reused bucket ids leave an
@@ -3351,12 +3369,15 @@ def fetchAllocatedBuckets():
 			show_unscheduled = frappe.utils.cint(
 				frappe.get_cached_doc("Production Settings").get("show_unscheduled_in_bucket_requests")
 			)
+			# Quality B: no truck is planned for it; the farm loads it onto the truck that collects it.
+			quality_b = _quality_b_opls(list(opl_map))
 			pick_list_items = [
 				it
 				for it in pick_list_items
 				if it["parent"] in opl_map
 				and (
 					(it.get("transfer_priority") or "") == "ASAP"
+					or it["parent"] in quality_b
 					or (
 						not int(opl_map[it["parent"]].get("docstatus") or 0)
 						and (
@@ -3521,8 +3542,10 @@ def fetchAllocatedBuckets():
 						"scheduled": 1
 						if item["parent"] in on_farm_trip
 						or item["parent"] in awaiting_truck
+						or item["parent"] in quality_b
 						or (item.get("transfer_priority") or "") == "ASAP"
 						else 0,
+						"quality_b": 1 if item["parent"] in quality_b else 0,
 						# scheduled for packing, no truck assigned yet: prepare it on a trolley
 						"awaiting_truck": 1 if item["parent"] in awaiting_truck else 0,
 					}
@@ -4857,7 +4880,10 @@ def getFarmPlannedTrips():
 				WHERE pli.parenttype = 'Order Pick List' AND pli.awaiting_transfer = 1
 				  AND pli.in_transit = 0 AND IFNULL(pli.bucket, '') != ''
 				  AND COALESCE(NULLIF(pli.farm, ''), SUBSTRING_INDEX(pli.source_warehouse, ' ', 1)) = %(farm)s
-				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND IFNULL(pli.transfer_priority, '') = 'ASAP'))
+				  AND (opl.docstatus = 0 OR (opl.docstatus = 1 AND (IFNULL(pli.transfer_priority, '') = 'ASAP'
+				       OR """
+				+ _quality_b_sql()
+				+ """)))
 				  AND (so.delivery_date IS NULL OR so.delivery_date >= %(today)s)""",
 				{"farm": farm_name, "today": frappe.utils.today()},
 				as_dict=True,
@@ -4890,11 +4916,20 @@ def getFarmPlannedTrips():
 				"Order Pick List", filters={"name": ["in", opl_list]}, fields=["name", "team"]
 			):
 				opl_teams[o.name] = o.get("team") or ""
+			quality_b = _quality_b_opls(opl_list)
 			out = {}
 			for op in opl_list:
 				sc = all_schedules.get(op) or {}
 				team = sc.get("team") or opl_teams.get(op) or ""
-				if team or sc:
+				if op in quality_b:
+					# loaded onto whichever truck collects it: never waits for a schedule or a trip
+					out[op] = {
+						"team": team,
+						"schedule": sc.get("schedule") or 0,
+						"scheduled": 1,
+						"quality_b": 1,
+					}
+				elif team or sc:
 					out[op] = {"team": team, "schedule": sc.get("schedule") or 0, "scheduled": 1 if sc else 0}
 			return out
 
@@ -5428,7 +5463,9 @@ def getInTransitBuckets():
                    pli.shelved AS shelved, pli.issued AS issued,
                    opl.order_name AS order_name, opl.customer AS customer,
                    opl.farm AS farm, opl.creation AS created,
-                   so.delivery_date AS delivery_date
+                   so.delivery_date AS delivery_date, """
+			+ _quality_b_sql()
+			+ """ AS quality_b
             -- Driven from the day's Sales Orders (indexed on delivery_date)
             -- down to their pick lists, rather than scanning every pick row.
             FROM `tabSales Order` so
@@ -5464,6 +5501,8 @@ def getInTransitBuckets():
 					"buckets": [],
 					"shelved_count": 0,
 					"issued_count": 0,
+					# Quality B: received in one go on the app (no shelving), and issued then
+					"quality_b": 1 if r.get("quality_b") else 0,
 				}
 				order_map[opl] = grp
 				order_list = order_list + [grp]
@@ -5527,7 +5566,14 @@ def getInTransitBuckets():
 			g["schedule"] = int(sc.sequence or 0) if sc else 0
 			g["team"] = (sc.team if sc else "") or ""
 		groups.sort(key=lambda g: (not g["schedule"], g["schedule"], g["team"], g["delivery_date"]))
-		first = next((g for g in groups if g["shelved_count"] < g["total"] and not g["issued_count"]), None)
+		first = next(
+			(
+				g
+				for g in groups
+				if g["shelved_count"] < g["total"] and not g["issued_count"] and not g["quality_b"]
+			),
+			None,
+		)
 		for g in groups:
 			g["shelve_next"] = g is first
 
@@ -6925,14 +6971,11 @@ def gradingReplacementOptions():
 	bucket_in = (data.get("bucket_id") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	def latest_harvest_dates(bucket_ids):
 		if not bucket_ids:
@@ -7285,14 +7328,11 @@ def listBunchDestinations():
 	exclude_bucket = (data.get("exclude_bucket") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	def latest_harvest_dates(bucket_ids):
 		if not bucket_ids:
@@ -7529,14 +7569,11 @@ def listReplacementCandidates():
 	bucket_id = (data.get("bucket_id") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	def latest_harvest_dates(bucket_ids):
 		if not bucket_ids:
@@ -9020,14 +9057,11 @@ def replaceBunchInOpl():
 	reason = (data.get("reason") or "Bunch replacement").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
@@ -9296,14 +9330,11 @@ def replaceStems():
 	reason = (data.get("reason") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
@@ -10467,7 +10498,9 @@ def setOfflineTrolleyFlags():
 							       -- Another order's row only when the farm app works that order:
 							       -- delivering today or later, a draft (or an ASAP replacement).
 							       AND (so.delivery_date IS NULL OR so.delivery_date >= %(today)s)
-							       AND (opl.docstatus = 0 OR IFNULL(pli.transfer_priority, '') = 'ASAP')))""",
+							       AND (opl.docstatus = 0 OR IFNULL(pli.transfer_priority, '') = 'ASAP' OR """
+							+ _quality_b_sql()
+							+ """)))""",
 							{"b": bucket, "p": parent, "f": farm, "today": frappe.utils.today()},
 							as_dict=True,
 						)
@@ -13842,7 +13875,10 @@ def transferBucket():
 		mid_transfer = frappe.db.sql(
 			"""
             SELECT pli.name FROM `tabPick List Item` pli
-            JOIN `tabOrder Pick List` opl ON opl.name = pli.parent AND opl.docstatus = 0
+            JOIN `tabOrder Pick List` opl ON opl.name = pli.parent
+              AND (opl.docstatus = 0 OR """
+			+ _quality_b_sql()
+			+ """)
             WHERE pli.parenttype = 'Order Pick List' AND pli.bucket = %s
               AND (pli.awaiting_transfer = 1 OR pli.in_transit = 1
                    OR pli.loaded_in_trolley = 1) LIMIT 1""",
