@@ -120,7 +120,9 @@ def get_options():
 	}
 
 
-def _requests(origin=None, state=None, farms=None, date_from=None, date_to=None):
+def _requests(origin=None, state=None, farms=None, date_from=None, date_to=None, states=None):
+	"""`state` is one status; `states` is a list of them (either keeps a request whose status is in the set)."""
+	wanted = set(states or ([state] if state else []))
 	cond, p = ["1=1"], {}
 	if origin == "System":
 		cond.append("dr.owner = 'Administrator'")
@@ -155,17 +157,18 @@ def _requests(origin=None, state=None, farms=None, date_from=None, date_to=None)
 		r["waiting_stems"] = r["stems"] - r["done_stems"] if r["state"] == "Approved" else 0
 		r["creation"] = str(r["creation"])
 		r["requested_date"] = str(r["requested_date"] or "")
-		if state and r["state"] != state:
+		if wanted and r["state"] not in wanted:
 			continue
 		out.append(r)
 	return out
 
 
 @frappe.whitelist()
-def get_overview(origin=None, state=None, farms=None, date_from=None, date_to=None):
-	"""Requests (newest first) with totals and the breakdowns behind the charts."""
+def get_overview(origin=None, state=None, farms=None, date_from=None, date_to=None, states=None):
+	"""Requests (newest first) with totals and the breakdowns behind the charts. `states` (optional list, JSON or
+	comma separated) keeps requests in any of those statuses in one call; `state` still takes a single one."""
 	_need()
-	reqs = _requests(origin, state, _list(farms), date_from, date_to)
+	reqs = _requests(origin, state, _list(farms), date_from, date_to, _list(states))
 	k = {
 		"requests": len(reqs),
 		"system": 0,

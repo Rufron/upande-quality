@@ -1,0 +1,526 @@
+{% extends "templates/web.html" %}
+{% block title %}Quality Trends · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Insights</div>
+    <h1 class="ph-head__title">Quality Trends</h1>
+    <p class="ph-head__sub" id="sub">Diseases, other quality concerns &amp; pest trends by farm with Pareto cumulative %</p>
+  </div>
+  <div class="ph-head__tools">
+    <button class="ph-btn" id="export" type="button" disabled>Export CSV</button>
+  </div>
+</header>
+
+<div class="ph-filters">
+  <div id="f-farm"></div>
+  <div id="f-variety"></div>
+  <div id="f-ghouse"></div>
+  <div id="f-param"></div>
+  <div id="f-year"></div>
+  <div id="f-week"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="presets"><button data-value="7d">7 days</button><button data-value="14d">14 days</button><button data-value="30d">30 days</button><button data-value="mtd">This month</button></div>
+  <div class="ph-daterange"><input type="date" id="from"><span class="ph-daterange__sep">–</span><input type="date" id="to"></div>
+  <button class="ph-btn ph-btn--ghost ph-btn--sm" id="clear-dates" type="button">All dates</button>
+</div>
+<div id="chips"></div>
+
+<section class="ph-kpis" id="kpis"></section>
+<div id="notice"></div>
+
+<div class="ph-row ph-row--2" id="sec-disease">
+  <section class="ph-card">
+    <div class="ph-card__head"><h2 class="ph-card__title">Diseases (Sum of Stems)</h2></div>
+    <div class="ph-chart ph-chart--lg"><canvas id="chartDiseasesSum"></canvas></div>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><h2 class="ph-card__title">Diseases (Count)</h2></div>
+    <div class="ph-chart ph-chart--lg"><canvas id="chartDiseasesCount"></canvas></div>
+  </section>
+</div>
+
+<div class="ph-row ph-row--2" id="sec-other">
+  <section class="ph-card">
+    <div class="ph-card__head"><h2 class="ph-card__title">Other Quality Concerns (Sum of Stems)</h2></div>
+    <div class="ph-chart ph-chart--lg"><canvas id="chartOthersSum"></canvas></div>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><h2 class="ph-card__title">Other Quality Concerns (Count)</h2></div>
+    <div class="ph-chart ph-chart--lg"><canvas id="chartOthersCount"></canvas></div>
+  </section>
+</div>
+
+<div class="ph-row ph-row--2" id="sec-pest">
+  <section class="ph-card">
+    <div class="ph-card__head"><h2 class="ph-card__title">Pests (Sum of Stems)</h2></div>
+    <div class="ph-chart ph-chart--lg"><canvas id="chartPestsSum"></canvas></div>
+  </section>
+  <section class="ph-card">
+    <div class="ph-card__head"><h2 class="ph-card__title">Pests (Count)</h2></div>
+    <div class="ph-chart ph-chart--lg"><canvas id="chartPestsCount"></canvas></div>
+  </section>
+</div>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <h2 class="ph-card__title">Concerns by parameter <span class="ph-badge" id="pt-count"></span></h2>
+    <div class="ph-card__tools"><span class="ph-card__meta" id="pt-meta"></span></div>
+  </div>
+  <div id="ptbl"></div>
+</section>
+
+<section class="ph-card ph-card--flush">
+  <div class="ph-card__head">
+    <h2 class="ph-card__title">By farm <span class="ph-badge" id="ft-count"></span></h2>
+    <div class="ph-card__tools"><span class="ph-card__meta" id="ft-meta"></span></div>
+  </div>
+  <div id="ftbl"></div>
+</section>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% raw %}
+<script>
+/* Upande UFD :: Mona chart theming — global Chart.js defaults + identifiable bar colours */
+(function(){
+  var PAL=["#228883","#b45309","#3d54b0","#5d8230","#8466c7","#c4302b","#a16207","#2b7ab0","#0a0a0a","#9d4e6c","#5a8a3a","#c98a2b"];
+  function go(){
+    if(typeof Chart==="undefined"){return setTimeout(go,150);}
+    try{
+      Chart.defaults.font.family="'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+      Chart.defaults.color="#8a8780";
+      Chart.defaults.borderColor="rgba(10,10,10,0.06)";
+      if(!window.__ufdMonaReg){
+        window.__ufdMonaReg=1;
+        Chart.register({
+          id:"ufdMonaColors",
+          beforeUpdate:function(chart){
+            var t=chart.config.type;
+            var bars=(chart.data.datasets||[]).filter(function(d){return (d.type||t)==="bar";});
+            if(bars.length===1){
+              var d=bars[0];
+              d.backgroundColor=(d.data||[]).map(function(_,i){return PAL[i%PAL.length];});
+            }else if(bars.length>1){
+              bars.forEach(function(d,i){ if(typeof d.backgroundColor!=="function"){ d.backgroundColor=PAL[i%PAL.length]; }});
+            }
+          }
+        });
+      }
+    }catch(e){}
+  }
+  go();
+})();
+</script>
+<script>
+(function(){
+    "use strict";
+
+    var chartInstances = {};
+
+    Chart.defaults.font.family = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = "#6c7178";
+    Chart.defaults.plugins.legend.display = false;
+
+    // ── Color palettes per group ───────────────────────────────────────
+    var DISEASE_COLORS = ["#1a6e7e","#f0a73a","#7c5cfc","#4dc9c9","#8e44ad","#2490ef","#e63757"];
+    var OTHER_COLORS = [
+        "#2490ef","#d4c77f","#e63757","#4dc9c9","#c0c0c0","#29cd42",
+        "#fc9c30","#7c5cfc","#1a6e7e","#f0a73a","#8e44ad","#3498db",
+        "#e74c3c","#2ecc71","#9b59b6","#1abc9c","#d35400","#c0392b",
+        "#27ae60","#2980b9","#f39c12","#8e44ad","#16a085","#d35400",
+        "#c0392b","#7f8c8d","#2c3e50"
+    ];
+    var PEST_COLORS = [
+        "#1a6e7e","#88c4a8","#e63757","#6ecfcf","#d4c77f","#3a7d44",
+        "#f0a73a","#6b4fa0","#4dc9c9","#c0392b","#2980b9","#8e44ad",
+        "#16a085","#d35400","#f39c12","#27ae60","#e74c3c","#9b59b6",
+        "#1abc9c","#2c3e50"
+    ];
+
+    // ── Stacked bar (by farm) + Pareto cumulative-% line ───────────────
+    // data rows: [{parameter_name, farm, <valueKey>}]
+    function renderBar(canvasId, data, colors, valueKey){
+        if(chartInstances[canvasId]){
+            chartInstances[canvasId].destroy();
+            chartInstances[canvasId] = null;
+        }
+        data = data || [];
+
+        var totals = {}, farmsSet = {}, lut = {};
+        data.forEach(function(d){
+            var p = d.parameter_name || "--", f = d.farm || "—", v = Number(d[valueKey] || 0);
+            totals[p] = (totals[p] || 0) + v;
+            farmsSet[f] = true;
+            lut[p + "||" + f] = (lut[p + "||" + f] || 0) + v;
+        });
+        // parameters sorted by total descending (Pareto order)
+        var params = Object.keys(totals).sort(function(a, b){ return totals[b] - totals[a]; });
+        var farms = Object.keys(farmsSet).sort();
+        var labels = params.map(function(p){ return truncate(p, 14); });
+
+        var datasets = farms.map(function(f, i){
+            return {
+                type: "bar", label: f, stack: "s", yAxisID: "y",
+                data: params.map(function(p){ return lut[p + "||" + f] || 0; }),
+                backgroundColor: colors[i % colors.length], borderWidth: 0, maxBarThickness: 40
+            };
+        });
+        // cumulative %
+        var grand = params.reduce(function(s, p){ return s + totals[p]; }, 0) || 1;
+        var cum = 0;
+        var cumPct = params.map(function(p){ cum += totals[p]; return Math.round(cum / grand * 1000) / 10; });
+        datasets.push({
+            type: "line", label: "Cumulative %", data: cumPct, yAxisID: "yPct",
+            borderColor: "#1a1a1a", backgroundColor: "transparent", borderWidth: 2,
+            pointRadius: 3, tension: 0.2
+        });
+
+        var ctx = document.getElementById(canvasId).getContext("2d");
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: "bar",
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: "bottom", labels: { boxWidth: 10, padding: 6, font: { size: 9 } } },
+                    tooltip: {
+                        backgroundColor: "#1a1a1a", cornerRadius: 6, padding: 10,
+                        callbacks: {
+                            label: function(ctx){
+                                return ctx.dataset.type === "line"
+                                    ? (ctx.dataset.label + ": " + ctx.parsed.y + "%")
+                                    : (ctx.dataset.label + ": " + num(ctx.parsed.y));
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 45, minRotation: 0, font: { size: 9 } } },
+                    y: { stacked: true, beginAtZero: true, position: "left", grid: { color: "rgba(0,0,0,0.04)" }, ticks: { font: { size: 10 }, callback: function(v){ return shortNum(v); } } },
+                    yPct: { beginAtZero: true, max: 100, position: "right", grid: { drawOnChartArea: false }, ticks: { font: { size: 9 }, callback: function(v){ return v + "%"; } } }
+                }
+            }
+        });
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+    function num(n){
+        if(n === null || n === undefined) return "--";
+        return Number(n).toLocaleString();
+    }
+
+    function shortNum(v){
+        if(v >= 1000000) return (v / 1000000).toFixed(1) + "M";
+        if(v >= 1000) return (v / 1000).toFixed(1) + "k";
+        return v;
+    }
+
+    function truncate(s, maxLen){
+        s = String(s || "");
+        return s.length > maxLen ? s.substring(0, maxLen) + "..." : s;
+    }
+
+    window.QT = { renderBar: renderBar, DISEASE_COLORS: DISEASE_COLORS, OTHER_COLORS: OTHER_COLORS, PEST_COLORS: PEST_COLORS };
+})();
+</script>
+<script>
+(function () {
+  "use strict";
+  const N = (v) => PH.fmt.num(v);
+  const GROUPS = {
+    disease: { label: "Disease", plural: "Diseases", items: ["Botrytis", "Rust", "Fresh Powdery Mildew", "Fresh Downy Mildew", "Dry Downy Mildew"] },
+    pest: { label: "Pest", plural: "Pests", items: ["Helicoverpa Egg", "Helicoverpa Larvae", "Helicoverpa Damage", "FCM Egg", "FCM Damages", "FCM Larvae", "Spodoptera Damage", "Spodoptera Egg", "Spodoptera Larvae", "Thrips", "Thrips Damage", "Mite Damage", "Mites", "Mealy Bugs", "Aphids", "Live Aphids", "White Flies", "Slugs", "Leaf Miner", "Live Suckers"] },
+    other: { label: "Other concern", plural: "Other concerns", items: ["Scorching", "Advanced Cut Stage", "Tight Cut Stage", "Mixed Cut Stage", "Short Stem", "Wrong Length", "Chlorosis", "Petal Blackening", "Leaf Blackening", "Pelican Heads", "Less Buds", "Bruises", "Broken Stem", "Mixed Variety", "Drooping", "Poor Defoliation", "Wrong Bucket Rates", "Wrong Variety", "Weak Stems", "Sunburns", "Poor Sizing", "Limp Necks", "Late De-suckering", "Hooks", "Fine Stems", "Crooked Stems", "Bull Heads", "Severe Chemical Residue", "Black Spot"] },
+  };
+  const GROUP_OF = {};
+  Object.keys(GROUPS).forEach((g) => GROUPS[g].items.forEach((p) => (GROUP_OF[p] = g)));
+  const SECTIONS = { disease: "#sec-disease", other: "#sec-other", pest: "#sec-pest" };
+
+  const st = PH.state({ year: "", week: "", from: "", to: "", farm: "", variety: "", ghouse: "", param: "" });
+  const SERVER_KEYS = ["year", "week", "from", "to", "farm", "variety", "ghouse"];
+
+  /* ── filters ── */
+  const farmMs = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: [], multiSite: true, plural: "farms", all: "All farms" });
+  const varietyMs = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All varieties" });
+  const ghouseMs = PH.multiselect("#f-ghouse", st, "ghouse", { label: "Greenhouse", options: [], plural: "greenhouses", all: "All greenhouses" });
+  PH.multiselect("#f-param", st, "param", {
+    label: "Parameter",
+    options: Object.keys(GROUPS).map((g) => ({ group: GROUPS[g].plural, items: GROUPS[g].items })),
+    multiSite: true, plural: "parameters", all: "All parameters",
+  });
+  const yearMs = PH.multiselect("#f-year", st, "year", { label: "Year", options: [], plural: "years", all: "All years", search: false });
+  const weekMs = PH.multiselect("#f-week", st, "week", { label: "Week", options: [], plural: "weeks", all: "All weeks" });
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.activeFilters("#chips", st, [
+    { key: "farm", label: "Farm", multi: true }, { key: "variety", label: "Variety", multi: true },
+    { key: "ghouse", label: "Greenhouse", multi: true }, { key: "param", label: "Parameter", multi: true },
+    { key: "year", label: "Year", multi: true }, { key: "week", label: "Week", multi: true },
+    { key: "from", label: "From", text: (v) => PH.fmt.date(v, true) }, { key: "to", label: "To", text: (v) => PH.fmt.date(v, true) },
+  ]);
+  document.getElementById("clear-dates").addEventListener("click", () => st.set({ from: "", to: "" }));
+
+  /* ── state ── */
+  let RAW = null; // last server answer
+  let ROWS = [];  // merged {param, group, farm, stems, occ}
+  let gen = 0;
+  let loading = false;      // a request is in flight
+  let loadedFarms = [];     // farm filter the last answer was fetched with
+  let optSig = "";          // option lists are only rebuilt when they changed
+
+  function args() {
+    const s = st.get();
+    return { year: s.year, week: s.week, from_date: s.from, to_date: s.to, farm: s.farm, variety: s.variety, ghouse: s.ghouse };
+  }
+
+  function load() {
+    const my = ++gen;
+    loading = true;
+    const reqFarms = PH.values(st.get("farm"));
+    PH.kpiSkeleton("#kpis", ["Total reports", "Stems checked", "Pests", "Diseases", "Other concerns"]);
+    PH.set("#notice", "");
+    PH.call("fetchTrendsData", args()).then((msg) => {
+      if (my !== gen) return;
+      loading = false;
+      loadedFarms = reqFarms;
+      RAW = msg || {};
+      const fo = RAW.filter_options || {};
+      const sig = JSON.stringify(fo);
+      if (sig !== optSig) {
+      optSig = sig;
+      yearMs.setOptions((fo.years || []).map(String));
+      weekMs.setOptions((fo.weeks || []).map(String));
+      const farms = fo.farms || Array.from(new Set(["sum", "count"].reduce((a, k) => a.concat(["pests_", "diseases_", "others_"].reduce((b, g) => b.concat((RAW[g + k] || []).map((r) => r.farm || "")), [])), []))).filter(Boolean).sort();
+      farmMs.setOptions(farmGroups(farms));
+      varietyMs.setOptions(fo.varieties || []);
+      ghouseMs.setOptions(fo.ghouses || []);
+      }
+      paint();
+      PH.markUpdated();
+    }).catch((e) => {
+      if (my !== gen) return;
+      loading = false;
+      RAW = null;
+      PH.kpis("#kpis", []);
+      PH.set("#notice", '<div class="ph-notice ph-notice--bad">Could not load trends: ' + PH.esc(e.message) + ' <button class="ph-link" id="retry" type="button">Try again</button></div>');
+      const r = document.getElementById("retry");
+      if (r) r.onclick = load;
+    });
+  }
+
+  function farmGroups(farms) {
+    const used = new Set(), groups = [];
+    Object.keys(PH.REGIONS).forEach((r) => {
+      const items = PH.REGIONS[r].filter((f) => farms.includes(f));
+      items.forEach((f) => used.add(f));
+      if (items.length) groups.push({ group: r, items });
+    });
+    const rest = farms.filter((f) => !used.has(f));
+    if (rest.length) groups.push({ group: groups.length ? "Other farms" : "Farms", items: rest });
+    return groups;
+  }
+
+  function tag(rows, g, key) {
+    return (rows || []).map((r) => Object.assign({ _g: g, _k: key }, r));
+  }
+
+  /* rows that pass the client-side filters (farm too, so an older server answer still narrows) */
+  function passes(r) {
+    const farms = PH.values(st.get("farm")), params = PH.values(st.get("param"));
+    return (!farms.length || farms.includes(r.farm || "")) && (!params.length || params.includes(r.parameter_name));
+  }
+  const pick = (k) => ((RAW && RAW[k]) || []).filter(passes);
+
+  function merge() {
+    const map = {};
+    [["diseases", "disease"], ["pests", "pest"], ["others", "other"]].forEach(([k, g]) => {
+      pick(k + "_sum").forEach((r) => {
+        const key = r.parameter_name + "||" + (r.farm || "");
+        (map[key] = map[key] || { param: r.parameter_name, group: g, farm: r.farm || "", stems: 0, occ: 0 }).stems += +r.total_count || 0;
+      });
+      pick(k + "_count").forEach((r) => {
+        const key = r.parameter_name + "||" + (r.farm || "");
+        (map[key] = map[key] || { param: r.parameter_name, group: g, farm: r.farm || "", stems: 0, occ: 0 }).occ += +r.occurrence_count || 0;
+      });
+    });
+    return Object.keys(map).map((k) => map[k]);
+  }
+
+  /* ── tables ── */
+  const ptbl = PH.table("#ptbl", {
+    columns: [
+      { key: "param", label: "Parameter", sortable: true, cls: "is-strong" },
+      { key: "groupLabel", label: "Group", sortable: true, html: (v, r) => '<span class="ph-badge' + (r.group === "disease" ? " ph-badge--bad" : r.group === "pest" ? " ph-badge--warn" : "") + '">' + PH.esc(v) + "</span>" },
+      { key: "stems", label: "Stems", num: true, sortable: true, format: N, total: true },
+      { key: "occ", label: "Occurrences", num: true, sortable: true, format: N, total: true },
+      { key: "share", label: "Share of group", num: true, sortable: true, format: (v) => PH.fmt.num(v, 1) + "%" },
+      { key: "farms", label: "Farms", num: true, sortable: true, format: N },
+      { key: "topFarm", label: "Worst farm", sortable: true },
+    ],
+    rows: [], sort: { key: "stems", dir: "desc" }, tall: true,
+    emptyText: "No concerns recorded for these filters.",
+    onRowClick: (r) => paramModal(r),
+  });
+  const ftbl = PH.table("#ftbl", {
+    columns: [
+      { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+      { key: "reports", label: "Reports", num: true, sortable: true, format: N, total: true },
+      { key: "checked", label: "Stems checked", num: true, sortable: true, format: N, total: true },
+      { key: "pests", label: "Pests", num: true, sortable: true, format: N, total: true },
+      { key: "diseases", label: "Diseases", num: true, sortable: true, format: N, total: true },
+      { key: "others", label: "Other concerns", num: true, sortable: true, format: N, total: true },
+      { key: "rate", label: "Per 1,000 stems", num: true, sortable: true, format: (v) => (v == null ? "—" : PH.fmt.num(v, 1)) },
+    ],
+    rows: [], sort: { key: "rate", dir: "desc" }, tall: true,
+    emptyText: "No farms for these filters.",
+    onRowClick: (r) => farmModal(r),
+  });
+
+  function buildParamRows(rows) {
+    const byParam = {}, groupTotal = { disease: 0, pest: 0, other: 0 };
+    rows.forEach((r) => {
+      const p = (byParam[r.param] = byParam[r.param] || { param: r.param, group: r.group, groupLabel: GROUPS[r.group].plural, stems: 0, occ: 0, fm: {} });
+      p.stems += r.stems; p.occ += r.occ; p.fm[r.farm] = (p.fm[r.farm] || 0) + r.stems;
+      groupTotal[r.group] += r.stems;
+    });
+    return Object.keys(byParam).map((k) => {
+      const p = byParam[k], fl = Object.keys(p.fm).sort((a, b) => p.fm[b] - p.fm[a]);
+      p.share = groupTotal[p.group] ? (p.stems / groupTotal[p.group]) * 100 : 0;
+      p.farms = fl.length; p.topFarm = fl.length ? (fl[0] || "—") : "—";
+      return p;
+    });
+  }
+
+  function buildFarmRows(rows) {
+    const map = {};
+    const get = (f) => (map[f] = map[f] || { farm: f || "—", reports: null, checked: null, pests: 0, diseases: 0, others: 0 });
+    ((RAW && RAW.farm_totals) || []).forEach((t) => {
+      const farms = PH.values(st.get("farm"));
+      if (farms.length && !farms.includes(t.farm || "")) return;
+      const r = get(t.farm || ""); r.reports = +t.reports || 0; r.checked = +t.stems_checked || 0;
+    });
+    rows.forEach((r) => { get(r.farm)[r.group === "pest" ? "pests" : r.group === "disease" ? "diseases" : "others"] += r.stems; });
+    return Object.keys(map).map((k) => {
+      const r = map[k];
+      r.rate = r.checked ? ((r.pests + r.diseases + r.others) / r.checked) * 1000 : null;
+      return r;
+    });
+  }
+
+  function paramModal(p) {
+    const rows = ROWS.filter((r) => r.param === p.param);
+    const checked = {};
+    ((RAW && RAW.farm_totals) || []).forEach((t) => (checked[t.farm || ""] = +t.stems_checked || 0));
+    const data = rows.map((r) => ({ farm: r.farm || "—", stems: r.stems, occ: r.occ, share: p.stems ? (r.stems / p.stems) * 100 : 0, rate: checked[r.farm] ? (r.stems / checked[r.farm]) * 1000 : null }));
+    PH.modal({
+      title: p.param, sub: GROUPS[p.group].label + " · " + N(p.stems) + " stems in " + N(p.occ) + " occurrences", size: "lg",
+      body: '<div id="pm-tbl"></div>',
+      actions: [{ label: "Export CSV", onClick: () => { PH.csv("trends-" + p.param.replace(/\W+/g, "-").toLowerCase() + ".csv", data, [{ key: "farm", label: "Farm" }, { key: "stems", label: "Stems" }, { key: "occ", label: "Occurrences" }, { key: "share", label: "Share %", csv: (v) => PH.fmt.num(v, 1) }, { key: "rate", label: "Per 1,000 stems checked", csv: (v) => (v == null ? "" : PH.fmt.num(v, 1)) }]); return false; } }, { label: "Close", primary: true }],
+    });
+    PH.table("#pm-tbl", {
+      columns: [
+        { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+        { key: "stems", label: "Stems", num: true, sortable: true, format: N, total: true },
+        { key: "occ", label: "Occurrences", num: true, sortable: true, format: N, total: true },
+        { key: "share", label: "Share", num: true, sortable: true, format: (v) => PH.fmt.num(v, 1) + "%" },
+        { key: "rate", label: "Per 1,000 stems checked", num: true, sortable: true, format: (v) => (v == null ? "—" : PH.fmt.num(v, 1)) },
+      ],
+      rows: data, sort: { key: "stems", dir: "desc" }, compact: true,
+    });
+  }
+
+  function farmModal(f) {
+    const key = f.farm === "—" ? "" : f.farm;
+    const data = buildParamRows(ROWS.filter((r) => r.farm === key)).sort((a, b) => b.stems - a.stems);
+    PH.modal({
+      title: f.farm, size: "lg",
+      sub: (f.reports == null ? "" : N(f.reports) + " reports · " + N(f.checked) + " stems checked · ") + N(f.pests + f.diseases + f.others) + " concern stems",
+      body: '<div id="fm-tbl"></div>',
+      actions: [{ label: "Close", primary: true }],
+    });
+    PH.table("#fm-tbl", {
+      columns: [
+        { key: "param", label: "Parameter", sortable: true, cls: "is-strong" },
+        { key: "groupLabel", label: "Group", sortable: true },
+        { key: "stems", label: "Stems", num: true, sortable: true, format: N, total: true },
+        { key: "occ", label: "Occurrences", num: true, sortable: true, format: N, total: true },
+        { key: "share", label: "Share of group", num: true, sortable: true, format: (v) => PH.fmt.num(v, 1) + "%" },
+      ],
+      rows: data, sort: { key: "stems", dir: "desc" }, compact: true, emptyText: "No concerns recorded for this farm.",
+    });
+  }
+
+  /* ── paint ── */
+  function paint() {
+    if (!RAW) return;
+    ROWS = merge();
+    const params = PH.values(st.get("param"));
+    const k = RAW.kpi || {};
+    const sumG = (g) => ROWS.filter((r) => r.group === g).reduce((a, r) => a + r.stems, 0);
+    const pests = sumG("pest"), diseases = sumG("disease"), others = sumG("other");
+    let checked = +k.total_stems_checked || 0, reports = +k.total_reports || 0;
+    const selFarms = PH.values(st.get("farm"));
+    if (RAW.farm_totals && selFarms.length) {
+      /* farm narrowed on the client: recompute the two totals from the per-farm totals */
+      const ft = RAW.farm_totals.filter((t) => selFarms.includes(t.farm || ""));
+      reports = ft.reduce((a, t) => a + (+t.reports || 0), 0);
+      checked = ft.reduce((a, t) => a + (+t.stems_checked || 0), 0);
+    }
+    PH.kpis("#kpis", [
+      { label: "Total reports", value: reports },
+      { label: "Stems checked", value: checked, title: N(checked) + " stems checked" },
+      { label: "Total pests", value: pests },
+      { label: "Total diseases", value: diseases },
+      { label: "Other concerns", value: others },
+    ]);
+
+    /* charts: same renderer and data as the original page; a section is hidden only when the parameter filter excludes its group */
+    const C = window.QT;
+    const feed = [
+      ["disease", "chartDiseasesSum", "diseases_sum", C.DISEASE_COLORS, "total_count"], ["disease", "chartDiseasesCount", "diseases_count", C.DISEASE_COLORS, "occurrence_count"],
+      ["other", "chartOthersSum", "others_sum", C.OTHER_COLORS, "total_count"], ["other", "chartOthersCount", "others_count", C.OTHER_COLORS, "occurrence_count"],
+      ["pest", "chartPestsSum", "pests_sum", C.PEST_COLORS, "total_count"], ["pest", "chartPestsCount", "pests_count", C.PEST_COLORS, "occurrence_count"],
+    ];
+    Object.keys(SECTIONS).forEach((g) => {
+      document.querySelector(SECTIONS[g]).hidden = !!params.length && !params.some((p) => GROUP_OF[p] === g);
+    });
+    feed.forEach((f) => {
+      if (!document.querySelector(SECTIONS[f[0]]).hidden) C.renderBar(f[1], pick(f[2]), f[3], f[4]);
+    });
+
+    const pr = buildParamRows(ROWS), fr = buildFarmRows(ROWS);
+    ptbl.update(pr); ftbl.update(fr);
+    PH.text("#pt-count", pr.length); PH.text("#ft-count", fr.length);
+    PH.text("#pt-meta", "Click a parameter for the farm breakdown");
+    PH.text("#ft-meta", RAW.farm_totals ? "Click a farm for its parameters" : "Reports and stems checked need the updated server script");
+    document.getElementById("export").disabled = !pr.length;
+    PH.text("#sub", N(pr.length) + (pr.length === 1 ? " parameter · " : " parameters · ") + N(fr.length) + (fr.length === 1 ? " farm" : " farms") + " · Pareto by farm");
+  }
+
+  document.getElementById("export").addEventListener("click", () => {
+    if (!ROWS.length) return;
+    PH.csv("quality-trends-" + PH.date.today() + ".csv", ROWS.map((r) => ({ group: GROUPS[r.group].plural, parameter: r.param, farm: r.farm || "—", stems: r.stems, occurrences: r.occ })), ["group", "parameter", "farm", "stems", "occurrences"].map((k) => ({ key: k, label: k })));
+  });
+
+  /* ── wiring: week and date range exclude each other (as on the original page) ── */
+  st.on((s, changed) => {
+    if (changed.includes("week") && s.week && (s.from || s.to)) return st.set({ from: "", to: "" });
+    if ((changed.includes("from") || changed.includes("to")) && (s.from || s.to) && s.week) return st.set({ week: "" });
+    if (changed.some((k) => SERVER_KEYS.includes(k))) {
+      /* only the farm changed and the answer on screen already holds every selected farm: narrow locally, no request */
+      const sel = PH.values(s.farm);
+      if (changed.length === 1 && changed[0] === "farm" && RAW && RAW.farm_totals && !loading &&
+          (!loadedFarms.length || (sel.length && sel.every((f) => loadedFarms.includes(f))))) return paint();
+      load();
+    } else paint();
+  });
+  PH.onRefresh(load);
+  load();
+})();
+</script>
+{% endraw %}
+{% endblock %}

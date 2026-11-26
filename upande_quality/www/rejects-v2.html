@@ -1,0 +1,382 @@
+{% extends "templates/web.html" %}
+{% block title %}Rejects · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Exceptions</div>
+    <h1 class="ph-head__title">Rejects</h1>
+    <p class="ph-head__sub" id="sub">Field and intake (quarantine) rejects across the pipeline.</p>
+  </div>
+  <div class="ph-head__tools"><button class="ph-btn" id="export" type="button">Export CSV</button></div>
+</header>
+
+<div class="ph-filters">
+  <div id="f-year"></div>
+  <div id="f-week"></div>
+  <div id="f-farm"></div>
+  <div id="f-variety"></div>
+  <div id="f-gh"></div>
+  <div id="f-reason"></div>
+  <div id="f-owner"></div>
+  <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search farm, variety, greenhouse, owner…"></div>
+  <span class="ph-filters__spacer"></span>
+  <div class="ph-pills" id="f-type"><button data-value="">All rejects</button><button data-value="field">Field</button><button data-value="intake">Intake</button></div>
+  <div class="ph-pills" id="presets"><button data-value="today">Today</button><button data-value="7d">7 days</button><button data-value="30d">30 days</button><button data-value="mtd">Month</button></div>
+  <div class="ph-daterange"><input type="date" id="from"><span class="ph-daterange__sep">–</span><input type="date" id="to"></div>
+</div>
+<div id="chips"></div>
+
+<section class="ph-kpis" id="kpis"></section>
+
+<div class="ph-row ph-row--2-1">
+  <div class="ph-stack">
+    <section class="ph-card">
+      <div class="ph-card__head"><div class="ph-card__title">Weekly trend</div><div class="ph-card__meta">Rejected stems · ISO week</div></div>
+      <div id="chartTrendWrap"></div>
+    </section>
+    <section class="ph-card">
+      <div class="ph-card__head"><div class="ph-card__title">Rejects by farm</div><div class="ph-card__meta">Stems per farm</div></div>
+      <div id="chartFarmWrap"></div>
+    </section>
+  </div>
+  <div class="ph-stack">
+    <section class="ph-card">
+      <div class="ph-card__head"><div class="ph-card__title">Rejection reasons</div><div class="ph-card__meta">by stems</div></div>
+      <div id="chartReasonWrap"></div>
+    </section>
+    <section class="ph-card">
+      <div class="ph-card__head"><div class="ph-card__title">Top varieties</div><div class="ph-card__meta">top 10</div></div>
+      <div id="chartVarietyWrap"></div>
+    </section>
+  </div>
+</div>
+
+<div class="ph-tabs" id="tabs">
+  <button class="ph-tab" data-value="field" type="button">Field rejects <span class="ph-tab__count" id="n-field">0</span></button>
+  <button class="ph-tab" data-value="intake" type="button">Intake rejects (quarantine) <span class="ph-tab__count" id="n-intake">0</span></button>
+  <button class="ph-tab" data-value="farm" type="button">By farm <span class="ph-tab__count" id="n-farm">0</span></button>
+</div>
+
+<section class="ph-card ph-card--flush" id="tab-field">
+  <div class="ph-card__head"><div class="ph-card__title">Field rejects</div><div class="ph-card__meta" id="meta-field"></div></div>
+  <div id="tblField"></div>
+</section>
+<section class="ph-card ph-card--flush" id="tab-intake" hidden>
+  <div class="ph-card__head"><div class="ph-card__title">Intake rejects (quarantine)</div><div class="ph-card__meta" id="meta-intake"></div></div>
+  <div id="tblIntake"></div>
+</section>
+<section class="ph-card ph-card--flush" id="tab-farm" hidden>
+  <div class="ph-card__head"><div class="ph-card__title">Rejects by farm</div><div class="ph-card__meta" id="meta-farm"></div></div>
+  <div id="tblFarm"></div>
+</section>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+{% raw %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(function () {
+"use strict";
+var charts = {};
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function deriveFarm(se) { return (se && se.farm) || ((se && se.custom_greenhouse || "").split(" GH ")[0]) || "?"; }
+function pad(n) { return String(n).padStart(2, "0"); }
+function getISOWeek(date) { var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())); var day = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - day); var y1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1)); return { year: d.getUTCFullYear(), week: Math.ceil((((d - y1) / 86400000) + 1) / 7) }; }
+
+/* ===== Charts: moved verbatim from the original page (rejects.html lines 219-248) ===== */
+function mkChart(id,cfg){if(charts[id]){charts[id].destroy();delete charts[id];}var c=document.getElementById(id);if(!c)return;charts[id]=new Chart(c.getContext('2d'),cfg);}
+function topN(obj,n){return Object.keys(obj).map(function(k){return{key:k,val:obj[k]};}).sort(function(a,b){return b.val-a.val;}).slice(0,n||20);}
+var INKS=['#0a0a0a','#3a3a34','#5a5a52','#8a8780','#228883','#b45309','#a16207','#1a6ef5'];
+function renderFarmChart(d){
+  var w=el('chartFarmWrap'),items=topN(d,12);
+  if(!items.length){if(w)w.innerHTML='<div class="ph-empty"><div class="ph-empty__title">No data</div></div>';return;}
+  if(w)w.innerHTML='<canvas id="chartFarm" style="max-height:230px"></canvas>';
+  mkChart('chartFarm',{type:'bar',data:{labels:items.map(function(i){return i.key;}),datasets:[{data:items.map(function(i){return i.val;}),backgroundColor:'#3a3a34',borderRadius:6,barThickness:14}]},
+    options:{indexAxis:'y',responsive:true,animation:{duration:260},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.x.toLocaleString()+' stems';}}}},scales:{x:{beginAtZero:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}},y:{grid:{display:false},ticks:{color:'#3a3a34',font:{size:11}}}}}});}
+function renderReasonChart(d){
+  var w=el('chartReasonWrap'),items=topN(d,6);
+  if(!items.length){if(w)w.innerHTML='<div class="ph-empty"><div class="ph-empty__title">No data</div></div>';return;}
+  if(w)w.innerHTML='<canvas id="chartReason" style="max-height:230px"></canvas>';
+  mkChart('chartReason',{type:'doughnut',data:{labels:items.map(function(i){return i.key;}),datasets:[{data:items.map(function(i){return i.val;}),backgroundColor:INKS,borderWidth:0}]},
+    options:{responsive:true,cutout:'66%',animation:{duration:260},plugins:{legend:{position:'bottom',labels:{color:'#5a5a52',font:{size:11},boxWidth:9,padding:12,usePointStyle:true}},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.toLocaleString()+' stems';}}}}}});}
+function renderVarietyChart(d){
+  var w=el('chartVarietyWrap'),items=topN(d,10);
+  if(!items.length){if(w)w.innerHTML='<div class="ph-empty"><div class="ph-empty__title">No data</div></div>';return;}
+  if(w)w.innerHTML='<canvas id="chartVariety" style="max-height:230px"></canvas>';
+  var mx=items[0].val||1,cols=items.map(function(i){return'rgba(10,10,10,'+(0.28+(i.val/mx)*0.6).toFixed(2)+')';});
+  mkChart('chartVariety',{type:'bar',data:{labels:items.map(function(i){return i.key;}),datasets:[{data:items.map(function(i){return i.val;}),backgroundColor:cols,borderRadius:6}]},
+    options:{responsive:true,animation:{duration:260},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y.toLocaleString()+' stems';}}}},scales:{x:{grid:{display:false},ticks:{maxRotation:45,minRotation:30,color:'#8a8780',font:{size:10}}},y:{beginAtZero:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}}}}});}
+function renderTrendChart(d){
+  var w=el('chartTrendWrap'),keys=Object.keys(d).sort();
+  if(!keys.length){if(w)w.innerHTML='<div class="ph-empty"><div class="ph-empty__title">No data</div></div>';return;}
+  if(w)w.innerHTML='<canvas id="chartTrend" style="max-height:230px"></canvas>';
+  var cv=document.getElementById('chartTrend');if(!cv)return;var ctx=cv.getContext('2d');
+  var g=ctx.createLinearGradient(0,0,0,230);g.addColorStop(0,'rgba(10,10,10,.20)');g.addColorStop(1,'rgba(10,10,10,0)');
+  mkChart('chartTrend',{type:'line',data:{labels:keys,datasets:[{data:keys.map(function(k){return d[k];}),borderColor:'#0a0a0a',backgroundColor:g,borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:true}]},
+    options:{responsive:true,animation:{duration:260},interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y.toLocaleString()+' stems';}}}},scales:{x:{grid:{display:false},ticks:{maxRotation:45,minRotation:30,color:'#8a8780',font:{size:10}}},y:{beginAtZero:true,grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}}}}});}
+/* ===== end of verbatim chart code ===== */
+
+/* ---------- state ---------- */
+var CUR = getISOWeek(new Date());
+var st = PH.state({ from: "", to: "", year: "", week: "", farm: "", variety: "", gh: "", reason: "", owner: "", type: "", q: "", tab: "field" });
+// Original default: this ISO year + week, unless the URL already narrows the dates.
+var params = new URLSearchParams(location.search);
+if (!["from", "to", "year", "week"].some(function (k) { return params.has(k); })) st.set({ year: String(CUR.year), week: String(CUR.week) }, { silent: true });
+
+var YEARS = [];
+for (var y = CUR.year; y >= CUR.year - 6; y--) YEARS.push(String(y));
+var WEEKS = [];
+for (var w = 1; w <= 53; w++) WEEKS.push({ value: String(w), label: "Week " + w });
+
+var msYear = PH.multiselect("#f-year", st, "year", { label: "Year", options: YEARS, plural: "years", all: "All years", search: false });
+var msWeek = PH.multiselect("#f-week", st, "week", { label: "Week", options: WEEKS, plural: "weeks", all: "All weeks" });
+var msFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: "regions", multiSite: true, plural: "farms", all: "All farms" });
+var msVariety = PH.multiselect("#f-variety", st, "variety", { label: "Variety", options: [], plural: "varieties", all: "All varieties" });
+var msGh = PH.multiselect("#f-gh", st, "gh", { label: "Greenhouse", options: [], plural: "greenhouses", all: "All greenhouses" });
+var msReason = PH.multiselect("#f-reason", st, "reason", { label: "Reason", options: [], plural: "reasons", all: "All reasons" });
+var msOwner = PH.multiselect("#f-owner", st, "owner", { label: "Owner", options: [], plural: "owners", all: "All owners" });
+PH.bindSearch("#f-q", st, "q");
+PH.pills("#f-type", st, "type");
+PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+PH.activeFilters("#chips", st, [
+  { key: "year", label: "Year", multi: true }, { key: "week", label: "Week", multi: true, text: function (v) { return "W" + v; } },
+  { key: "farm", label: "Farm", multi: true }, { key: "variety", label: "Variety", multi: true },
+  { key: "gh", label: "Greenhouse", multi: true }, { key: "reason", label: "Reason", multi: true },
+  { key: "owner", label: "Owner", multi: true }, { key: "q", label: "Search" },
+  { key: "type", label: "Type", text: function (v) { return v === "field" ? "Field" : "Intake"; } },
+  { key: "from", label: "From", text: PH.fmt.date }, { key: "to", label: "To", text: PH.fmt.date }
+]);
+// Dates and Year/Week exclude each other, as on the original page.
+st.on(function (s, ch) {
+  var dateCh = ch.indexOf("from") >= 0 || ch.indexOf("to") >= 0, ywCh = ch.indexOf("year") >= 0 || ch.indexOf("week") >= 0;
+  if (dateCh && (s.from || s.to) && (s.year || s.week)) st.set({ year: "", week: "" });
+  else if (ywCh && (s.year || s.week) && (s.from || s.to)) st.set({ from: "", to: "" });
+});
+
+/* ---------- data ---------- */
+var ALL = [];           // normalised rows for the server date range
+var seq = 0, cacheKey = null, pendingKey = null;
+
+function serverRange() {
+  var s = st.get();
+  if (s.from || s.to) return { from: s.from || null, to: s.to || null };
+  var yrs = PH.values(s.year).map(Number).sort(), wks = PH.values(s.week);
+  if (!yrs.length && wks.length) yrs = [CUR.year];
+  if (!yrs.length) return { from: null, to: null };
+  var lo = yrs[0], hi = yrs[yrs.length - 1];
+  if (wks.length) return { from: PH.date.add(lo + "-01-01", -7), to: PH.date.add(hi + "-12-31", 7) };
+  return { from: lo + "-01-01", to: hi + "-12-31" };
+}
+/* One aggregated server call (upande_quality.api.rejects_v2) returns every reject line of the window as compact rows. */
+function normalise(res) {
+  var cols = res.columns, ix = {}; cols.forEach(function (c, i) { ix[c] = i; });
+  var rows = new Array(res.rows.length);
+  res.rows.forEach(function (a, n) {
+    var kind = a[ix.kind], date = a[ix.date] || "", iw = date ? getISOWeek(new Date(date + "T00:00:00")) : null;
+    var field = kind === "field", gh = a[ix.gh], farm = a[ix.farm], owner = a[ix.owner];
+    rows[n] = {
+      kind: kind, entry: a[ix.entry], date: date, farm: field ? (farm || "?") : deriveFarm({ farm: farm, custom_greenhouse: gh }),
+      gh: gh || "", variety: a[ix.item_code] || "?", stems: Number(a[ix.qty]) || 0,
+      reason: field ? "—" : "Quarantine (no reason recorded)",
+      owner: (owner || "").split("@")[0], ownerFull: owner || "",
+      wkKey: iw ? iw.year + "-W" + pad(iw.week) : "", isoYear: iw ? iw.year : null, isoWeek: iw ? iw.week : null
+    };
+  });
+  return rows;
+}
+
+/* ---------- filtering ---------- */
+function filtered() {
+  var s = st.get(), farms = PH.values(s.farm), vars = PH.values(s.variety), ghs = PH.values(s.gh), rs = PH.values(s.reason), os = PH.values(s.owner);
+  var yrs = PH.values(s.year), wks = PH.values(s.week), q = (s.q || "").toLowerCase();
+  if (!yrs.length && wks.length) yrs = [String(CUR.year)];
+  return ALL.filter(function (r) {
+    if (s.type && r.kind !== s.type) return false;
+    if (s.from && r.date < s.from) return false;
+    if (s.to && r.date > s.to) return false;
+    if (!(s.from || s.to)) {
+      if (wks.length) { if (yrs.indexOf(String(r.isoYear)) < 0 || wks.indexOf(String(r.isoWeek)) < 0) return false; }
+      else if (yrs.length && yrs.indexOf(r.date.slice(0, 4)) < 0) return false;
+    }
+    if (farms.length && farms.indexOf(r.farm) < 0) return false;
+    if (vars.length && vars.indexOf(r.variety) < 0) return false;
+    if (ghs.length && ghs.indexOf(r.gh) < 0) return false;
+    if (rs.length && rs.indexOf(r.reason) < 0) return false;
+    if (os.length && os.indexOf(r.owner) < 0) return false;
+    if (q && (r.farm + " " + r.variety + " " + r.gh + " " + r.owner + " " + r.reason).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+function uniq(key) {
+  var o = {}; ALL.forEach(function (r) { if (r[key]) o[r[key]] = 1; });
+  return Object.keys(o).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+}
+function buildFacets() {
+  var known = {}; PH.regionGroups().forEach(function (g) { g.items.forEach(function (f) { known[f] = 1; }); });
+  var groups = PH.regionGroups(), extra = uniq("farm").filter(function (f) { return !known[f]; });
+  if (extra.length) groups.push({ group: "Other", items: extra });
+  msFarm.setOptions(groups);
+  msVariety.setOptions(uniq("variety"));
+  msGh.setOptions(uniq("gh"));
+  msReason.setOptions(uniq("reason"));
+  msOwner.setOptions(uniq("owner"));
+}
+
+/* ---------- aggregation (same maps the original charts were fed) ---------- */
+function aggregate(rows) {
+  var byFarm = {}, byVariety = {}, byReason = {}, byWeek = {}, ent = {};
+  rows.forEach(function (r) {
+    byFarm[r.farm] = (byFarm[r.farm] || 0) + r.stems;
+    byVariety[r.variety] = (byVariety[r.variety] || 0) + r.stems;
+    byReason[r.reason] = (byReason[r.reason] || 0) + r.stems;
+    if (r.wkKey) byWeek[r.wkKey] = (byWeek[r.wkKey] || 0) + r.stems;
+    ent[r.entry] = 1;
+  });
+  return { byFarm: byFarm, byVariety: byVariety, byReason: byReason, byWeek: byWeek, entries: Object.keys(ent).length };
+}
+
+/* ---------- tables ---------- */
+function entryModal(r) {
+  var same = ALL.filter(function (x) { return x.entry === r.entry; });
+  var total = PH.sum(same, "stems");
+  var m = PH.modal({
+    title: r.kind === "field" ? "Field reject" : "Intake reject", sub: r.entry + " · " + PH.fmt.date(r.date), size: "lg",
+    body: PH.html`<dl class="ph-kv"><dt>Farm</dt><dd>${r.farm}</dd><dt>Greenhouse</dt><dd>${r.gh || "—"}</dd><dt>Week</dt><dd>${r.wkKey || "—"}</dd><dt>Reason</dt><dd>${r.reason}</dd><dt>Owner</dt><dd>${r.ownerFull || "—"}</dd><dt>Entry total</dt><dd>${PH.fmt.num(total)} stems in ${same.length} line${same.length === 1 ? "" : "s"}</dd></dl>
+      <div class="ph-divider"></div><div id="m-lines"></div>`,
+    actions: [{ label: "Open Stock Entry", onClick: function () { PH.openDoc("Stock Entry", r.entry); return false; } }, { label: "Close", primary: true }]
+  });
+  PH.table(m.el.querySelector("#m-lines"), { compact: true, rows: same, columns: [
+      { key: "variety", label: "Variety", cls: "is-strong" },
+      { key: "stems", label: "Stems", num: true, total: true, format: function (v) { return PH.fmt.num(v); } }
+    ] });
+}
+function farmModal(f) {
+  var rows = filtered().filter(function (r) { return r.farm === f.farm; });
+  var a = aggregate(rows);
+  function list(o) { return Object.keys(o).map(function (k) { return { key: k, stems: o[k] }; }).sort(function (x, y) { return y.stems - x.stems; }); }
+  var cols = [{ key: "key", label: "", cls: "is-strong" }, { key: "stems", label: "Stems", num: true, total: true, format: function (v) { return PH.fmt.num(v); } }];
+  var m = PH.modal({ title: f.farm, sub: PH.fmt.num(f.stems) + " stems · " + f.entries + " entries", size: "lg",
+    body: '<div class="ph-row ph-row--2"><div><div class="ph-strong ph-mb">Varieties</div><div id="m-var"></div></div><div><div class="ph-strong ph-mb">Reasons</div><div id="m-rea"></div></div></div>',
+    actions: [{ label: "Close", primary: true }] });
+  PH.table(m.el.querySelector("#m-var"), { compact: true, rows: list(a.byVariety), columns: cols });
+  PH.table(m.el.querySelector("#m-rea"), { compact: true, rows: list(a.byReason), columns: cols });
+}
+var numFmt = function (v) { return PH.fmt.num(v); };
+var tblField = PH.table("#tblField", { rows: [], tall: true, pageSize: 100, sort: { key: "date", dir: "desc" }, onRowClick: entryModal, empty: "No field rejects", emptyText: "Nothing matches the current filters.", columns: [
+  { key: "date", label: "Date", sortable: true, format: PH.fmt.date },
+  { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+  { key: "variety", label: "Variety", sortable: true },
+  { key: "stems", label: "Stems", num: true, sortable: true, total: true, format: numFmt },
+  { key: "reason", label: "Rejection reason", sortable: true },
+  { key: "owner", label: "Owner", sortable: true }
+] });
+var tblIntake = PH.table("#tblIntake", { rows: [], tall: true, pageSize: 100, sort: { key: "date", dir: "desc" }, onRowClick: entryModal, empty: "No intake rejects", emptyText: "Nothing matches the current filters.", columns: [
+  { key: "date", label: "Date", sortable: true, format: PH.fmt.date },
+  { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+  { key: "gh", label: "Greenhouse", sortable: true },
+  { key: "variety", label: "Variety", sortable: true },
+  { key: "stems", label: "Stems", num: true, sortable: true, total: true, format: numFmt },
+  { key: "owner", label: "Owner", sortable: true }
+] });
+var tblFarm = PH.table("#tblFarm", { rows: [], tall: true, sort: { key: "stems", dir: "desc" }, onRowClick: farmModal, empty: "No rejects", emptyText: "Nothing matches the current filters.", columns: [
+  { key: "farm", label: "Farm", sortable: true, cls: "is-strong" },
+  { key: "entries", label: "Entries", num: true, sortable: true, total: true, format: numFmt },
+  { key: "field", label: "Field stems", num: true, sortable: true, total: true, format: numFmt },
+  { key: "intake", label: "Intake stems", num: true, sortable: true, total: true, format: numFmt },
+  { key: "stems", label: "Total stems", num: true, sortable: true, total: true, format: numFmt },
+  { key: "share", label: "Share", num: true, sortable: true, format: function (v) { return (v * 100).toFixed(1) + "%"; } }
+] });
+
+/* ---------- paint ---------- */
+var CHART_WRAPS = ["chartFarmWrap", "chartReasonWrap", "chartVarietyWrap", "chartTrendWrap"];
+function loading() {
+  PH.kpiSkeleton("#kpis", ["Field rejects", "Intake rejects", "Top reason", "Farms affected", "Varieties"]);
+  CHART_WRAPS.forEach(function (id) { PH.skeleton("#" + id, "block", 6); });
+  ["#tblField", "#tblIntake", "#tblFarm"].forEach(function (s) { PH.skeleton(s, "rows", 5); });
+}
+function paint() {
+  var rows = filtered(), a = aggregate(rows);
+  var fr = rows.filter(function (r) { return r.kind === "field"; }), qr = rows.filter(function (r) { return r.kind === "intake"; });
+  var fTotal = PH.sum(fr, "stems"), qTotal = PH.sum(qr, "stems");
+  var fEnt = {}, qEnt = {}; fr.forEach(function (r) { fEnt[r.entry] = 1; }); qr.forEach(function (r) { qEnt[r.entry] = 1; });
+  var rTop = topN(a.byReason, 1)[0];
+  PH.kpis("#kpis", [
+    { label: "Field rejects", value: fTotal, unit: "stems", trend: { dir: "flat", text: Object.keys(fEnt).length + " entries" }, active: st.get("tab") === "field", onClick: function () { st.set({ tab: "field" }); } },
+    { label: "Intake rejects", value: qTotal, unit: "stems", trend: { dir: "flat", text: Object.keys(qEnt).length + " entries" }, active: st.get("tab") === "intake", onClick: function () { st.set({ tab: "intake" }); } },
+    { label: "Top reason", value: rTop ? rTop.key : "—", trend: { dir: "flat", text: rTop ? PH.fmt.num(rTop.val) + " stems" : "" }, onClick: rTop ? function () { st.set({ reason: rTop.key }); } : null },
+    { label: "Farms affected", value: Object.keys(a.byFarm).length, active: st.get("tab") === "farm", onClick: function () { st.set({ tab: "farm" }); } },
+    { label: "Varieties", value: Object.keys(a.byVariety).length, trend: { dir: "flat", text: "rejected" } }
+  ]);
+  renderFarmChart(a.byFarm); renderReasonChart(a.byReason); renderVarietyChart(a.byVariety); renderTrendChart(a.byWeek);
+
+  var fm = {};
+  rows.forEach(function (r) {
+    var f = fm[r.farm] || (fm[r.farm] = { farm: r.farm, ent: {}, field: 0, intake: 0 });
+    f.ent[r.entry] = 1; f[r.kind === "field" ? "field" : "intake"] += r.stems;
+  });
+  var farmRows = Object.keys(fm).map(function (k) {
+    var f = fm[k];
+    return { farm: k, entries: Object.keys(f.ent).length, field: f.field, intake: f.intake, stems: f.field + f.intake, share: (fTotal + qTotal) ? (f.field + f.intake) / (fTotal + qTotal) : 0 };
+  });
+  tblField.update(fr); tblIntake.update(qr); tblFarm.update(farmRows);
+  PH.text("#n-field", fr.length); PH.text("#n-intake", qr.length); PH.text("#n-farm", farmRows.length);
+  PH.text("#meta-field", PH.fmt.num(fTotal) + " stems · " + Object.keys(fEnt).length + " entries");
+  PH.text("#meta-intake", PH.fmt.num(qTotal) + " stems · " + Object.keys(qEnt).length + " entries");
+  PH.text("#meta-farm", PH.fmt.num(fTotal + qTotal) + " stems");
+  PH.text("#sub", rows.length ? PH.fmt.num(fTotal + qTotal) + " rejected stems across " + a.entries + " entries, " + Object.keys(a.byFarm).length + " farms." : "Field and intake (quarantine) rejects across the pipeline.");
+  paintTab();
+}
+function paintTab() {
+  var t = st.get("tab"); if (["field", "intake", "farm"].indexOf(t) < 0) t = "field";
+  ["field", "intake", "farm"].forEach(function (k) { el("tab-" + k).hidden = k !== t; });
+  PH.$$("#tabs .ph-tab").forEach(function (b) { b.classList.toggle("is-on", b.dataset.value === t); });
+}
+el("tabs").addEventListener("click", function (e) { var b = e.target.closest("button[data-value]"); if (b) st.set({ tab: b.dataset.value }); });
+
+function fail(e) {
+  PH.error("#kpis", e && e.message, function () { load(true); });
+  CHART_WRAPS.forEach(function (id) { PH.error("#" + id, e && e.message, function () { load(true); }); });
+  ["#tblField", "#tblIntake", "#tblFarm"].forEach(function (s) { PH.error(s, e && e.message, function () { load(true); }); });
+}
+function load(force) {
+  var r = serverRange(), key = JSON.stringify(r);
+  if (!force && key === pendingKey) { if (key === cacheKey) paint(); return; }
+  pendingKey = key;
+  var my = ++seq;
+  loading();
+  PH.call("upande_quality.api.rejects_v2.get_rejects", { date_from: r.from || "", date_to: r.to || "" }, { type: "GET" }).then(function (res) {
+    if (my !== seq) return;
+    if (res && res.truncated) PH.toast("Too many rejects in this range: narrow the dates to see them all", "warn");
+    ALL = normalise(res);
+    ALL.sort(function (a, b) { return b.date.localeCompare(a.date); });
+    cacheKey = key; buildFacets(); paint(); PH.markUpdated();
+  }).catch(function (e) { if (my !== seq) return; pendingKey = null; fail(e); });
+}
+st.on(function (s, ch) {
+  var onlyView = ch.every(function (k) { return k === "tab"; });
+  if (onlyView && cacheKey) { paintTab(); paint(); return; }
+  load(false);
+});
+PH.onRefresh(function () { load(true); });
+
+el("export").addEventListener("click", function () {
+  var t = st.get("tab"), rows = filtered();
+  if (t === "farm") { PH.toast("Pick the Field or Intake tab to export rows", "warn"); return; }
+  rows = rows.filter(function (r) { return r.kind === t; });
+  if (!rows.length) { PH.toast("Nothing to export", "warn"); return; }
+  var cols = [{ key: "entry", label: "Stock Entry" }, { key: "date", label: "Date" }, { key: "farm", label: "Farm" }];
+  if (t === "intake") cols.push({ key: "gh", label: "Greenhouse" });
+  cols.push({ key: "variety", label: "Variety" }, { key: "stems", label: "Stems" });
+  if (t === "field") cols.push({ key: "reason", label: "Rejection Reason" });
+  cols.push({ key: "ownerFull", label: "Owner" });
+  PH.csv("rejects-" + t + "-" + PH.date.today() + ".csv", rows, cols);
+});
+
+paintTab();
+load(true);
+})();
+</script>
+{% endraw %}
+{% endblock %}

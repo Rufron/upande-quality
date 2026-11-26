@@ -1,0 +1,667 @@
+{% extends "templates/web.html" %}
+{% block title %}Discard Requests · Quality{% endblock %}
+{% block page_content %}
+{% include "upande_quality/templates/includes/quality_v2/shell_start.html" %}
+
+<style>
+/* Discard Requests — page-only layout (tokens + spacing scale only). */
+.ph-row.dr-row3{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:1100px){.ph-row.dr-row3{grid-template-columns:minmax(0,1fr)}}
+.dr-chart{position:relative;min-height:230px}
+.dr-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3)}
+.dr-tools .ph-search{min-width:220px}
+.dr-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin:0 32px var(--sp-4)}
+.dr-bulk[hidden]{display:none}
+.dr-bulk b{color:var(--ink)}
+.dr-pick{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-4);margin:0 32px var(--sp-4);color:var(--ink-mute)}
+.dr-pick .ph-link{border:0;background:transparent;padding:0;font:inherit;font-weight:600;color:var(--ink);text-decoration:underline;cursor:pointer}
+.dr-pct{display:flex;align-items:center;gap:var(--sp-3);min-width:130px}
+.dr-pct .ph-progress{flex:1 1 auto}
+.dr-pct span{min-width:3ch;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-4)}
+#tbl .ph-table td{white-space:nowrap}
+#tbl .ph-table td.is-wrap{white-space:normal;min-width:240px}
+.dr-farmrow td{background:var(--tint);font-weight:600;color:var(--ink)}
+.dr-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin-top:var(--sp-5)}
+.dr-agebox{display:flex;gap:var(--sp-2)}
+.dr-agebox .ph-control{min-width:0}
+.dr-note{color:var(--ink-4);margin:var(--sp-3) 0}
+.dr-ageintro{color:var(--ink-4);margin:0 32px var(--sp-4);max-width:90ch}
+.dr-ages-in{width:110px;min-width:90px}
+.dr-sec{margin:var(--sp-6) 0 var(--sp-3);color:var(--ink-mute);font-weight:600;text-transform:uppercase;letter-spacing:.12em}
+.ph-overlay--drawer .ph-modal{width:min(780px,100%)}
+.ph-overlay--drawer .ph-modal--lg{width:min(1060px,100%)}
+</style>
+
+<header class="ph-head">
+  <div>
+    <div class="ph-head__eyebrow">Quality · Exceptions</div>
+    <h1 class="ph-head__title">Discard Requests</h1>
+    <p class="ph-head__sub" id="sub">Old stock on the shelves, asked to be discarded</p>
+  </div>
+  <div class="ph-head__tools">
+    <button class="ph-btn ph-btn--ghost" id="btn-export" type="button"></button>
+    <button class="ph-btn ph-btn--primary" id="btn-new" type="button"></button>
+  </div>
+</header>
+
+<nav class="ph-tabs" id="tabs" aria-label="Sections">
+  <button class="ph-tab is-on" data-tab="req" type="button">Requests</button>
+  <button class="ph-tab" data-tab="age" type="button">Discard ages</button>
+</nav>
+
+<div id="pane-req">
+  <div class="ph-filters">
+    <div id="f-origin"></div>
+    <div id="f-state"></div>
+    <div id="f-farm"></div>
+    <span class="ph-filters__spacer"></span>
+    <div class="ph-pills" id="presets"><button data-value="7d" type="button">7 days</button><button data-value="30d" type="button">30 days</button><button data-value="90d" type="button">90 days</button><button data-value="mtd" type="button">This month</button></div>
+    <div class="ph-daterange"><input type="date" id="from"><span class="ph-daterange__sep">–</span><input type="date" id="to"></div>
+    <button class="ph-btn ph-btn--ghost" id="btn-reset" type="button"></button>
+  </div>
+  <div id="chips"></div>
+
+  <section class="ph-kpis" id="kpis"></section>
+
+  <div class="ph-row ph-row--3 dr-row3">
+    <section class="ph-card"><div class="ph-card__head"><div class="ph-card__title">Stems by week</div><div class="ph-card__meta">system · people</div></div><div class="dr-chart" id="wTrend"></div></section>
+    <section class="ph-card"><div class="ph-card__head"><div class="ph-card__title">By farm</div><div class="ph-card__meta">stems</div></div><div class="dr-chart" id="wFarm"></div></section>
+    <section class="ph-card"><div class="ph-card__head"><div class="ph-card__title">Top varieties</div><div class="ph-card__meta">stems</div></div><div class="dr-chart" id="wVar"></div></section>
+  </div>
+
+  <section class="ph-card ph-card--flush">
+    <div class="ph-card__head">
+      <div><div class="ph-card__title">Requests</div><div class="ph-card__meta" id="stamp"></div></div>
+      <div class="ph-card__tools dr-tools">
+        <div id="f-prog"></div>
+        <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-q" type="search" placeholder="Search requests…"></div>
+      </div>
+    </div>
+    <div class="dr-pick" id="pick">
+      <span>Select</span>
+      <button class="ph-link" data-sel="shown" type="button">All shown</button>
+      <button class="ph-link" data-sel="Draft" type="button">Drafts</button>
+      <button class="ph-link" data-sel="Pending Approval" type="button">Pending approval</button>
+      <button class="ph-link" data-sel="none" type="button">None</button>
+      <span>Search and progress narrow this table only; the cards above follow the filters at the top.</span>
+    </div>
+    <div class="ph-notice ph-notice--signal dr-bulk" id="bulk" hidden>
+      <b id="bulk-txt"></b>
+      <button class="ph-btn ph-btn--sm" id="b-send" type="button">Send for approval</button>
+      <button class="ph-btn ph-btn--sm ph-btn--primary" id="b-approve" type="button">Approve</button>
+      <button class="ph-btn ph-btn--sm ph-btn--danger" id="b-reject" type="button">Reject</button>
+    </div>
+    <div id="tbl"></div>
+  </section>
+</div>
+
+<div id="pane-age" hidden>
+  <div class="ph-filters">
+    <div class="ph-search"><svg class="ph-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="f-aq" type="search" placeholder="Search varieties…"></div>
+    <div id="f-ag"></div>
+    <div class="ph-pills" id="f-own"><button data-value="" type="button">All varieties</button><button data-value="1" type="button">Own age</button><button data-value="0" type="button">Default age</button></div>
+    <span class="ph-filters__spacer"></span>
+    <button class="ph-btn ph-btn--ghost" id="btn-age-reset" type="button"></button>
+  </div>
+  <section class="ph-card ph-card--flush">
+    <div class="ph-card__head"><div><div class="ph-card__title">Discard age by variety</div><div class="ph-card__meta" id="ageMeta"></div></div></div>
+    <p class="dr-ageintro">A bucket of a variety goes on the nightly automatic Discard Request once it is this many days past harvest. A variety with no age of its own uses the default in Production Settings. This sets <b>Item › Roses Packhouse › Discard Age</b>. Changes save as you leave the box.</p>
+    <div id="ageTbl"></div>
+  </section>
+</div>
+
+{% include "upande_quality/templates/includes/quality_v2/shell_end.html" %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% raw %}
+<script>
+(function () {
+  "use strict";
+  var API = "upande_quality.api.discard_requests.";
+  function call(m, a, o) { return PH.call(API + m, a, o || {}); }
+
+  /* ---------- state ---------- */
+  var today = PH.date.today();
+  var STATES = ["Draft", "Pending Approval", "Approved", "Rejected", "Cancelled"];
+  var st = PH.state({
+    tab: "req", origin: "", state: "", farm: "", from: PH.date.add(today, -90), to: today,
+    q: "", prog: "", aq: "", ag: "", own: ""
+  });
+  var opts = null, data = null, byName = {}, shown = [], seq = 0, sel = new Set(), tbl = null;
+  var knownFarms = {};
+
+  function n0(v) { return PH.fmt.num(Math.round(Number(v) || 0)); }
+  function dateText(v) { return v ? PH.fmt.date(v) : "—"; }
+  function same(a, b) { return String(a || "") === String(b || ""); }
+
+  /* ---------- the charts: moved verbatim from the old page ---------- */
+  var charts = {};
+  function el(i) { return document.getElementById(i); }
+  function mkChart(id,cfg){if(charts[id])charts[id].destroy();var w=el(id);w.innerHTML='<canvas style="max-height:230px"></canvas>';charts[id]=new Chart(w.firstChild.getContext('2d'),cfg);}
+  var AX={grid:{color:'rgba(10,10,10,.05)'},ticks:{color:'#8a8780',font:{size:10}}},AXX={grid:{display:false},ticks:{color:'#8a8780',font:{size:10}}};
+  function stacked(id,labels,sys,usr,horiz){
+    mkChart(id,{type:'bar',data:{labels:labels,datasets:[{label:'System',data:sys,backgroundColor:'#3a3a34',borderRadius:4},{label:'People',data:usr,backgroundColor:'#228883',borderRadius:4}]},
+     options:{indexAxis:horiz?'y':'x',responsive:true,animation:{duration:260},plugins:{legend:{position:'bottom',labels:{color:'#5a5a52',font:{size:11},boxWidth:9,usePointStyle:true}},tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+n0(horiz?c.parsed.x:c.parsed.y)+' stems';}}}},scales:{x:Object.assign({stacked:true},horiz?AX:AXX),y:Object.assign({stacked:true},horiz?AXX:AX)}}});
+  }
+  function drawCharts(d) {
+    var w=d.by_week.slice(-12);
+    if(w.length)stacked('wTrend',w.map(function(x){return x.week;}),w.map(function(x){return x.system;}),w.map(function(x){return x.user;}));else chartEmpty('wTrend');
+    if(d.by_farm.length)stacked('wFarm',d.by_farm.map(function(x){return x.farm;}),d.by_farm.map(function(x){return x.system;}),d.by_farm.map(function(x){return x.user;}),true);else chartEmpty('wFarm');
+    if(d.by_variety.length)mkChart('wVar',{type:'bar',data:{labels:d.by_variety.map(function(x){return x.variety;}),datasets:[{data:d.by_variety.map(function(x){return x.stems;}),backgroundColor:'#3a3a34',borderRadius:4,barThickness:12}]},options:{indexAxis:'y',responsive:true,animation:{duration:260},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+n0(c.parsed.x)+' stems';}}}},scales:{x:AX,y:AXX}}});else chartEmpty('wVar');
+  }
+  /* (non-chart) what a chart card shows instead of a chart */
+  function chartEmpty(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } PH.empty(el(id), "No data", "Nothing was requested for these filters."); }
+  function chartLoading(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } PH.skeleton(el(id), "block"); }
+  function chartError(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } PH.empty(el(id), "No data", "The requests could not be loaded."); }
+
+  /* ---------- helpers ---------- */
+  function localState(d) {
+    var s = Object.assign({}, d), subs = [];
+    return {
+      defaults: Object.assign({}, d),
+      get: function (k) { return k ? s[k] : Object.assign({}, s); },
+      set: function (p) {
+        var ch = Object.keys(p).filter(function (k) { return s[k] !== p[k]; });
+        if (!ch.length) return;
+        ch.forEach(function (k) { s[k] = p[k]; });
+        subs.forEach(function (f) { f(Object.assign({}, s), ch); });
+      },
+      on: function (f) { subs.push(f); }
+    };
+  }
+  /* farms grouped by site (PH.REGIONS), unknown farms under "Other" */
+  function groupFarms(list) {
+    var set = {}, seen = {}, out = [];
+    list.forEach(function (f) { set[f] = 1; });
+    PH.regionGroups().forEach(function (g) {
+      var it = g.items.filter(function (i) { return set[i]; });
+      it.forEach(function (i) { seen[i] = 1; });
+      if (it.length) out.push({ group: g.group, items: it });
+    });
+    var rest = list.filter(function (f) { return !seen[f]; }).sort();
+    if (rest.length) out.push({ group: "Other", items: rest });
+    return out;
+  }
+  function farmOptions(extra) {
+    var all = {};
+    PH.regionGroups().forEach(function (g) { g.items.forEach(function (i) { all[i] = 1; }); });
+    ((opts && opts.farms) || []).concat(extra || []).forEach(function (f) { if (f) all[f] = 1; });
+    return groupFarms(Object.keys(all));
+  }
+  function stBadge(s) {
+    var k = s === "Approved" ? "good" : s === "Pending Approval" ? "warn" : s === "Rejected" || s === "Cancelled" ? "bad" : "outline";
+    return '<span class="ph-badge ph-badge--' + k + '">' + PH.esc(s) + "</span>";
+  }
+  function who(r) {
+    return r.origin === "System"
+      ? '<span class="ph-badge ph-badge--ink">System</span>'
+      : '<span class="ph-badge ph-badge--signal">' + PH.esc((r.owner || "").split("@")[0]) + "</span>";
+  }
+  function filterText(r) {
+    var a = []; if (r.variety) a.push(r.variety); if (r.length) a.push(r.length); if (r.item_group) a.push(r.item_group); if (r.coldroom) a.push(r.coldroom);
+    a.push(r.age_threshold ? "older than " + r.age_threshold + " " + String(r.age_unit || "Days").toLowerCase() : "older than its item group discard age");
+    return a.join(" · ");
+  }
+  function pctOf(done, total) { return total ? Math.round(100 * done / total) : 0; }
+  function pctCell(r) {
+    var p = r.pct;
+    return '<div class="dr-pct" title="' + PH.esc(n0(r.done_stems) + " of " + n0(r.stems) + " stems") + '"><div class="ph-progress"><i class="' + (p >= 100 ? "good" : "") + '" style="width:' + p + '%"></i></div><span>' + p + "%</span></div>";
+  }
+  function progOf(r) { return !r.done_stems ? "none" : r.done_stems >= r.stems ? "done" : "part"; }
+
+  /* ---------- loading the overview ---------- */
+  function serverArgs() {
+    var s = st.get(), o = PH.values(s.origin), farms = PH.values(s.farm);
+    var a = { origin: o.length === 1 ? o[0] : "", date_from: s.from || "", date_to: s.to || "" };
+    if (farms.length) a.farms = JSON.stringify(farms); // never an empty string: the server reads "" as broken JSON
+    return a;
+  }
+  /* one call whatever the number of picked statuses; no pick, or all five, is no status filter */
+  function fetchOverview() {
+    var base = serverArgs(), states = PH.values(st.get("state"));
+    if (states.length >= STATES.length) states = [];
+    if (states.length > 1) base.states = JSON.stringify(states);
+    else base.state = states[0] || "";
+    return call("get_overview", base, { silent: true });
+  }
+  function load(quiet) {
+    var mine = ++seq;
+    if (!quiet) {
+      PH.kpiSkeleton("#kpis", ["Requests", "Waiting for approval", "Stems asked", "Discarded", "Still to discard"]);
+      PH.skeleton("#tbl", "rows");
+      ["wTrend", "wFarm", "wVar"].forEach(chartLoading);
+      PH.text("#stamp", "Loading…");
+    }
+    return fetchOverview().then(function (d) {
+      if (mine !== seq) return;
+      data = d;
+      render(d);
+      PH.markUpdated();
+    }).catch(function (e) {
+      if (mine !== seq) return;
+      data = null; byName = {}; shown = [];
+      PH.kpis("#kpis", [{ label: "Requests", value: "—" }, { label: "Waiting for approval", value: "—" }, { label: "Stems asked", value: "—" }, { label: "Discarded", value: "—" }, { label: "Still to discard", value: "—" }]);
+      ["wTrend", "wFarm", "wVar"].forEach(chartError);
+      PH.error("#tbl", e.message, function () { load(); });
+      PH.text("#stamp", "");
+      bulk();
+    });
+  }
+
+  /* ---------- render ---------- */
+  function setStates(v) { st.set({ state: v }); }
+  function render(d) {
+    var k = d.kpis, s = st.get("state");
+    PH.kpis("#kpis", [
+      { label: "Requests", value: k.requests, unit: n0(k.system) + " system · " + n0(k.user) + " people" },
+      { label: "Waiting for approval", value: k.pending, unit: "draft or pending", onClick: function () { setStates(same(s, "Draft,Pending Approval") ? "" : "Draft,Pending Approval"); }, active: same(s, "Draft,Pending Approval") },
+      { label: "Stems asked", value: k.stems, unit: n0(k.buckets) + " buckets" },
+      { label: "Discarded", value: k.done_stems, unit: k.stems ? pctOf(k.done_stems, k.stems) + "% of what was asked" : "", bar: pctOf(k.done_stems, k.stems), barClass: "good" },
+      { label: "Still to discard", value: k.waiting_stems, unit: "approved, not discarded", onClick: function () { setStates(same(s, "Approved") ? "" : "Approved"); }, active: same(s, "Approved") }
+    ]);
+    drawCharts(d);
+    byName = {};
+    var more = [];
+    d.requests.forEach(function (r) {
+      r.pct = pctOf(r.done_stems, r.stems);
+      r.filters = filterText(r);
+      r.by = r.origin === "System" ? "System" : (r.owner || "").split("@")[0];
+      r.prog = progOf(r);
+      byName[r.name] = r;
+      if (r.farm && !knownFarms[r.farm]) { knownFarms[r.farm] = 1; more.push(r.farm); }
+    });
+    if (more.length && msFarm) msFarm.setOptions(farmOptions(Object.keys(knownFarms)));
+    sel.forEach(function (n) { if (!byName[n]) sel.delete(n); });
+    paintTable();
+  }
+  function paintTable() {
+    if (!data) return;
+    var q = (st.get("q") || "").toLowerCase().trim(), progs = PH.values(st.get("prog"));
+    shown = data.requests.filter(function (r) {
+      if (progs.length && progs.indexOf(r.prog) < 0) return false;
+      if (!q) return true;
+      return [r.name, r.by, r.farm, r.filters, r.state, r.remarks, r.requested_date].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+    PH.text("#stamp", shown.length === data.requests.length ? PH.fmt.plural(shown.length, "request") : shown.length + " of " + data.requests.length + " requests");
+    tbl.update(shown);
+    bulk();
+  }
+  function makeTable() {
+    tbl = PH.table("#tbl", {
+      columns: [
+        { key: "name", label: "", sortable: false, width: "36px", total: function () { return ""; }, html: function (v) { return '<input type="checkbox" class="dr-sel" value="' + PH.esc(v) + '"' + (sel.has(v) ? " checked" : "") + ' aria-label="Select ' + PH.esc(v) + '">'; } },
+        { key: "name", label: "Request", cls: "is-strong", total: function (rows) { return "Total · " + rows.length; }, html: function (v) { return PH.esc(v); } },
+        { key: "by", label: "Made by", html: function (v, r) { return who(r); } },
+        { key: "requested_date", label: "Date", format: dateText },
+        { key: "farm", label: "Farm" },
+        { key: "filters", label: "Filters", cls: "is-wrap", format: function (v) { return v; } },
+        { key: "state", label: "Status", html: function (v) { return stBadge(v); } },
+        { key: "buckets", label: "Buckets", num: true, total: true, format: n0 },
+        { key: "stems", label: "Stems", num: true, total: true, format: n0 },
+        { key: "done_stems", label: "Discarded", num: true, total: true, format: n0 },
+        { key: "waiting_stems", label: "Still to discard", num: true, total: true, format: n0 },
+        { key: "pct", label: "Progress", html: function (v, r) { return pctCell(r); }, total: function (rows) { var s = 0, d = 0; rows.forEach(function (r) { s += +r.stems || 0; d += +r.done_stems || 0; }); return pctOf(d, s) + "%"; } }
+      ],
+      rows: [], pageSize: 50, empty: "No discard requests for these filters", emptyText: "Widen the dates, or clear a filter.",
+      onRowClick: function (r) { openView(r.name); }
+    });
+  }
+
+  /* ---------- selection and bulk actions ---------- */
+  function wf() { return opts && opts.workflow; }
+  function stateOf(n) { return byName[n] ? byName[n].state : ""; }
+  function bulk() {
+    var names = Array.from(sel), b = el("bulk"), w = wf();
+    b.hidden = names.length === 0;
+    var has = {}; names.forEach(function (n) { has[stateOf(n)] = 1; });
+    PH.text("#bulk-txt", names.length + " selected");
+    el("b-send").hidden = !has["Draft"];
+    el("b-approve").hidden = !(has["Pending Approval"] && w && w.can_approve);
+    el("b-reject").hidden = !(has["Pending Approval"] && w && w.can_reject);
+  }
+  function selected(state) { return Array.from(sel).filter(function (n) { return stateOf(n) === state; }); }
+  function act(action, names) {
+    if (!names.length) return Promise.resolve();
+    return call("act_on_requests", { names: JSON.stringify(names), action: action }, { silent: true }).then(function (r) {
+      if (r.done.length) PH.toast(r.done.length + " request" + (r.done.length > 1 ? "s" : "") + " updated.", "good");
+      if (r.failed.length) PH.toast(r.failed[0].name + ": " + r.failed[0].error, "bad");
+      return load(true);
+    }).catch(function (e) { PH.toast(e.message, "bad"); });
+  }
+  function confirmAct(action, names) {
+    if (action === "Submit for Approval") return act(action, names);
+    var verb = action === "Approve" ? "Approve" : "Reject";
+    return PH.confirm(verb + " " + PH.fmt.plural(names.length, "request") + "?", action === "Approve" ? "The buckets on the request go on to be discarded." : "The request is sent back as rejected.", { danger: action === "Reject", ok: verb }).then(function (ok) { return ok ? act(action, names) : null; });
+  }
+
+  /* ---------- request detail ---------- */
+  function openView(name) {
+    var row = byName[name] || {}, w = wf(), bk = null;
+    var body = "";
+    var actions = [{ label: "Close" }, { label: "Open in the desk", onClick: function () { window.open("/app/discard-request/" + encodeURIComponent(name), "_blank"); return false; } },
+      { label: "Export buckets", onClick: function () { if (!bk) { PH.toast("Still loading.", "warn"); return false; } PH.csv(name + "-buckets.csv", bk, [{ key: "bucket_id", label: "Bucket" }, { key: "farm", label: "Farm" }, { key: "greenhouse", label: "Greenhouse" }, { key: "shelf", label: "Shelf" }, { key: "variety", label: "Variety" }, { key: "stem_length", label: "Length" }, { key: "stem_qty", label: "Stems" }, { key: "age_days", label: "Age (days)" }, { key: "discarded", label: "Discarded", csv: function (v) { return v ? "Yes" : "No"; } }]); return false; } }];
+    function mover(label, action, o) {
+      actions.push(Object.assign({ label: label, onClick: function (m) {
+        return (action === "Submit for Approval" ? Promise.resolve(true) : PH.confirm(label + " " + name + "?", "", { danger: action === "Reject", ok: label })).then(function (ok) {
+          if (!ok) return false;
+          return act(action, [name]).then(function () { m.close(); openView(name); return false; });
+        });
+      } }, o));
+    }
+    if (w && row.state === "Draft") mover("Send for approval", "Submit for Approval", { primary: true });
+    if (w && row.state === "Pending Approval" && w.can_reject) mover("Reject", "Reject", { danger: true });
+    if (w && row.state === "Pending Approval" && w.can_approve) mover("Approve", "Approve", { primary: true });
+    var m = PH.modal({ title: name, sub: [row.farm, row.requested_date ? dateText(row.requested_date) : ""].filter(Boolean).join(" · "), body: body, drawer: true, size: "lg", actions: actions });
+    var host = m.body;
+    PH.skeleton(host, "rows");
+    call("get_request", { name: name }, { silent: true }).then(function (d) {
+      bk = d.buckets;
+      var done = 0, stems = 0, dstems = 0;
+      d.buckets.forEach(function (b) { stems += +b.stem_qty || 0; if (b.discarded) { done++; dstems += +b.stem_qty || 0; } });
+      var madeBy = d.origin === "System" ? "System" : (d.requested_by || d.owner);
+      PH.set(host, PH.html`<div class="ph-stats">
+          <div class="ph-stat"><small>Status</small><b>${PH.raw(stBadge(d.state))}</b></div>
+          <div class="ph-stat"><small>Made by</small><b>${madeBy}</b></div>
+          <div class="ph-stat"><small>Date</small><b>${dateText(d.requested_date)}</b></div>
+          <div class="ph-stat"><small>Approved by</small><b>${d.approved_by || "—"}</b></div>
+          <div class="ph-stat"><small>Farm</small><b>${d.farm || "—"}</b></div>
+          <div class="ph-stat"><small>Buckets discarded</small><b>${done} of ${d.buckets.length}</b></div>
+          <div class="ph-stat"><small>Stems discarded</small><b>${n0(dstems)} of ${n0(stems)}</b></div>
+        </div>
+        <div class="dr-note"><b>Filters:</b> ${filterText(d)}</div>
+        ${d.remarks ? PH.raw('<div class="ph-notice">' + PH.esc(d.remarks).replace(/\n/g, "<br>") + "</div>") : ""}
+        <div class="dr-sec">Buckets</div>
+        <div id="v-tbl"></div>`);
+      PH.table(host.querySelector("#v-tbl"), {
+        columns: [
+          { key: "bucket_id", label: "Bucket", cls: "is-strong", total: function (rows) { return "Total · " + rows.length; } },
+          { key: "farm", label: "Farm" }, { key: "greenhouse", label: "Greenhouse" }, { key: "shelf", label: "Shelf" },
+          { key: "variety", label: "Variety" }, { key: "stem_length", label: "Length" },
+          { key: "stem_qty", label: "Stems", num: true, total: true, format: n0 },
+          { key: "age_days", label: "Age (days)", num: true },
+          { key: "discarded", label: "Discarded", html: function (v) { return v ? '<span class="ph-badge ph-badge--good">Yes</span>' : '<span class="ph-badge ph-badge--outline">Not yet</span>'; }, sortValue: function (r) { return r.discarded ? 1 : 0; } }
+        ],
+        rows: d.buckets, compact: true, tall: true, pageSize: 100, empty: "No buckets on this request"
+      });
+    }).catch(function (e) { PH.error(host, e.message); });
+  }
+
+  /* ---------- new request ---------- */
+  function openNew() {
+    if (!opts || !opts.can_create) { PH.toast("You do not have permission to create Discard Requests.", "bad"); return; }
+    var w = opts.workflow, pv = null, groupsOn = {}, timer = null, gen = 0, busy = false;
+    var ls = localState({ farm: "", variety: "", len: "", grp: "", cold: "" });
+    var body = '<div class="ph-form ph-form--2">' +
+      '<div class="ph-field"><label>Farms</label><div id="n-farm"></div></div>' +
+      '<div class="ph-field"><label>Varieties</label><div id="n-var"></div></div>' +
+      '<div class="ph-field"><label>Lengths</label><div id="n-len"></div></div>' +
+      '<div class="ph-field"><label>Item groups</label><div id="n-grp"></div></div>' +
+      '<div class="ph-field"><label>Cold rooms</label><div id="n-cold"></div></div>' +
+      '<div class="ph-field"><label for="n-age">Older than</label><div class="dr-agebox"><input class="ph-control" type="number" min="0" step="0.5" id="n-age"><select class="ph-control" id="n-unit"><option>Days</option><option>Hours</option></select></div></div>' +
+      '</div>' +
+      '<div class="dr-note">Leave a box empty to include everything. Buckets already on a request, and buckets reserved for an order, are left out.</div>' +
+      '<div id="n-summary"></div><div id="n-preview"></div>' +
+      '<div class="ph-field ph-mt"><label for="n-remarks">Remarks (optional)</label><textarea class="ph-control" id="n-remarks" rows="2"></textarea></div>' +
+      '<div class="dr-foot"><span class="ph-grow ph-muted" id="n-info"></span>' +
+      (w ? '<button class="ph-btn ph-btn--ghost" id="n-draft" type="button">Save as draft</button>' : "") +
+      '<button class="ph-btn ph-btn--primary" id="n-send" type="button">' + (w ? "Create and send for approval" : "Create requests") + "</button>" +
+      (w && w.can_approve ? '<button class="ph-btn" id="n-approve" type="button">Create and approve</button>' : "") + "</div>";
+    var m = PH.modal({ title: "New discard request", sub: "Pick what to discard, review the lines, then create", body: body, drawer: true, size: "lg" });
+    var root = m.el;
+    function q(id) { return root.querySelector("#" + id); }
+    PH.multiselect(q("n-farm"), ls, "farm", { label: "Farm", options: groupFarms(opts.farms), multiSite: true, plural: "farms", all: "All farms" });
+    PH.multiselect(q("n-var"), ls, "variety", { label: "Variety", options: opts.varieties, plural: "varieties", all: "All varieties" });
+    PH.multiselect(q("n-len"), ls, "len", { label: "Length", options: opts.lengths, plural: "lengths", all: "All lengths", search: false });
+    PH.multiselect(q("n-grp"), ls, "grp", { label: "Group", options: opts.item_groups, plural: "groups", all: "All item groups" });
+    PH.multiselect(q("n-cold"), ls, "cold", { label: "Cold room", options: opts.coldrooms, plural: "cold rooms", all: "All cold rooms" });
+    q("n-age").placeholder = "Item group age";
+    q("n-age").title = "Blank: each item group uses its discard age from Production Settings (default " + opts.discard_age + " days)";
+    function nf() {
+      var a = { farms: JSON.stringify(PH.values(ls.get("farm"))), varieties: JSON.stringify(PH.values(ls.get("variety"))), lengths: JSON.stringify(PH.values(ls.get("len"))), item_groups: JSON.stringify(PH.values(ls.get("grp"))), coldrooms: JSON.stringify(PH.values(ls.get("cold"))), age_unit: q("n-unit").value };
+      if (q("n-age").value !== "") a.age_threshold = +q("n-age").value;
+      return a;
+    }
+    function gkey(g) { return g.farm + "\u0001" + g.variety + "\u0001" + g.length; }
+    function totals() { var b = 0, s = 0, f = {}; if (pv) pv.groups.forEach(function (g) { if (groupsOn[gkey(g)]) { b += g.buckets; s += g.stems; f[g.farm] = 1; } }); return { b: b, s: s, f: Object.keys(f).length }; }
+    function buttons() { return ["n-send", "n-draft", "n-approve"].map(q).filter(Boolean); }
+    function sync() {
+      var t = totals();
+      var all = q("allGrp"); if (all) all.checked = !!pv && pv.groups.length > 0 && t.b === pv.buckets;
+      PH.text("#n-info", t.b ? n0(t.b) + " buckets · " + n0(t.s) + " stems → " + PH.fmt.plural(t.f, "request") + " (one per farm)" : "Nothing ticked.");
+      buttons().forEach(function (b) { b.disabled = busy || !t.b; });
+    }
+    function drawPreview() {
+      var rows = "", last = null;
+      pv.groups.forEach(function (g) {
+        if (g.farm !== last) {
+          last = g.farm;
+          var fg = pv.groups.filter(function (x) { return x.farm === g.farm; });
+          rows += '<tr class="dr-farmrow"><td><input type="checkbox" class="fchk" data-f="' + PH.esc(g.farm) + '"' + (fg.every(function (x) { return groupsOn[gkey(x)]; }) ? " checked" : "") + '></td><td colspan="3">' + PH.esc(g.farm) + '</td><td class="is-num">' + n0(fg.reduce(function (a, x) { return a + x.buckets; }, 0)) + '</td><td class="is-num">' + n0(fg.reduce(function (a, x) { return a + x.stems; }, 0)) + "</td><td></td></tr>";
+        }
+        rows += '<tr><td><input type="checkbox" class="gchk" data-k="' + PH.esc(gkey(g)) + '"' + (groupsOn[gkey(g)] ? " checked" : "") + '></td><td></td><td>' + PH.esc(g.variety) + "</td><td>" + PH.esc(g.length || "—") + '</td><td class="is-num">' + n0(g.buckets) + '</td><td class="is-num">' + n0(g.stems) + '</td><td class="is-num">' + Math.round(g.oldest_days) + "</td></tr>";
+      });
+      var host = q("n-preview");
+      if (!rows) { PH.empty(host, "No buckets match", "Try fewer filters or a lower age."); }
+      else PH.set(host, '<div class="ph-table-wrap ph-table-wrap--tall"><table class="ph-table ph-table--compact"><thead><tr><th><input type="checkbox" id="allGrp" aria-label="Select all"></th><th>Farm</th><th>Variety</th><th>Length</th><th class="is-num">Buckets</th><th class="is-num">Stems</th><th class="is-num">Oldest (days)</th></tr></thead><tbody>' + rows + "</tbody></table></div>");
+      var lo = pv.left_out, bits = [];
+      if (lo.on_a_request) bits.push(n0(lo.on_a_request) + " already on a request");
+      if (lo.allocated) bits.push(n0(lo.allocated) + " reserved for an order");
+      if (lo.too_young) bits.push(n0(lo.too_young) + " not old enough");
+      if (lo.other_cold_room) bits.push(n0(lo.other_cold_room) + " in other cold rooms");
+      PH.set(q("n-summary"), bits.length ? '<div class="dr-note">Left out: ' + PH.esc(bits.join(" · ")) + ".</div>" : "");
+      sync();
+    }
+    function find() {
+      var mine = ++gen;
+      PH.skeleton(q("n-preview"), "rows");
+      call("preview_buckets", nf(), { silent: true }).then(function (p) {
+        if (mine !== gen) return;
+        pv = p; groupsOn = {}; p.groups.forEach(function (g) { groupsOn[gkey(g)] = 1; }); drawPreview();
+      }).catch(function (e) {
+        if (mine !== gen) return;
+        pv = null; PH.error(q("n-preview"), e.message, function () { schedule(0); }); PH.text("#n-info", ""); sync();
+      });
+    }
+    function schedule(ms) {
+      clearTimeout(timer); PH.text("#n-info", "Looking…");
+      buttons().forEach(function (b) { b.disabled = true; });
+      timer = setTimeout(find, ms === undefined ? 350 : ms);
+    }
+    ls.on(function () { schedule(); });
+    q("n-age").addEventListener("input", function () { schedule(); });
+    q("n-unit").addEventListener("change", function () { schedule(); });
+    q("n-preview").addEventListener("change", function (e) {
+      var c = e.target;
+      if (!pv) return;
+      if (c.classList.contains("gchk")) { if (c.checked) groupsOn[c.getAttribute("data-k")] = 1; else delete groupsOn[c.getAttribute("data-k")]; }
+      else if (c.classList.contains("fchk")) { pv.groups.forEach(function (g) { if (g.farm === c.getAttribute("data-f")) { if (c.checked) groupsOn[gkey(g)] = 1; else delete groupsOn[gkey(g)]; } }); }
+      else if (c.id === "allGrp") { groupsOn = {}; if (c.checked) pv.groups.forEach(function (g) { groupsOn[gkey(g)] = 1; }); }
+      else return;
+      drawPreview();
+    });
+    function create(action) {
+      var t = totals(); if (!t.b || busy) return;
+      var args = nf();
+      args.groups = JSON.stringify(pv.groups.filter(function (g) { return groupsOn[gkey(g)]; }).map(function (g) { return [g.farm, g.variety, g.length]; }));
+      args.remarks = q("n-remarks").value; args.action = action;
+      busy = true; sync(); PH.text("#n-info", "Creating…");
+      call("create_requests", args, { silent: true }).then(function (r) {
+        busy = false;
+        if (r.failed.length) PH.toast(r.failed.map(function (f) { return f.farm + ": " + f.error; }).join(" | "), "bad");
+        if (r.created.length) PH.toast(r.created.length + " request" + (r.created.length > 1 ? "s" : "") + " created.", "good");
+        if (r.created.length && !r.failed.length) m.close();
+        else schedule(0);
+        q("n-remarks") && (q("n-remarks").value = "");
+        load(true);
+      }).catch(function (e) { busy = false; PH.toast(e.message, "bad"); sync(); });
+    }
+    if (q("n-send")) q("n-send").addEventListener("click", function () { create("send"); });
+    if (q("n-draft")) q("n-draft").addEventListener("click", function () { create("draft"); });
+    if (q("n-approve")) q("n-approve").addEventListener("click", function () { create("approve"); });
+    schedule(0);
+  }
+
+  /* ---------- discard ages ---------- */
+  var ages = null, ageTbl = null, ageRows = [], ageMs = null, ageSeq = 0;
+  function ageUsed(r) { return PH.esc(String(r.effective)) + (r.age == null ? ' <span class="ph-muted">(default)</span>' : ""); }
+  function loadAges() {
+    var mine = ++ageSeq;
+    PH.skeleton("#ageTbl", "rows");
+    return call("get_discard_ages", { search: "", group: "", set_only: 0 }, { silent: true }).then(function (d) {
+      if (mine !== ageSeq) return;
+      ages = d;
+      var gs = {}; d.rows.forEach(function (r) { gs[r.group] = 1; });
+      ageMs.setOptions(Object.keys(gs).sort());
+      paintAges();
+    }).catch(function (e) { if (mine !== ageSeq) return; ages = null; PH.error("#ageTbl", e.message, loadAges); });
+  }
+  function paintAges() {
+    if (!ages) return;
+    var s = st.get(), qq = (s.aq || "").toLowerCase().trim(), gs = PH.values(s.ag);
+    ageRows = ages.rows.filter(function (r) {
+      if (gs.length && gs.indexOf(r.group) < 0) return false;
+      if (s.own === "1" && r.age == null) return false;
+      if (s.own === "0" && r.age != null) return false;
+      return !qq || (r.name + " " + r.item).toLowerCase().indexOf(qq) >= 0;
+    });
+    PH.text("#ageMeta", "Default " + ages.default + " days · " + PH.fmt.plural(ageRows.length, "variety", "varieties") + " · " + ages.rows.filter(function (r) { return r.age != null; }).length + " with their own age");
+    if (!ageTbl) {
+      ageTbl = PH.table("#ageTbl", {
+        columns: [
+          { key: "name", label: "Variety", cls: "is-strong", total: function (rows) { return "Total · " + rows.length; } },
+          { key: "group", label: "Group" },
+          { key: "age", label: "Discard age (days)", num: true, html: function (v, r) { return '<input type="number" min="0.5" max="365" step="0.5" class="ph-table-input dr-ages-in" data-i="' + PH.esc(r.item) + '" value="' + (v == null ? "" : PH.esc(String(v))) + '" placeholder="' + PH.esc(String(ages ? ages.default : "")) + '" aria-label="Discard age for ' + PH.esc(r.name) + '">'; } },
+          { key: "effective", label: "Used", num: true, html: function (v, r) { return '<span class="dr-used" data-i="' + PH.esc(r.item) + '">' + ageUsed(r) + "</span>"; } },
+          { key: "item", label: "", sortable: false, html: function (v, r) { return '<button type="button" class="ph-btn ph-btn--ghost ph-btn--sm dr-clr" data-i="' + PH.esc(r.item) + '"' + (r.age == null ? " disabled" : "") + ">Use default</button>"; } }
+        ],
+        rows: [], pageSize: 100, tall: true, compact: true, empty: "No varieties match", emptyText: "Change the search or the group."
+      });
+    }
+    ageTbl.update(ageRows);
+  }
+  function saveAge(item, days) {
+    var r = ages && ages.rows.filter(function (x) { return x.item === item; })[0]; if (!r) return;
+    return call("set_discard_age", { item: item, days: days }, { silent: true }).then(function (res) {
+      r.age = res.age; r.effective = res.effective;
+      var host = el("ageTbl"), esc = window.CSS && CSS.escape ? CSS.escape(item) : item.replace(/"/g, "");
+      var inp = host.querySelector('.dr-ages-in[data-i="' + esc + '"]'), used = host.querySelector('.dr-used[data-i="' + esc + '"]'), clr = host.querySelector('.dr-clr[data-i="' + esc + '"]');
+      if (inp) inp.value = res.age == null ? "" : res.age;
+      if (used) used.innerHTML = ageUsed(r);
+      if (clr) clr.disabled = res.age == null;
+      PH.toast(res.age == null ? "Using the default age" : "Discard age set to " + res.age + " days", "good");
+      PH.text("#ageMeta", el("ageMeta").textContent.replace(/· \d+ with their own age/, "· " + ages.rows.filter(function (x) { return x.age != null; }).length + " with their own age"));
+    }).catch(function (e) { PH.toast(e.message, "bad"); loadAges(); });
+  }
+
+  /* ---------- export ---------- */
+  function exportCsv() {
+    if (st.get("tab") === "age") {
+      PH.csv("discard-ages.csv", ageRows, [{ key: "name", label: "Variety" }, { key: "group", label: "Group" }, { key: "age", label: "Discard age (days)" }, { key: "effective", label: "Used (days)" }]);
+      return;
+    }
+    PH.csv("discard-requests.csv", shown, [{ key: "name", label: "Request" }, { key: "by", label: "Made by" }, { key: "requested_date", label: "Date" }, { key: "farm", label: "Farm" }, { key: "filters", label: "Filters" }, { key: "state", label: "Status" }, { key: "buckets", label: "Buckets" }, { key: "stems", label: "Stems" }, { key: "done_stems", label: "Discarded" }, { key: "waiting_stems", label: "Still to discard" }]);
+  }
+
+  /* ---------- wiring ---------- */
+  var msFarm = null;
+  el("btn-export").innerHTML = PH.icon("download", 16) + " Export CSV";
+  el("btn-new").innerHTML = PH.icon("plus", 16) + " New request";
+  el("btn-reset").innerHTML = PH.icon("refresh", 16) + " Reset";
+  el("btn-age-reset").innerHTML = PH.icon("refresh", 16) + " Reset";
+
+  PH.multiselect("#f-origin", st, "origin", { label: "Made by", options: [{ value: "System", label: "By the system" }, { value: "User", label: "By people" }], plural: "sources", all: "Everyone", search: false });
+  PH.multiselect("#f-state", st, "state", { label: "Status", options: STATES, plural: "statuses", all: "All statuses", search: false });
+  msFarm = PH.multiselect("#f-farm", st, "farm", { label: "Farm", options: farmOptions(), multiSite: true, plural: "farms", all: "All farms" });
+  PH.multiselect("#f-prog", st, "prog", { label: "Progress", options: [{ value: "none", label: "Nothing discarded" }, { value: "part", label: "Partly discarded" }, { value: "done", label: "Fully discarded" }], plural: "stages", all: "Any progress", search: false });
+  ageMs = PH.multiselect("#f-ag", st, "ag", { label: "Group", options: [], plural: "groups", all: "All groups" });
+  PH.dateRange({ pills: "#presets", from: "#from", to: "#to", state: st });
+  PH.bindSearch("#f-q", st, "q");
+  PH.bindSearch("#f-aq", st, "aq");
+  PH.pills("#f-own", st, "own");
+  PH.activeFilters("#chips", st, [
+    { key: "origin", label: "Made by", multi: true, text: function (v) { return v === "System" ? "By the system" : v === "User" ? "By people" : v; } },
+    { key: "state", label: "Status", multi: true },
+    { key: "farm", label: "Farm", multi: true },
+    { key: "from", label: "From", text: PH.fmt.date },
+    { key: "to", label: "To", text: PH.fmt.date }
+  ]);
+  /* a 90 day preset (the default range; PH.date has no preset for it) */
+  el("presets").addEventListener("click", function (e) {
+    var b = e.target.closest('button[data-value="90d"]');
+    if (b) st.set({ from: PH.date.add(PH.date.today(), -90), to: PH.date.today() });
+  });
+  function paintPreset() {
+    var s = st.get(), t = PH.date.today();
+    var b = el("presets").querySelector('button[data-value="90d"]');
+    if (b) b.classList.toggle("is-on", s.from === PH.date.add(t, -90) && s.to === t);
+  }
+  st.on(paintPreset); paintPreset();
+
+  function resetReq() { st.set({ origin: "", state: "", farm: "", from: PH.date.add(PH.date.today(), -90), to: PH.date.today(), q: "", prog: "" }); }
+  el("btn-reset").addEventListener("click", resetReq);
+  el("btn-age-reset").addEventListener("click", function () { st.set({ aq: "", ag: "", own: "" }); });
+  el("btn-export").addEventListener("click", exportCsv);
+  el("btn-new").addEventListener("click", openNew);
+
+  function paintTab() {
+    var age = st.get("tab") === "age";
+    el("pane-req").hidden = age; el("pane-age").hidden = !age;
+    PH.$$("#tabs .ph-tab").forEach(function (b) { b.classList.toggle("is-on", (b.dataset.tab === "age") === age); });
+    if (age && !ages && !ageSeq) loadAges();
+    el("btn-new").hidden = age;
+  }
+  el("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest(".ph-tab"); if (b) st.set({ tab: b.dataset.tab });
+  });
+
+  var SERVER = ["origin", "state", "farm", "from", "to"];
+  st.on(function (s, changed) {
+    if (changed.indexOf("tab") >= 0) paintTab();
+    if (changed.some(function (k) { return SERVER.indexOf(k) >= 0; })) load();
+    else if (changed.some(function (k) { return k === "q" || k === "prog"; })) paintTable();
+    if (changed.some(function (k) { return k === "aq" || k === "ag" || k === "own"; })) paintAges();
+  });
+
+  /* table events */
+  makeTable();
+  el("tbl").addEventListener("change", function (e) {
+    var c = e.target;
+    if (!c.classList.contains("dr-sel")) return;
+    if (c.checked) sel.add(c.value); else sel.delete(c.value);
+    bulk();
+  });
+  el("pick").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sel]"); if (!b) return;
+    var v = b.dataset.sel;
+    if (v === "none") sel.clear();
+    else shown.forEach(function (r) { if (v === "shown" || r.state === v) sel.add(r.name); });
+    tbl.render(); bulk();
+  });
+  el("b-send").addEventListener("click", function () { confirmAct("Submit for Approval", selected("Draft")); });
+  el("b-approve").addEventListener("click", function () { confirmAct("Approve", selected("Pending Approval")); });
+  el("b-reject").addEventListener("click", function () { confirmAct("Reject", selected("Pending Approval")); });
+
+  /* ages events */
+  el("ageTbl").addEventListener("change", function (e) {
+    if (e.target.classList.contains("dr-ages-in")) saveAge(e.target.dataset.i, e.target.value);
+  });
+  el("ageTbl").addEventListener("click", function (e) {
+    var b = e.target.closest(".dr-clr"); if (b && !b.disabled) saveAge(b.dataset.i, "");
+  });
+
+  PH.onRefresh(function () { return st.get("tab") === "age" ? loadAges() : load(true); });
+
+  PH.kpiSkeleton("#kpis", ["Requests", "Waiting for approval", "Stems asked", "Discarded", "Still to discard"]);
+  PH.skeleton("#tbl", "rows");
+  ["wTrend", "wFarm", "wVar"].forEach(chartLoading);
+  paintTab();
+  // the overview does not need the option lists: fetch both at once and paint the overview as soon as it lands
+  load();
+  call("get_options", {}, { silent: true }).then(function (o) {
+    opts = o;
+    msFarm.setOptions(farmOptions(Object.keys(knownFarms)));
+    bulk();
+  }).catch(function (e) { PH.toast(e.message, "bad"); });
+})();
+</script>
+{% endraw %}
+{% endblock %}
