@@ -16654,6 +16654,87 @@ def getNotReceivedBuckets():
 	return {"date": str(day), "farm": farm or "", "buckets": _not_received_buckets(day, scope)}
 
 
+def _received_not_shelved_buckets(day, scope):
+	"""Buckets received (Receiving / Late Receipt) on `day` that were never shelved after it.
+
+	A bucket counts while, since its last receipt of the day, it has no Shelving Log
+	"Shelved" row, sits on no shelf, and has no other stock entry (harvested again,
+	quarantined, transferred, issued, graded or discarded all move it on). Stems are
+	what its receipts of that harvest round brought in. `scope` is a list of farms
+	(the receiving farm), or None for every farm."""
+	receipt_types = "('Receiving', 'Late Receipt')"
+	rows = frappe.db.sql(
+		"SELECT y.bucket, y.last_received, r.farm, r.custom_greenhouse AS greenhouse,"
+		" sed.item_code, sed.qty"
+		" FROM ("
+		"  SELECT x.bucket, x.last_received, IFNULL(("
+		"   SELECT MAX(TIMESTAMP(h.posting_date, h.posting_time)) FROM `tabStock Entry` h"
+		"   WHERE h.custom_bucket_id = x.bucket AND h.docstatus = 1 AND h.stock_entry_type = 'Harvesting'"
+		"   AND TIMESTAMP(h.posting_date, h.posting_time) < x.last_received), '1900-01-01') AS round_start"
+		"  FROM ("
+		"   SELECT r.custom_bucket_id AS bucket, MAX(TIMESTAMP(r.posting_date, r.posting_time)) AS last_received"
+		"   FROM `tabStock Entry` r"
+		"   WHERE r.stock_entry_type IN "
+		+ receipt_types
+		+ " AND r.docstatus = 1 AND r.posting_date = %(day)s"
+		"   AND IFNULL(r.custom_bucket_id, '') != ''"
+		+ (" AND r.farm IN %(farms)s" if scope else "")
+		+ "   GROUP BY r.custom_bucket_id"
+		"  ) AS x"
+		"  WHERE NOT EXISTS ("
+		"   SELECT 1 FROM `tabShelving Log` l"
+		"   WHERE l.bucket_id = x.bucket AND l.reason = 'Shelved' AND l.shelved_on >= x.last_received)"
+		"  AND NOT EXISTS (SELECT 1 FROM `tabShelf Item` si WHERE si.bucket_id = x.bucket)"
+		"  AND NOT EXISTS ("
+		"   SELECT 1 FROM `tabStock Entry` n"
+		"   WHERE n.custom_bucket_id = x.bucket AND n.docstatus = 1"
+		"   AND n.stock_entry_type NOT IN " + receipt_types + ""
+		"   AND TIMESTAMP(n.posting_date, n.posting_time) > x.last_received)"
+		" ) AS y"
+		" INNER JOIN `tabStock Entry` r ON r.custom_bucket_id = y.bucket"
+		"  AND r.stock_entry_type IN " + receipt_types + " AND r.docstatus = 1"
+		"  AND TIMESTAMP(r.posting_date, r.posting_time) > y.round_start"
+		"  AND TIMESTAMP(r.posting_date, r.posting_time) <= y.last_received"
+		" INNER JOIN `tabStock Entry Detail` sed ON sed.parent = r.name",
+		{"day": day, "farms": scope},
+		as_dict=True,
+	)
+	buckets = {}
+	for r in rows:
+		b = buckets.setdefault(
+			r.bucket,
+			{
+				"bucket": r.bucket,
+				"farm": r.farm or "",
+				"greenhouse": r.greenhouse or "",
+				"varieties": [],
+				"stems": 0.0,
+				"last_received": str(r.last_received) if r.last_received else "",
+			},
+		)
+		b["stems"] += frappe.utils.flt(r.qty)
+		if r.item_code and r.item_code not in b["varieties"]:
+			b["varieties"].append(r.item_code)
+		if not b["greenhouse"] and r.greenhouse:
+			b["greenhouse"] = r.greenhouse
+	out = list(buckets.values())
+	out.sort(key=lambda b: (b["last_received"], b["bucket"]))
+	return out
+
+
+@frappe.whitelist()
+def getReceivedNotShelvedBuckets():
+	"""Every bucket the Quality home's Received Not Shelved tile counts, for one day and farm scope."""
+	day = frappe.utils.getdate(frappe.form_dict.get("date") or frappe.utils.nowdate())
+	farms, all_farms, farm = _quality_farm_scope(
+		(frappe.form_dict.get("farm") or "").strip(),
+		(frappe.form_dict.get("station_farm") or "").strip(),
+		(frappe.form_dict.get("company") or "").strip(),
+	)
+	scope = [farm] if farm else (None if all_farms else farms)
+	return {"date": str(day), "farm": farm or "", "buckets": _received_not_shelved_buckets(day, scope)}
+
+
 @frappe.whitelist()
 def getNeedsAttentionBuckets():
 	"""What the Quality home's Needs Attention tile counts, one row each: bunches graded
@@ -16844,6 +16925,7 @@ def getQualityDashboardData():
 	]
 
 	not_received = _not_received_buckets(day, scope)
+	not_shelved = _received_not_shelved_buckets(day, scope)
 
 	scoped = {"farm": ["in", scope]} if scope else {}
 	pending_reshelving = frappe.db.count(
@@ -16870,6 +16952,8 @@ def getQualityDashboardData():
 			"overall_sampled": round(checked / received * 100, 2) if received > 0 else None,
 			"not_received_buckets": len(not_received),
 			"not_received_stems": sum(b["stems"] for b in not_received),
+			"received_not_shelved_buckets": len(not_shelved),
+			"received_not_shelved_stems": sum(b["stems"] for b in not_shelved),
 			"pending_reshelving": pending_reshelving,
 			"open_replacements": open_replacements,
 		},
