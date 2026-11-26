@@ -114,7 +114,7 @@ def get_options():
 			r[0]
 			for r in frappe.db.sql("SELECT name FROM `tabWarehouse` WHERE name LIKE '%%Cold%%' ORDER BY name")
 		],
-		"discard_age": flt(frappe.db.get_single_value("Production Settings", "discard_age")) or 5.0,
+		"discard_age": flt(frappe.db.get_single_value("Production Settings", "discard_age")),
 		"workflow": _workflow(),
 		"can_create": bool(frappe.has_permission("Discard Request", "create")),
 	}
@@ -546,10 +546,7 @@ VARIETY_ROOT = "Cut Flowers"
 
 
 def _default_discard_age():
-	try:
-		return flt(frappe.db.get_single_value("Production Settings", "discard_age")) or 5.0
-	except Exception:
-		return 5.0
+	return flt(frappe.db.get_single_value("Production Settings", "discard_age"))
 
 
 def _age_value(days):

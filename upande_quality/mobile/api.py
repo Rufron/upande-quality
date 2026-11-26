@@ -6891,14 +6891,11 @@ def gradingReplacementOptions():
 	bucket_in = (data.get("bucket_id") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	def latest_harvest_dates(bucket_ids):
 		if not bucket_ids:
@@ -7251,14 +7248,11 @@ def listBunchDestinations():
 	exclude_bucket = (data.get("exclude_bucket") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	def latest_harvest_dates(bucket_ids):
 		if not bucket_ids:
@@ -7495,14 +7489,11 @@ def listReplacementCandidates():
 	bucket_id = (data.get("bucket_id") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	def latest_harvest_dates(bucket_ids):
 		if not bucket_ids:
@@ -8986,14 +8977,11 @@ def replaceBunchInOpl():
 	reason = (data.get("reason") or "Bunch replacement").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
@@ -9262,14 +9250,11 @@ def replaceStems():
 	reason = (data.get("reason") or "").strip()
 
 	def farm_max_age(farm_name):
-		try:
-			ps = frappe.get_doc("Production Settings")
-			for row in ps.shelf_locations or []:
-				if row.farm == farm_name and row.enabled:
-					return int(row.max_allocation_age or 5)
-		except Exception:
-			pass
-		return 5
+		ps = frappe.get_cached_doc("Production Settings")
+		for row in ps.shelf_locations or []:
+			if row.farm == farm_name and row.enabled:
+				return int(frappe.utils.flt(row.max_allocation_age) or frappe.utils.flt(ps.discard_age))
+		return int(frappe.utils.flt(ps.discard_age))
 
 	# Open to every signed-in user: the Harvest Details Updater role is no longer required.
 	user_has_role = True
