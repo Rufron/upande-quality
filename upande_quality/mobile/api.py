@@ -5429,7 +5429,9 @@ def getInTransitBuckets():
                    pli.shelved AS shelved, pli.issued AS issued,
                    opl.order_name AS order_name, opl.customer AS customer,
                    opl.farm AS farm, opl.creation AS created,
-                   so.delivery_date AS delivery_date
+                   so.delivery_date AS delivery_date, """
+			+ _quality_b_sql()
+			+ """ AS quality_b
             -- Driven from the day's Sales Orders (indexed on delivery_date)
             -- down to their pick lists, rather than scanning every pick row.
             FROM `tabSales Order` so
@@ -5465,6 +5467,8 @@ def getInTransitBuckets():
 					"buckets": [],
 					"shelved_count": 0,
 					"issued_count": 0,
+					# Quality B: received in one go on the app (no shelving), and issued then
+					"quality_b": 1 if r.get("quality_b") else 0,
 				}
 				order_map[opl] = grp
 				order_list = order_list + [grp]
@@ -5528,7 +5532,14 @@ def getInTransitBuckets():
 			g["schedule"] = int(sc.sequence or 0) if sc else 0
 			g["team"] = (sc.team if sc else "") or ""
 		groups.sort(key=lambda g: (not g["schedule"], g["schedule"], g["team"], g["delivery_date"]))
-		first = next((g for g in groups if g["shelved_count"] < g["total"] and not g["issued_count"]), None)
+		first = next(
+			(
+				g
+				for g in groups
+				if g["shelved_count"] < g["total"] and not g["issued_count"] and not g["quality_b"]
+			),
+			None,
+		)
 		for g in groups:
 			g["shelve_next"] = g is first
 
